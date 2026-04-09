@@ -26,6 +26,7 @@ public:
         server_.on("/api/serial", HTTP_POST, [this]() { handleSerialPost(); });
         server_.on("/api/remote/build", HTTP_POST, [this]() { handleRemoteBuild(); });
         server_.on("/api/mock/decode", HTTP_POST, [this]() { handleMockDecode(); });
+        server_.on("/api/raw/decode", HTTP_POST, [this]() { handleRawDecode(); });
         server_.onNotFound([this]() { handleNotFound(); });
         server_.begin();
         Serial.printf("[WebUI] Started on port %d\n", port_);
@@ -72,6 +73,13 @@ private:
         html += "<div class='section-title'>本地 Payload 预览</div>";
         html += "<pre id='draft'></pre>";
         html += "</div>";
+
+        html += "<div class='section'>";
+        html += "<div class='section-title'>原始回复解析</div>";
+        html += "<p>把一整串 <code>FC 62 ...</code> 十六进制包贴进来，服务端会直接按 CN105 回复包解析。支持带空格和连续 hex 两种写法。</p>";
+        html += "<textarea id='rawPacket' rows='4' placeholder='例如: FC 62 01 30 10 06 00 00 21 01 01 A4 00 7C 00 00 00 00 00 00 00 14'></textarea>";
+        html += "<div class='controls' style='margin-top:12px;'><button id='decodeRawBtn' class='secondary'>解析原始回复</button></div>";
+        html += "</div>";
         html += "</div>";
 
         html += "<script>"
@@ -84,6 +92,7 @@ private:
                 "wideVane:document.getElementById('wideVane')};"
                 "const output=document.getElementById('output');"
                 "const draft=document.getElementById('draft');"
+                "const rawPacket=document.getElementById('rawPacket');"
                 "const defaults={power:'ON',mode:'AUTO',temperatureF:'" + String(AppConfig::DEFAULT_TARGET_TEMPERATURE_F, 0) + "',fan:'AUTO',vane:'AUTO',wideVane:'AIRFLOW CONTROL'};"
                 "function currentDraft(){return {"
                 "power:fields.power.value,"
@@ -133,6 +142,23 @@ private:
                 "output.textContent='读取状态失败: '+err;"
                 "}"
                 "}"
+                "async function decodeRawPacket(){"
+                "const raw=rawPacket.value.trim();"
+                "if(!raw){"
+                "output.textContent='请先输入原始十六进制包。';"
+                "return;"
+                "}"
+                "output.textContent='正在解析原始回复包...';"
+                "try{"
+                "const body=new URLSearchParams({packet:raw});"
+                "const resp=await fetch('/api/raw/decode',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});"
+                "const data=await resp.json();"
+                "if(data.status){applyStatus(data.status);}"
+                "output.textContent=JSON.stringify(data,null,2);"
+                "}catch(err){"
+                "output.textContent='原始包解析失败: '+err;"
+                "}"
+                "}"
                 "function applyStatus(status){"
                 "if(status.power) fields.power.value=status.power;"
                 "if(status.mode) fields.mode.value=status.mode;"
@@ -161,6 +187,7 @@ private:
                 "document.getElementById('mock03Btn').addEventListener('click',()=>loadMockResponse('0x03','温度信息'));"
                 "document.getElementById('mock06Btn').addEventListener('click',()=>loadMockResponse('0x06','运行状态'));"
                 "document.getElementById('mockAllBtn').addEventListener('click',()=>loadMockResponse('all','全部状态'));"
+                "document.getElementById('decodeRawBtn').addEventListener('click',decodeRawPacket);"
                 "loadStatus();"
                 "</script>";
         html += pageEnd();
@@ -346,6 +373,34 @@ private:
         server_.send(200, "application/json", json);
     }
 
+    void handleRawDecode() {
+        Serial.printf("[WebUI] POST /api/raw/decode from %s\n", server_.client().remoteIP().toString().c_str());
+
+        String packet = argOrDefault("packet", "");
+        String error;
+        if (!proto_->decodeRawResponseHex(packet, &error)) {
+            String json = "{";
+            json += "\"ok\":false,";
+            json += "\"error\":\"" + jsonEscape(error) + "\"";
+            json += "}";
+            server_.send(400, "application/json", json);
+            return;
+        }
+
+        Serial.println("[WebUI] Parsed raw CN105 response:");
+        Serial.println(proto_->getLastResponsePacketHex());
+
+        String json = "{";
+        json += "\"ok\":true,";
+        json += "\"message\":\"raw response decoded\",";
+        json += "\"status\":" + buildStatusJson() + ",";
+        json += "\"packet\":" + buildSetPacketJson() + ",";
+        json += "\"responsePacket\":" + buildResponsePacketJson();
+        json += "}";
+
+        server_.send(200, "application/json", json);
+    }
+
     void handleNotFound() {
         Serial.printf("[WebUI] 404 %s from %s\n",
                       server_.uri().c_str(),
@@ -371,7 +426,8 @@ private:
         html += ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}";
         html += ".field label{display:block;color:#b9c7d8;font-size:0.92rem;margin-bottom:6px;}";
         html += ".controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}";
-        html += "input,select{display:block;width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid #486581;background:#102a43;color:#f0f4f8;font-size:1rem;}";
+        html += "input,select,textarea{display:block;width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid #486581;background:#102a43;color:#f0f4f8;font-size:1rem;}";
+        html += "textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}";
         html += "button{background:#3e5c76;color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:1rem;cursor:pointer;}";
         html += "button:hover{background:#537999;}";
         html += "button.secondary{background:#284b63;}";

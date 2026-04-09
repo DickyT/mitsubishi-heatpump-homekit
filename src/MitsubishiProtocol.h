@@ -94,6 +94,62 @@ public:
         return ok;
     }
 
+    bool decodeRawResponseHex(const String& rawHex, String* errorMessage = nullptr) {
+        uint8_t bytes[PACKET_LEN];
+        String parseError;
+        if (!parseHexPacketString(rawHex, bytes, PACKET_LEN, &parseError)) {
+            if (errorMessage) {
+                *errorMessage = parseError;
+            }
+            return false;
+        }
+
+        if (bytes[0] != 0xFC) {
+            if (errorMessage) {
+                *errorMessage = "invalid packet start byte, expected FC";
+            }
+            return false;
+        }
+
+        if (bytes[1] != 0x62) {
+            if (errorMessage) {
+                *errorMessage = "only CN105 0x62 response packets are supported here";
+            }
+            return false;
+        }
+
+        if (bytes[4] != 0x10) {
+            if (errorMessage) {
+                *errorMessage = "unexpected payload length byte, expected 10";
+            }
+            return false;
+        }
+
+        uint8_t expectedChecksum = calcCheckSum(bytes, PACKET_LEN - 1);
+        if (expectedChecksum != bytes[PACKET_LEN - 1]) {
+            if (errorMessage) {
+                *errorMessage = "checksum mismatch: expected " + byteToHex(expectedChecksum) +
+                                " but received " + byteToHex(bytes[PACKET_LEN - 1]);
+            }
+            return false;
+        }
+
+        if (!parseInfoResponsePacket(bytes, PACKET_LEN)) {
+            if (errorMessage) {
+                *errorMessage = "packet rejected by CN105 response parser";
+            }
+            return false;
+        }
+
+        memcpy(lastResponseBuild_.bytes, bytes, PACKET_LEN);
+        lastResponseBuild_.valid = true;
+        lastResponseBuild_.infoCode = bytes[5];
+        if (errorMessage) {
+            *errorMessage = "";
+        }
+        return true;
+    }
+
     float getTargetTemperatureF() const {
         return fahrenheitSupport_.deviceCelsiusToSetpointFahrenheit(currentSettings_.temperature);
     }
@@ -212,6 +268,175 @@ private:
             sum += bytes[i];
         }
         return (0xFC - sum) & 0xFF;
+    }
+
+    static String byteToHex(uint8_t value) {
+        String out;
+        if (value < 0x10) {
+            out += "0";
+        }
+        out += String(value, HEX);
+        out.toUpperCase();
+        return out;
+    }
+
+    static int hexCharToNibble(char c) {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return 10 + (c - 'a');
+        }
+        if (c >= 'A' && c <= 'F') {
+            return 10 + (c - 'A');
+        }
+        return -1;
+    }
+
+    static bool parseHexByteToken(const String& token, uint8_t* outByte) {
+        if (!outByte) {
+            return false;
+        }
+
+        String normalized = token;
+        normalized.trim();
+        if (normalized.startsWith("0x") || normalized.startsWith("0X")) {
+            normalized = normalized.substring(2);
+        }
+
+        if (normalized.length() != 2) {
+            return false;
+        }
+
+        int high = hexCharToNibble(normalized[0]);
+        int low = hexCharToNibble(normalized[1]);
+        if (high < 0 || low < 0) {
+            return false;
+        }
+
+        *outByte = static_cast<uint8_t>((high << 4) | low);
+        return true;
+    }
+
+    static bool parseHexPacketString(const String& rawHex, uint8_t* outBytes, int expectedLen, String* errorMessage) {
+        if (!outBytes || expectedLen <= 0) {
+            if (errorMessage) {
+                *errorMessage = "invalid output buffer";
+            }
+            return false;
+        }
+
+        String normalized = rawHex;
+        normalized.trim();
+        if (normalized.length() == 0) {
+            if (errorMessage) {
+                *errorMessage = "empty packet text";
+            }
+            return false;
+        }
+
+        String compact;
+        compact.reserve(normalized.length());
+        bool sawSeparator = false;
+
+        for (size_t i = 0; i < normalized.length(); ++i) {
+            char c = normalized[i];
+            if (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == ',' || c == ';') {
+                sawSeparator = true;
+                continue;
+            }
+            compact += c;
+        }
+
+        int byteIndex = 0;
+        if (!sawSeparator && !compact.startsWith("0x") && !compact.startsWith("0X")) {
+            if ((compact.length() % 2) != 0) {
+                if (errorMessage) {
+                    *errorMessage = "continuous hex input must contain an even number of characters";
+                }
+                return false;
+            }
+
+            for (int i = 0; i < compact.length(); i += 2) {
+                if (byteIndex >= expectedLen) {
+                    if (errorMessage) {
+                        *errorMessage = "too many bytes for one CN105 packet";
+                    }
+                    return false;
+                }
+
+                uint8_t value = 0;
+                if (!parseHexByteToken(compact.substring(i, i + 2), &value)) {
+                    if (errorMessage) {
+                        *errorMessage = "invalid hex byte near position " + String(i);
+                    }
+                    return false;
+                }
+                outBytes[byteIndex++] = value;
+            }
+        } else {
+            int start = 0;
+            while (start < normalized.length()) {
+                while (start < normalized.length()) {
+                    char c = normalized[start];
+                    if (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == ',' || c == ';') {
+                        start++;
+                    } else {
+                        break;
+                    }
+                }
+                if (start >= normalized.length()) {
+                    break;
+                }
+
+                int end = start;
+                while (end < normalized.length()) {
+                    char c = normalized[end];
+                    if (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == ',' || c == ';') {
+                        break;
+                    }
+                    end++;
+                }
+
+                if (byteIndex >= expectedLen) {
+                    if (errorMessage) {
+                        *errorMessage = "too many bytes for one CN105 packet";
+                    }
+                    return false;
+                }
+
+                uint8_t value = 0;
+                String token = normalized.substring(start, end);
+                if (!parseHexByteToken(token, &value)) {
+                    if (errorMessage) {
+                        *errorMessage = "invalid hex byte token: " + token;
+                    }
+                    return false;
+                }
+
+                outBytes[byteIndex++] = value;
+                start = end + 1;
+            }
+        }
+
+        if (byteIndex != expectedLen) {
+            if (errorMessage) {
+                if (!sawSeparator) {
+                    *errorMessage = "expected " + String(expectedLen) + " bytes (" +
+                                    String(expectedLen * 2) + " hex chars) but received " +
+                                    String(byteIndex) + " bytes (" + String(compact.length()) +
+                                    " hex chars)";
+                } else {
+                    *errorMessage = "expected " + String(expectedLen) + " bytes but received " + String(byteIndex);
+                }
+            }
+            return false;
+        }
+
+        if (errorMessage) {
+            *errorMessage = "";
+        }
+        return true;
     }
 
     static bool encodeLegacySetTemperatureByte(float tempC, uint8_t* outValue) {
