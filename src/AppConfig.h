@@ -10,6 +10,11 @@ namespace AppConfig {
 
 static const uint32_t SERIAL_BAUD = 115200;
 static const uint16_t WEB_PORT = 80;
+static const uint32_t CN105_UART_BAUD = 2400;
+static const int CN105_UART_PORT = 1;
+static const int CN105_RX_PIN = 32;
+static const int CN105_TX_PIN = 26;
+static const uint32_t CN105_RX_TIMEOUT_MS = 120;
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 static const bool WIFI_DISABLE_SLEEP = true;
 static const uint32_t WIFI_RECONNECT_INTERVAL_MS = 10000;

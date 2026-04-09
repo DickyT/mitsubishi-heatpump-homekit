@@ -15,6 +15,7 @@ public:
         currentStatus_.reset();
         lastBuild_.reset();
         lastResponseBuild_.reset();
+        resetRxState();
         applyMockDefaults();
     }
 
@@ -24,6 +25,25 @@ public:
     }
 
     void processInput() {
+        if (!serial_) {
+            return;
+        }
+
+        uint32_t now = millis();
+        if (rxIndex_ > 0 && now - lastRxByteMs_ > AppConfig::CN105_RX_TIMEOUT_MS) {
+            Serial.printf("[CN105 RX] Timeout after %lums, dropping partial packet (%d bytes)\n",
+                          static_cast<unsigned long>(now - lastRxByteMs_),
+                          rxIndex_);
+            resetRxState();
+        }
+
+        while (serial_->available() > 0) {
+            int raw = serial_->read();
+            if (raw < 0) {
+                break;
+            }
+            processIncomingByte(static_cast<uint8_t>(raw));
+        }
     }
 
     void loopPollCycle() {
@@ -205,6 +225,10 @@ private:
     FahrenheitSupport fahrenheitSupport_;
     cn105SetPacketBuild lastBuild_;
     cn105InfoResponseBuild lastResponseBuild_;
+    uint8_t rxBuffer_[PACKET_LEN];
+    int rxIndex_ = 0;
+    int rxExpectedLength_ = 0;
+    uint32_t lastRxByteMs_ = 0;
 
     void applyMockDefaults() {
         powerStorage_ = "ON";
@@ -227,6 +251,85 @@ private:
         updateDerivedMockStatus();
         buildCurrentSetPacket();
         buildMockInfoResponsePacket(0x06, &lastResponseBuild_);
+    }
+
+    void resetRxState() {
+        memset(rxBuffer_, 0, sizeof(rxBuffer_));
+        rxIndex_ = 0;
+        rxExpectedLength_ = 0;
+        lastRxByteMs_ = 0;
+    }
+
+    static int expectedPacketLengthForCommand(uint8_t command) {
+        if (command == 0x7A || command == 0x7B) {
+            return CONNECT_LEN;
+        }
+        return PACKET_LEN;
+    }
+
+    void processIncomingByte(uint8_t value) {
+        uint32_t now = millis();
+
+        if (rxIndex_ > 0 && now - lastRxByteMs_ > AppConfig::CN105_RX_TIMEOUT_MS) {
+            Serial.printf("[CN105 RX] Timeout after %lums, dropping partial packet (%d bytes)\n",
+                          static_cast<unsigned long>(now - lastRxByteMs_),
+                          rxIndex_);
+            resetRxState();
+        }
+
+        lastRxByteMs_ = now;
+
+        if (rxIndex_ == 0) {
+            if (value != 0xFC) {
+                return;
+            }
+            rxBuffer_[rxIndex_++] = value;
+            return;
+        }
+
+        if (rxIndex_ >= PACKET_LEN) {
+            Serial.println("[CN105 RX] Buffer overflow, resetting packet state");
+            resetRxState();
+            if (value == 0xFC) {
+                rxBuffer_[rxIndex_++] = value;
+                lastRxByteMs_ = now;
+            }
+            return;
+        }
+
+        rxBuffer_[rxIndex_++] = value;
+
+        if (rxIndex_ == 2) {
+            rxExpectedLength_ = expectedPacketLengthForCommand(rxBuffer_[1]);
+        }
+
+        if (rxExpectedLength_ > 0 && rxIndex_ >= rxExpectedLength_) {
+            handleCompletedRxPacket(rxExpectedLength_);
+            resetRxState();
+        }
+    }
+
+    void handleCompletedRxPacket(int packetLength) {
+        String packetHex = packetBytesToHex(rxBuffer_, true, packetLength);
+        Serial.printf("[CN105 RX] %s\n", packetHex.c_str());
+
+        if (packetLength == CONNECT_LEN) {
+            Serial.printf("[CN105 RX] Short control packet: cmd=0x%02X\n", rxBuffer_[1]);
+            return;
+        }
+
+        if (rxBuffer_[1] != 0x62) {
+            Serial.printf("[CN105 RX] Unsupported packet command 0x%02X\n", rxBuffer_[1]);
+            return;
+        }
+
+        String errorMessage;
+        if (!decodeRawResponseHex(packetHex, &errorMessage)) {
+            Serial.printf("[CN105 RX] Decode failed: %s\n", errorMessage.c_str());
+            return;
+        }
+
+        Serial.printf("[CN105 RX] Applied INFO response 0x%02X\n", lastResponseBuild_.infoCode);
     }
 
     void syncSettingPointers() {

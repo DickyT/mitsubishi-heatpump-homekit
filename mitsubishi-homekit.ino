@@ -4,7 +4,8 @@
 #include "src/MitsubishiProtocol.h"
 #include "src/WebUI.h"
 
-MitsubishiProtocol g_proto;
+HardwareSerial g_cn105Serial(AppConfig::CN105_UART_PORT);
+MitsubishiProtocol g_proto(&g_cn105Serial);
 WebUI* g_webUI = nullptr;
 uint32_t g_lastReconnectAttemptMs = 0;
 uint32_t g_lastHeartbeatMs = 0;
@@ -224,11 +225,32 @@ static void logHeartbeat() {
     logWifiStatus(prefix.c_str());
 }
 
+static void setupCn105Serial() {
+    g_cn105Serial.begin(
+        AppConfig::CN105_UART_BAUD,
+        SERIAL_8E1,
+        AppConfig::CN105_RX_PIN,
+        AppConfig::CN105_TX_PIN
+    );
+
+    while (g_cn105Serial.available() > 0) {
+        g_cn105Serial.read();
+    }
+
+    Serial.printf("[UART] CN105 serial initialized: uart=%d rx=%d tx=%d baud=%lu format=8E1\n",
+                  AppConfig::CN105_UART_PORT,
+                  AppConfig::CN105_RX_PIN,
+                  AppConfig::CN105_TX_PIN,
+                  static_cast<unsigned long>(AppConfig::CN105_UART_BAUD));
+}
+
 void setup() {
     Serial.begin(AppConfig::SERIAL_BAUD);
     delay(300);
     Serial.println();
     Serial.printf("=== %s ===\n", AppConfig::APP_TITLE);
+
+    setupCn105Serial();
 
     WiFi.onEvent(handleWiFiEvent);
 
@@ -245,6 +267,8 @@ void setup() {
 void loop() {
     maintainWifi();
     logHeartbeat();
+    g_proto.processInput();
+    g_proto.loopPollCycle();
     g_webUI->loop();
     delay(2);
 }
