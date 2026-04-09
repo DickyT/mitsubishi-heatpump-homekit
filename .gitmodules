@@ -1,0 +1,3 @@
+[submodule "original_version"]
+	path = original_version
+	url = https://github.com/echavet/MitsubishiCN105ESPHome.git

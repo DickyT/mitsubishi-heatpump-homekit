@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arduino / ESP32 build artifacts
+build/
+dist/
+*.elf
+*.bin
+*.map
+*.hex
+*.eep
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local secrets / overrides
+src/AppSecrets.h
+*.local
