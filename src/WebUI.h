@@ -25,6 +25,7 @@ public:
         server_.on("/api/ping", HTTP_GET, [this]() { handlePing(); });
         server_.on("/api/serial", HTTP_POST, [this]() { handleSerialPost(); });
         server_.on("/api/remote/build", HTTP_POST, [this]() { handleRemoteBuild(); });
+        server_.on("/api/mock/decode", HTTP_POST, [this]() { handleMockDecode(); });
         server_.onNotFound([this]() { handleNotFound(); });
         server_.begin();
         Serial.printf("[WebUI] Started on port %d\n", port_);
@@ -46,12 +47,12 @@ private:
         html += metaLine();
 
         html += "<div class='section'>";
-        html += "<div class='section-title'>Server Echo</div>";
+        html += "<div class='section-title'>服务端回显</div>";
         html += "<pre id='output'>Waiting for action...</pre>";
         html += "</div>";
 
         html += "<div class='section'>";
-        html += "<div class='section-title'>Remote Draft</div>";
+        html += "<div class='section-title'>遥控器草稿</div>";
         html += "<div class='grid'>";
         html += selectField("Power", "power", "OFF,ON", "ON");
         html += selectField("Mode", "mode", "AUTO,HEAT,COOL,DRY,FAN", "AUTO");
@@ -64,11 +65,11 @@ private:
         html += selectField("Vertical Vane", "vane", "AUTO,1,2,3,4,5,SWING", "AUTO");
         html += selectField("Horizontal Vane", "wideVane", "<<,<,|,>,>>,<>,SWING,AIRFLOW CONTROL", "AIRFLOW CONTROL");
         html += "</div>";
-        html += "<div class='controls' style='margin-top:14px;'><button id='sendBtn'>Send To Server</button><button id='resetBtn' class='secondary'>Reset Draft</button></div>";
+        html += "<div class='controls' style='margin-top:14px;'><button id='sendBtn'>Send To Server</button><button id='resetBtn' class='secondary'>Reset Draft</button><button id='mock02Btn' class='secondary'>读取当前设置</button><button id='mock03Btn' class='secondary'>读取温度信息</button><button id='mock06Btn' class='secondary'>读取运行状态</button><button id='mockAllBtn' class='secondary'>读取全部状态</button></div>";
         html += "</div>";
 
         html += "<div class='section'>";
-        html += "<div class='section-title'>Local Payload Preview</div>";
+        html += "<div class='section-title'>本地 Payload 预览</div>";
         html += "<pre id='draft'></pre>";
         html += "</div>";
         html += "</div>";
@@ -118,7 +119,19 @@ private:
                 "function resetDraft(){"
                 "Object.keys(fields).forEach(key=>fields[key].value=defaults[key]);"
                 "renderDraft();"
-                "output.textContent='Draft reset locally. Nothing has been sent yet.';"
+                "output.textContent='草稿已在本地重置，还没有发送到服务端。';"
+                "}"
+                "async function loadMockResponse(code,label){"
+                "output.textContent='正在从服务端读取' + label + '...';"
+                "try{"
+                "const body=new URLSearchParams({code});"
+                "const resp=await fetch('/api/mock/decode',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});"
+                "const data=await resp.json();"
+                "if(data.status){applyStatus(data.status);}"
+                "output.textContent=JSON.stringify(data,null,2);"
+                "}catch(err){"
+                "output.textContent='读取状态失败: '+err;"
+                "}"
                 "}"
                 "function applyStatus(status){"
                 "if(status.power) fields.power.value=status.power;"
@@ -130,20 +143,24 @@ private:
                 "renderDraft();"
                 "}"
                 "async function loadStatus(){"
-                "output.textContent='Loading current status from server...';"
+                "output.textContent='正在读取当前状态...';"
                 "try{"
                 "const resp=await fetch('/api/status');"
                 "const data=await resp.json();"
                 "if(data.status){applyStatus(data.status);}"
                 "output.textContent=JSON.stringify(data,null,2);"
                 "}catch(err){"
-                "output.textContent='Status load failed: '+err;"
+                "output.textContent='状态读取失败: '+err;"
                 "renderDraft();"
                 "}"
                 "}"
                 "Object.values(fields).forEach(el=>el.addEventListener('input',renderDraft));"
                 "document.getElementById('sendBtn').addEventListener('click',sendDraft);"
                 "document.getElementById('resetBtn').addEventListener('click',resetDraft);"
+                "document.getElementById('mock02Btn').addEventListener('click',()=>loadMockResponse('0x02','当前设置'));"
+                "document.getElementById('mock03Btn').addEventListener('click',()=>loadMockResponse('0x03','温度信息'));"
+                "document.getElementById('mock06Btn').addEventListener('click',()=>loadMockResponse('0x06','运行状态'));"
+                "document.getElementById('mockAllBtn').addEventListener('click',()=>loadMockResponse('all','全部状态'));"
                 "loadStatus();"
                 "</script>";
         html += pageEnd();
@@ -210,37 +227,11 @@ private:
     void handleStatus() {
         Serial.printf("[WebUI] GET /api/status from %s\n", server_.client().remoteIP().toString().c_str());
 
-        auto& s = proto_->getCurrentSettings();
-        auto& st = proto_->getCurrentStatus();
-
         String json = "{";
         json += "\"ok\":true,";
-        json += "\"status\":{";
-        json += "\"connected\":" + String(proto_->isConnected() ? "true" : "false") + ",";
-        json += "\"power\":\"" + jsonEscape(s.power ? s.power : "") + "\",";
-        json += "\"mode\":\"" + jsonEscape(s.mode ? s.mode : "") + "\",";
-        json += "\"targetTemperatureF\":" + String(proto_->getTargetTemperatureF(), 0) + ",";
-        json += "\"targetTemperatureRawC\":" + String(s.temperature, 1) + ",";
-        json += "\"fan\":\"" + jsonEscape(s.fan ? s.fan : "") + "\",";
-        json += "\"vane\":\"" + jsonEscape(s.vane ? s.vane : "") + "\",";
-        json += "\"wideVane\":\"" + jsonEscape(s.wideVane ? s.wideVane : "") + "\",";
-        json += "\"roomTemperatureF\":" + String(proto_->getRoomTemperatureF(), 0) + ",";
-        json += "\"roomTemperatureRawC\":" + String(st.roomTemperature, 1) + ",";
-        json += "\"outsideAirTemperatureF\":" + String(proto_->getOutsideTemperatureF(), 0) + ",";
-        json += "\"outsideAirTemperatureRawC\":" + String(st.outsideAirTemperature, 1) + ",";
-        json += "\"operating\":" + String(st.operating ? "true" : "false") + ",";
-        json += "\"compressorFrequency\":" + String(st.compressorFrequency, 1) + ",";
-        json += "\"inputPower\":" + String(st.inputPower, 1) + ",";
-        json += "\"kWh\":" + String(st.kWh, 1) + ",";
-        json += "\"runtimeHours\":" + String(st.runtimeHours, 1);
-        json += "},";
-        json += "\"packet\":{";
-        json += "\"hex\":\"" + jsonEscape(proto_->getLastPacketHex()) + "\",";
-        json += "\"control1\":" + String(proto_->getLastBuild().control1) + ",";
-        json += "\"control2\":" + String(proto_->getLastBuild().control2) + ",";
-        json += "\"encodedTemperatureC\":" + String(proto_->getLastBuild().encodedTemperatureC, 1) + ",";
-        json += "\"usedHighPrecisionTemperature\":" + String(proto_->getLastBuild().usedHighPrecisionTemperature ? "true" : "false");
-        json += "}";
+        json += "\"status\":" + buildStatusJson() + ",";
+        json += "\"packet\":" + buildSetPacketJson() + ",";
+        json += "\"responsePacket\":" + buildResponsePacketJson();
         json += "}";
 
         server_.send(200, "application/json", json);
@@ -300,39 +291,56 @@ private:
         Serial.println("[WebUI] CN105 draft preview:");
         Serial.println(config);
 
-        auto& s = proto_->getCurrentSettings();
-        auto& st = proto_->getCurrentStatus();
-
         String json = "{";
         json += "\"ok\":true,";
         json += "\"message\":\"draft accepted by dummy endpoint\",";
         json += "\"configFile\":\"" + jsonEscape(config) + "\",";
-        json += "\"packet\":{";
-        json += "\"hex\":\"" + jsonEscape(proto_->getLastPacketHex()) + "\",";
-        json += "\"control1\":" + String(proto_->getLastBuild().control1) + ",";
-        json += "\"control2\":" + String(proto_->getLastBuild().control2) + ",";
-        json += "\"encodedTemperatureC\":" + String(proto_->getLastBuild().encodedTemperatureC, 1) + ",";
-        json += "\"usedHighPrecisionTemperature\":" + String(proto_->getLastBuild().usedHighPrecisionTemperature ? "true" : "false");
-        json += "},";
-        json += "\"status\":{";
-        json += "\"connected\":" + String(proto_->isConnected() ? "true" : "false") + ",";
-        json += "\"power\":\"" + jsonEscape(s.power ? s.power : "") + "\",";
-        json += "\"mode\":\"" + jsonEscape(s.mode ? s.mode : "") + "\",";
-        json += "\"targetTemperatureF\":" + String(proto_->getTargetTemperatureF(), 0) + ",";
-        json += "\"targetTemperatureRawC\":" + String(s.temperature, 1) + ",";
-        json += "\"fan\":\"" + jsonEscape(s.fan ? s.fan : "") + "\",";
-        json += "\"vane\":\"" + jsonEscape(s.vane ? s.vane : "") + "\",";
-        json += "\"wideVane\":\"" + jsonEscape(s.wideVane ? s.wideVane : "") + "\",";
-        json += "\"roomTemperatureF\":" + String(proto_->getRoomTemperatureF(), 0) + ",";
-        json += "\"roomTemperatureRawC\":" + String(st.roomTemperature, 1) + ",";
-        json += "\"outsideAirTemperatureF\":" + String(proto_->getOutsideTemperatureF(), 0) + ",";
-        json += "\"outsideAirTemperatureRawC\":" + String(st.outsideAirTemperature, 1) + ",";
-        json += "\"operating\":" + String(st.operating ? "true" : "false") + ",";
-        json += "\"compressorFrequency\":" + String(st.compressorFrequency, 1) + ",";
-        json += "\"inputPower\":" + String(st.inputPower, 1) + ",";
-        json += "\"kWh\":" + String(st.kWh, 1) + ",";
-        json += "\"runtimeHours\":" + String(st.runtimeHours, 1);
+        json += "\"packet\":" + buildSetPacketJson() + ",";
+        json += "\"responsePacket\":" + buildResponsePacketJson() + ",";
+        json += "\"status\":" + buildStatusJson();
         json += "}";
+
+        server_.send(200, "application/json", json);
+    }
+
+    void handleMockDecode() {
+        Serial.printf("[WebUI] POST /api/mock/decode from %s\n", server_.client().remoteIP().toString().c_str());
+
+        String code = argOrDefault("code", "all");
+        code.trim();
+        code.toLowerCase();
+
+        bool ok = false;
+        String appliedLabel;
+        if (code == "all") {
+            ok = proto_->decodeAllMockResponses();
+            appliedLabel = "all";
+        } else if (code == "0x02" || code == "02" || code == "2") {
+            ok = proto_->decodeMockResponse(0x02);
+            appliedLabel = "0x02";
+        } else if (code == "0x03" || code == "03" || code == "3") {
+            ok = proto_->decodeMockResponse(0x03);
+            appliedLabel = "0x03";
+        } else if (code == "0x06" || code == "06" || code == "6") {
+            ok = proto_->decodeMockResponse(0x06);
+            appliedLabel = "0x06";
+        }
+
+        if (!ok) {
+            server_.send(400, "application/json", "{\"ok\":false,\"error\":\"unsupported or failed state read\"}");
+            return;
+        }
+
+        Serial.printf("[WebUI] Applied mock response %s\n", appliedLabel.c_str());
+        Serial.println(proto_->getLastResponsePacketHex());
+
+        String json = "{";
+        json += "\"ok\":true,";
+        json += "\"message\":\"state read completed\",";
+        json += "\"applied\":\"" + jsonEscape(appliedLabel) + "\",";
+        json += "\"status\":" + buildStatusJson() + ",";
+        json += "\"packet\":" + buildSetPacketJson() + ",";
+        json += "\"responsePacket\":" + buildResponsePacketJson();
         json += "}";
 
         server_.send(200, "application/json", json);
@@ -413,6 +421,55 @@ private:
         return html;
     }
 
+    String buildStatusJson() {
+        auto& s = proto_->getCurrentSettings();
+        auto& st = proto_->getCurrentStatus();
+
+        String json = "{";
+        json += "\"connected\":" + String(proto_->isConnected() ? "true" : "false") + ",";
+        json += "\"power\":\"" + jsonEscape(s.power ? s.power : "") + "\",";
+        json += "\"mode\":\"" + jsonEscape(s.mode ? s.mode : "") + "\",";
+        json += "\"targetTemperatureF\":" + jsonFloat(proto_->getTargetTemperatureF(), 0) + ",";
+        json += "\"targetTemperatureRawC\":" + jsonFloat(s.temperature, 1) + ",";
+        json += "\"fan\":\"" + jsonEscape(s.fan ? s.fan : "") + "\",";
+        json += "\"vane\":\"" + jsonEscape(s.vane ? s.vane : "") + "\",";
+        json += "\"wideVane\":\"" + jsonEscape(s.wideVane ? s.wideVane : "") + "\",";
+        json += "\"iSee\":" + String(s.iSee ? "true" : "false") + ",";
+        json += "\"roomTemperatureF\":" + jsonFloat(proto_->getRoomTemperatureF(), 0) + ",";
+        json += "\"roomTemperatureRawC\":" + jsonFloat(st.roomTemperature, 1) + ",";
+        json += "\"outsideAirTemperatureF\":" + jsonFloat(proto_->getOutsideTemperatureF(), 0) + ",";
+        json += "\"outsideAirTemperatureRawC\":" + jsonFloat(st.outsideAirTemperature, 1) + ",";
+        json += "\"operating\":" + String(st.operating ? "true" : "false") + ",";
+        json += "\"compressorFrequency\":" + jsonFloat(st.compressorFrequency, 1) + ",";
+        json += "\"inputPower\":" + jsonFloat(st.inputPower, 1) + ",";
+        json += "\"kWh\":" + jsonFloat(st.kWh, 1) + ",";
+        json += "\"runtimeHours\":" + jsonFloat(st.runtimeHours, 1);
+        json += "}";
+        return json;
+    }
+
+    String buildSetPacketJson() {
+        const cn105SetPacketBuild& build = proto_->getLastBuild();
+        String json = "{";
+        json += "\"hex\":\"" + jsonEscape(proto_->getLastPacketHex()) + "\",";
+        json += "\"control1\":" + String(build.control1) + ",";
+        json += "\"control2\":" + String(build.control2) + ",";
+        json += "\"encodedTemperatureC\":" + jsonFloat(build.encodedTemperatureC, 1) + ",";
+        json += "\"usedHighPrecisionTemperature\":" + String(build.usedHighPrecisionTemperature ? "true" : "false");
+        json += "}";
+        return json;
+    }
+
+    String buildResponsePacketJson() {
+        const cn105InfoResponseBuild& build = proto_->getLastResponseBuild();
+        String json = "{";
+        json += "\"hex\":\"" + jsonEscape(proto_->getLastResponsePacketHex()) + "\",";
+        json += "\"valid\":" + String(build.valid ? "true" : "false") + ",";
+        json += "\"infoCode\":" + String(build.infoCode);
+        json += "}";
+        return json;
+    }
+
     String argOrDefault(const char* name, const String& defaultValue) {
         if (!server_.hasArg(name)) {
             return defaultValue;
@@ -423,6 +480,13 @@ private:
             return defaultValue;
         }
         return value;
+    }
+
+    String jsonFloat(float value, int decimals) {
+        if (isnan(value)) {
+            return "null";
+        }
+        return String(value, decimals);
     }
 
     String wifiModeLabel() {

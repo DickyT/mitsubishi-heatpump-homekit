@@ -132,6 +132,21 @@ static const char* VANE_MAP[7] = {"AUTO", "1", "2", "3", "4", "5", "SWING"};
 static const uint8_t WIDEVANE[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0C, 0x00};
 static const char* WIDEVANE_MAP[8] = {"<<", "<", "|", ">", ">>", "<>", "SWING", "AIRFLOW CONTROL"};
 
+// Legacy room-temperature response bytes are a simple 10C-41C linear range.
+// When data[6] is zero in a 0x03 response, data[3] falls back to this table.
+static const uint8_t ROOM_TEMP[32] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+};
+static const int ROOM_TEMP_MAP[32] = {
+    10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32, 33,
+    34, 35, 36, 37, 38, 39, 40, 41
+};
+
 template <typename T>
 static T lookupByteMapValue(const T* map, const uint8_t* bytes, int len, uint8_t value) {
     for (int i = 0; i < len; i++) {
@@ -166,6 +181,18 @@ struct cn105SetPacketBuild {
         control2 = 0;
         encodedTemperatureC = NAN;
         usedHighPrecisionTemperature = false;
+    }
+};
+
+struct cn105InfoResponseBuild {
+    uint8_t bytes[PACKET_LEN];
+    bool valid;
+    uint8_t infoCode;
+
+    void reset() {
+        memset(bytes, 0, sizeof(bytes));
+        valid = false;
+        infoCode = 0;
     }
 };
 
