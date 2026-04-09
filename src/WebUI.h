@@ -109,7 +109,7 @@ private:
                 "try{"
                 "const resp=await fetch('/api/remote/build',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});"
                 "const data=await resp.json();"
-                "output.textContent=JSON.stringify(data,null,2);"
+                "output.textContent=(data.configFile ? data.configFile + '\\n\\n' : '') + JSON.stringify(data,null,2);"
                 "if(data.status){applyStatus(data.status);}"
                 "}catch(err){"
                 "output.textContent='Send failed: '+err;"
@@ -233,6 +233,13 @@ private:
         json += "\"inputPower\":" + String(st.inputPower, 1) + ",";
         json += "\"kWh\":" + String(st.kWh, 1) + ",";
         json += "\"runtimeHours\":" + String(st.runtimeHours, 1);
+        json += "},";
+        json += "\"packet\":{";
+        json += "\"hex\":\"" + jsonEscape(proto_->getLastPacketHex()) + "\",";
+        json += "\"control1\":" + String(proto_->getLastBuild().control1) + ",";
+        json += "\"control2\":" + String(proto_->getLastBuild().control2) + ",";
+        json += "\"encodedTemperatureC\":" + String(proto_->getLastBuild().encodedTemperatureC, 1) + ",";
+        json += "\"usedHighPrecisionTemperature\":" + String(proto_->getLastBuild().usedHighPrecisionTemperature ? "true" : "false");
         json += "}";
         json += "}";
 
@@ -300,6 +307,13 @@ private:
         json += "\"ok\":true,";
         json += "\"message\":\"draft accepted by dummy endpoint\",";
         json += "\"configFile\":\"" + jsonEscape(config) + "\",";
+        json += "\"packet\":{";
+        json += "\"hex\":\"" + jsonEscape(proto_->getLastPacketHex()) + "\",";
+        json += "\"control1\":" + String(proto_->getLastBuild().control1) + ",";
+        json += "\"control2\":" + String(proto_->getLastBuild().control2) + ",";
+        json += "\"encodedTemperatureC\":" + String(proto_->getLastBuild().encodedTemperatureC, 1) + ",";
+        json += "\"usedHighPrecisionTemperature\":" + String(proto_->getLastBuild().usedHighPrecisionTemperature ? "true" : "false");
+        json += "},";
         json += "\"status\":{";
         json += "\"connected\":" + String(proto_->isConnected() ? "true" : "false") + ",";
         json += "\"power\":\"" + jsonEscape(s.power ? s.power : "") + "\",";

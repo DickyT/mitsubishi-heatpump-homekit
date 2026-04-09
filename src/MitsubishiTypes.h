@@ -1,6 +1,173 @@
 #pragma once
 
+#include <cstdint>
 #include <cmath>
+#include <cstring>
+
+// The main CN105 packets we care about in this project are 22 bytes long:
+//   5-byte base header + 16-byte payload + 1-byte checksum
+// For example:
+//   SET  = FC 41 01 30 10 [16 bytes payload] [checksum]
+//   INFO = FC 42 01 30 10 [16 bytes payload] [checksum]
+static const int PACKET_LEN = 22;
+
+// The CONNECT handshake is shorter and only 8 bytes long:
+//   FC 5A 01 30 02 CA 01 A8
+// This simply tells the indoor unit that a controller is present and wants to start a session.
+static const int CONNECT_LEN = 8;
+
+// The first 8 bytes of a SET packet are the fixed header:
+//   [0] 0xFC  start byte
+//   [1] 0x41  SET command
+//   [2] 0x01  fixed
+//   [3] 0x30  fixed
+//   [4] 0x10  payload length = 16
+//   [5] 0x01  fixed
+//   [6]       control bits #1 (which fields should be applied)
+//   [7]       control bits #2 (extended control bits)
+static const int HEADER_LEN = 8;
+
+// The fixed INFO header is only the first 5 bytes:
+//   [0] 0xFC  start byte
+//   [1] 0x42  INFO request
+//   [2] 0x01  fixed
+//   [3] 0x30  fixed
+//   [4] 0x10  payload length = 16
+// The actual request code is usually the first payload byte, data[0],
+// for example 0x02 / 0x03 / 0x06 / 0x09.
+static const int INFOHEADER_LEN = 5;
+
+// CONNECT handshake packet.
+// We use 0x5A as the standard handshake and usually expect a 0x7A reply.
+// In the current offline-builder phase this packet is not sent yet, but we keep it
+// here because the real UART stage will use the same constant.
+static const uint8_t CONNECT[CONNECT_LEN] = {
+    0xFC, 0x5A, 0x01, 0x30, 0x02, 0xCA, 0x01, 0xA8
+};
+
+// Fixed SET command header.
+// The variable control content starts after this header:
+//   byte[6] / byte[7]  control bits
+//   byte[8]            power
+//   byte[9]            mode
+//   byte[10]           legacy integer temperature encoding
+//   byte[11]           fan speed
+//   byte[12]           vertical vane
+//   byte[18]           horizontal vane
+//   byte[19]           high-precision temperature encoding
+//   byte[21]           checksum
+static const uint8_t HEADER[HEADER_LEN] = {
+    0xFC, 0x41, 0x01, 0x30, 0x10, 0x01, 0x00, 0x00
+};
+
+// Fixed INFO request header.
+// The actual "what should be read" selector lives in the payload:
+//   0x02 = current settings
+//   0x03 = room / outside temperature
+//   0x06 = operating status
+//   0x09 = stage / sub-mode
+static const uint8_t INFOHEADER[INFOHEADER_LEN] = {
+    0xFC, 0x42, 0x01, 0x30, 0x10
+};
+
+// Bit masks for SET byte[6].
+// These bits do not carry the values themselves. They declare which fields in the packet
+// should be applied by the indoor unit.
+// For example:
+//   temperature only      -> byte[6] |= 0x04
+//   mode + fan speed      -> byte[6] |= 0x02 | 0x08
+// If a bit is not set, the indoor unit will usually ignore that field even if a value is present.
+static const uint8_t CONTROL_PACKET_1[5] = {
+    0x01, 0x02, 0x04, 0x08, 0x10
+};
+
+// Extended control bits for SET byte[7].
+// We currently use only one bit here:
+//   bit0 = horizontal vane (wide vane)
+// So to update wideVane, we need both:
+//   byte[7] |= 0x01
+//   byte[18] = actual wideVane value
+static const uint8_t CONTROL_PACKET_2[1] = {
+    0x01
+};
+
+static const uint8_t POWER[2] = {0x00, 0x01};
+static const char* POWER_MAP[2] = {"OFF", "ON"};
+
+static const uint8_t MODE[5] = {0x01, 0x02, 0x03, 0x07, 0x08};
+static const char* MODE_MAP[5] = {"HEAT", "DRY", "COOL", "FAN", "AUTO"};
+
+static const uint8_t TEMP[16] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+};
+// This table only matches the legacy temperature field at byte[10].
+// There are no half-degree values here because byte[10] only supports integer Celsius values.
+// For example:
+//   0x00 -> 31C
+//   0x07 -> 24C
+//   0x0F -> 16C
+//
+// If we want to express 24.5C / 25.5C style half-degree setpoints, TEMP_MAP is not enough.
+// Those values must be encoded through the high-precision field at byte[19].
+//
+// byte[19] uses this formula:
+//   encoded = tempC * 2 + 128
+//
+// For example:
+//   25.0C -> 178
+//   25.5C -> 179
+//   26.0C -> 180
+static const int TEMP_MAP[16] = {
+    31, 30, 29, 28, 27, 26, 25, 24,
+    23, 22, 21, 20, 19, 18, 17, 16
+};
+
+static const uint8_t FAN[6] = {0x00, 0x01, 0x02, 0x03, 0x05, 0x06};
+static const char* FAN_MAP[6] = {"AUTO", "QUIET", "1", "2", "3", "4"};
+
+static const uint8_t VANE[7] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x07};
+static const char* VANE_MAP[7] = {"AUTO", "1", "2", "3", "4", "5", "SWING"};
+
+static const uint8_t WIDEVANE[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0C, 0x00};
+static const char* WIDEVANE_MAP[8] = {"<<", "<", "|", ">", ">>", "<>", "SWING", "AIRFLOW CONTROL"};
+
+template <typename T>
+static T lookupByteMapValue(const T* map, const uint8_t* bytes, int len, uint8_t value) {
+    for (int i = 0; i < len; i++) {
+        if (bytes[i] == value) {
+            return map[i];
+        }
+    }
+    return map[0];
+}
+
+static int lookupByteMapIndex(const char** map, int len, const char* value) {
+    for (int i = 0; i < len; i++) {
+        if (strcmp(map[i], value) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+struct cn105SetPacketBuild {
+    uint8_t bytes[PACKET_LEN];
+    bool valid;
+    uint8_t control1;
+    uint8_t control2;
+    float encodedTemperatureC;
+    bool usedHighPrecisionTemperature;
+
+    void reset() {
+        memset(bytes, 0, sizeof(bytes));
+        valid = false;
+        control1 = 0;
+        control2 = 0;
+        encodedTemperatureC = NAN;
+        usedHighPrecisionTemperature = false;
+    }
+};
 
 struct heatpumpSettings {
     const char* power;

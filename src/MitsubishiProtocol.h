@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <math.h>
 
 #include "AppConfig.h"
 #include "FahrenheitSupport.h"
@@ -12,6 +13,7 @@ public:
         : serial_(serial) {
         currentSettings_.reset();
         currentStatus_.reset();
+        lastBuild_.reset();
         applyMockDefaults();
     }
 
@@ -66,6 +68,7 @@ public:
 
         syncSettingPointers();
         updateDerivedMockStatus();
+        buildCurrentSetPacket();
     }
 
     float getTargetTemperatureF() const {
@@ -78,6 +81,10 @@ public:
 
     float getOutsideTemperatureF() const {
         return fahrenheitSupport_.deviceCelsiusToDisplayFahrenheit(currentStatus_.outsideAirTemperature);
+    }
+
+    const cn105SetPacketBuild& getLastBuild() const {
+        return lastBuild_;
     }
 
     String buildMockConfigPreview() const {
@@ -94,6 +101,25 @@ public:
         return config;
     }
 
+    String getLastPacketHex() const {
+        if (!lastBuild_.valid) {
+            return "";
+        }
+
+        String out;
+        for (int i = 0; i < PACKET_LEN; i++) {
+            if (i > 0) {
+                out += " ";
+            }
+            if (lastBuild_.bytes[i] < 0x10) {
+                out += "0";
+            }
+            out += String(lastBuild_.bytes[i], HEX);
+        }
+        out.toUpperCase();
+        return out;
+    }
+
 private:
     HardwareSerial* serial_;
     heatpumpSettings currentSettings_;
@@ -105,6 +131,7 @@ private:
     String vaneStorage_;
     String wideVaneStorage_;
     FahrenheitSupport fahrenheitSupport_;
+    cn105SetPacketBuild lastBuild_;
 
     void applyMockDefaults() {
         powerStorage_ = "ON";
@@ -125,6 +152,7 @@ private:
         currentSettings_.connected = true;
         syncSettingPointers();
         updateDerivedMockStatus();
+        buildCurrentSetPacket();
     }
 
     void syncSettingPointers() {
@@ -158,5 +186,92 @@ private:
             currentStatus_.compressorFrequency = 24.0f;
             currentStatus_.inputPower = 250.0f;
         }
+    }
+
+    static uint8_t calcCheckSum(const uint8_t* bytes, int len) {
+        uint8_t sum = 0;
+        for (int i = 0; i < len; i++) {
+            sum += bytes[i];
+        }
+        return (0xFC - sum) & 0xFF;
+    }
+
+    void buildCurrentSetPacket() {
+        lastBuild_.reset();
+
+        memcpy(lastBuild_.bytes, HEADER, HEADER_LEN);
+
+        if (currentSettings_.power) {
+            int idx = lookupByteMapIndex(POWER_MAP, 2, currentSettings_.power);
+            if (idx >= 0) {
+                lastBuild_.bytes[8] = POWER[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[0];
+            }
+        }
+
+        if (currentSettings_.mode) {
+            int idx = lookupByteMapIndex(MODE_MAP, 5, currentSettings_.mode);
+            if (idx >= 0) {
+                lastBuild_.bytes[9] = MODE[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[1];
+            }
+        }
+
+        if (!isnan(currentSettings_.temperature) && currentSettings_.temperature > 0) {
+            lastBuild_.encodedTemperatureC = currentSettings_.temperature;
+            lastBuild_.usedHighPrecisionTemperature = true;
+
+            // We prefer the high-precision temperature field at byte[19].
+            // That keeps the builder consistent for values like 77F -> 25.0C and also
+            // leaves room for finer-grained temperature handling later.
+            //
+            // Encoding formula:
+            //   byte[19] = tempC * 2 + 128
+            lastBuild_.bytes[19] = static_cast<uint8_t>(lroundf(currentSettings_.temperature * 2.0f + 128.0f));
+
+            int wholeTemp = static_cast<int>(lroundf(currentSettings_.temperature));
+            if (fabsf(currentSettings_.temperature - static_cast<float>(wholeTemp)) < 0.01f) {
+                // If the temperature is exactly a whole degree, we also fill the legacy byte[10] field.
+                // This is not the primary path for half-degree support. It just makes the packet more complete
+                // and closer to how some existing implementations populate both temperature fields.
+                for (int i = 0; i < 16; i++) {
+                    if (TEMP_MAP[i] == wholeTemp) {
+                        lastBuild_.bytes[10] = TEMP[i];
+                        break;
+                    }
+                }
+            }
+
+            lastBuild_.bytes[6] |= CONTROL_PACKET_1[2];
+        }
+
+        if (currentSettings_.fan) {
+            int idx = lookupByteMapIndex(FAN_MAP, 6, currentSettings_.fan);
+            if (idx >= 0) {
+                lastBuild_.bytes[11] = FAN[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[3];
+            }
+        }
+
+        if (currentSettings_.vane) {
+            int idx = lookupByteMapIndex(VANE_MAP, 7, currentSettings_.vane);
+            if (idx >= 0) {
+                lastBuild_.bytes[12] = VANE[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[4];
+            }
+        }
+
+        if (currentSettings_.wideVane) {
+            int idx = lookupByteMapIndex(WIDEVANE_MAP, 8, currentSettings_.wideVane);
+            if (idx >= 0) {
+                lastBuild_.bytes[18] = WIDEVANE[idx];
+                lastBuild_.bytes[7] |= CONTROL_PACKET_2[0];
+            }
+        }
+
+        lastBuild_.control1 = lastBuild_.bytes[6];
+        lastBuild_.control2 = lastBuild_.bytes[7];
+        lastBuild_.bytes[21] = calcCheckSum(lastBuild_.bytes, 21);
+        lastBuild_.valid = true;
     }
 };
