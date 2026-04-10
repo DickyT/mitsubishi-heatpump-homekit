@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_err.h>
+#include <esp_wifi.h>
 
 #include "AppConfig.h"
 #include "DebugLog.h"
@@ -40,6 +42,7 @@ public:
                       DebugLog::wifiStatusLabel(WiFi.status()));
         WiFi.disconnect(false, false);
         WiFi.begin(AppConfig::WIFI_SSID, AppConfig::WIFI_PASSWORD);
+        disableWiFiPowerSave("reconnect");
     }
 
     void logHeartbeat() {
@@ -162,9 +165,7 @@ private:
         WiFi.disconnect(true, true);
         delay(200);
         WiFi.mode(WIFI_AP);
-        if (AppConfig::WIFI_DISABLE_SLEEP) {
-            WiFi.setSleep(false);
-        }
+        disableWiFiPowerSave("fallback-ap");
         WiFi.softAP(AppConfig::FALLBACK_AP_SSID, AppConfig::FALLBACK_AP_PASSWORD);
         Serial.printf("[WiFi] Fallback AP started: %s\n", AppConfig::FALLBACK_AP_SSID);
         Serial.printf("[WiFi] AP password: %s\n", AppConfig::FALLBACK_AP_PASSWORD);
@@ -182,10 +183,9 @@ private:
         }
 
         WiFi.mode(WIFI_STA);
-        if (AppConfig::WIFI_DISABLE_SLEEP) {
-            WiFi.setSleep(false);
-        }
+        disableWiFiPowerSave("sta-mode");
         WiFi.begin(AppConfig::WIFI_SSID, AppConfig::WIFI_PASSWORD);
+        disableWiFiPowerSave("sta-begin");
         Serial.printf("[WiFi] Connecting to %s", AppConfig::WIFI_SSID);
 
         uint32_t start = millis();
@@ -203,5 +203,22 @@ private:
 
         Serial.println("[WiFi] STA connection failed, switching to fallback AP");
         startFallbackAp();
+    }
+
+    void disableWiFiPowerSave(const char* stage) const {
+        if (!AppConfig::WIFI_DISABLE_SLEEP && !AppConfig::WIFI_DISABLE_POWER_SAVE) {
+            return;
+        }
+
+        WiFi.setSleep(false);
+        esp_err_t err = esp_wifi_set_ps(WIFI_PS_NONE);
+        if (err == ESP_OK) {
+            Serial.printf("[WiFi] Power save disabled: stage=%s sleep=false ps=none\n", stage);
+            return;
+        }
+
+        Serial.printf("[WiFi] Power save disable failed: stage=%s err=%s\n",
+                      stage,
+                      esp_err_to_name(err));
     }
 };

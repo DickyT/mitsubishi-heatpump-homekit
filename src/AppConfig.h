@@ -19,6 +19,7 @@ static const int CN105_TX_PIN = 26;
 static const uint32_t CN105_RX_TIMEOUT_MS = 120;
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 static const bool WIFI_DISABLE_SLEEP = true;
+static const bool WIFI_DISABLE_POWER_SAVE = true;
 static const uint32_t WIFI_RECONNECT_INTERVAL_MS = 10000;
 static const uint32_t HEARTBEAT_INTERVAL_MS = 5000;
 
