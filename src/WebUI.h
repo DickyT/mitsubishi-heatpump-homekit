@@ -71,7 +71,7 @@ private:
         html += "<div class='card'>";
         html += "<div class='header-row'><div><h1>CN105 Virtual Remote</h1>";
         html += "<p>先在本地组装遥控器 payload，只有点击 <code>Send To Server</code> 才会提交给服务端生成 CN105 配置预览。</p></div>";
-        html += "<div class='controls'><button id='homekitModalBtn' class='ghost-link ghost-button' type='button'>HomeKit 配对</button><a class='ghost-link' href='/debug'>Open Debug</a></div></div>";
+        html += "<div class='controls'><button id='homekitModalBtn' class='ghost-link ghost-button' type='button'>HomeKit 配对</button><button id='adminModalBtn' class='ghost-link ghost-button' type='button'>Admin</button><a class='ghost-link' href='/debug'>Open Debug</a></div></div>";
         html += "<div class='top-meta'>" + metaLine() + "</div>";
 
         html += "<div class='section'>";
@@ -140,6 +140,7 @@ private:
         html += "</div>";
         html += "</div>";
         html += homeKitModalHtml();
+        html += adminModalHtml();
 
         html += "<script>"
                 "const fields={"
@@ -153,6 +154,7 @@ private:
                 "const draft=document.getElementById('draft');"
                 "const rawPacket=document.getElementById('rawPacket');"
                 "const homekitModal=document.getElementById('homekitModal');"
+                "const adminModal=document.getElementById('adminModal');"
                 "const homekitStatePanel=document.getElementById('homekitStatePanel');"
                 "const cn105StatePanel=document.getElementById('cn105StatePanel');"
                 "const maintenanceOutput=document.getElementById('maintenanceOutput');"
@@ -284,6 +286,8 @@ private:
                 "}"
                 "function openHomeKitModal(){homekitModal.classList.add('open');renderHomeKitQr();}"
                 "function closeHomeKitModal(){homekitModal.classList.remove('open');}"
+                "function openAdminModal(){adminModal.classList.add('open');}"
+                "function closeAdminModal(){adminModal.classList.remove('open');}"
                 "async function maintenancePost(url,label,confirmText){"
                 "if(!confirm(confirmText)){return;}"
                 "maintenanceOutput.textContent='正在执行：'+label+'...';"
@@ -316,12 +320,15 @@ private:
                 "document.getElementById('mockAllBtn').addEventListener('click',()=>loadMockResponse('all','全部状态'));"
                 "document.getElementById('decodeRawBtn').addEventListener('click',decodeRawPacket);"
                 "document.getElementById('homekitModalBtn').addEventListener('click',openHomeKitModal);"
+                "document.getElementById('adminModalBtn').addEventListener('click',openAdminModal);"
                 "document.getElementById('homekitCloseBtn').addEventListener('click',closeHomeKitModal);"
                 "document.getElementById('homekitModalBackdrop').addEventListener('click',closeHomeKitModal);"
+                "document.getElementById('adminCloseBtn').addEventListener('click',closeAdminModal);"
+                "document.getElementById('adminModalBackdrop').addEventListener('click',closeAdminModal);"
                 "document.getElementById('clearHomeKitBtn').addEventListener('click',()=>maintenancePost('/api/homekit/clear','清除 HomeKit 数据','确定清除 HomeKit 配对数据吗？这不会自动重启。'));"
                 "document.getElementById('clearAllBtn').addEventListener('click',()=>maintenancePost('/api/nvs/clear','清除全部 HomeSpan 数据','确定清除全部 HomeSpan NVS 数据吗？这不会自动重启。'));"
                 "document.getElementById('rebootBtn').addEventListener('click',()=>maintenancePost('/api/reboot','重启设备','确定现在重启设备吗？'));"
-                "document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeHomeKitModal();}});"
+                "document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeHomeKitModal();closeAdminModal();}});"
                 "loadStatus();"
                 "</script>";
         html += pageEnd();
@@ -693,9 +700,20 @@ private:
         html += "<div class='pairing-hint'>Setup Payload: <code id='setupPayload'>" + String(AppConfig::HOMEKIT_SETUP_PAYLOAD.data()) + "</code></div>";
         html += "<div class='pairing-hint'>如果二维码没出现，说明当前浏览器没法从 cdnjs 加载二维码库；配对码依然可以手动输入。</div>";
         html += "</div>";
+        html += "</div></div>";
+        return html;
+    }
+
+    String adminModalHtml() {
+        String html;
+        html += "<div id='adminModal' class='modal' aria-hidden='true'>";
+        html += "<div id='adminModalBackdrop' class='modal-backdrop'></div>";
+        html += "<div class='modal-panel'>";
+        html += "<div class='modal-header'><div><h1>Admin</h1>";
+        html += "<p>这里放维护和危险操作。清除动作只擦 NVS 数据，不会自动重启；重启后 HomeSpan 才会完整重新加载这些状态。</p></div>";
+        html += "<button id='adminCloseBtn' class='modal-close' type='button'>关闭</button></div>";
         html += "<div class='section'>";
         html += "<div class='section-title'>维护操作</div>";
-        html += "<p>清除动作只擦 NVS 数据，不会自动重启；重启后 HomeSpan 才会完整重新加载这些状态。</p>";
         html += "<div class='controls' style='margin-top:12px;'><button id='clearHomeKitBtn' class='danger'>清除 HomeKit 数据</button><button id='clearAllBtn' class='danger'>清除全部 HomeSpan 数据</button><button id='rebootBtn' class='secondary'>重启设备</button></div>";
         html += "<pre id='maintenanceOutput'>等待操作...</pre>";
         html += "</div>";
