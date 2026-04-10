@@ -24,6 +24,8 @@ static const char* percentToFan(float pct) {
 }
 
 class HKHeaterCooler : public Service::HeaterCooler {
+    static constexpr uint32_t HOMEKIT_COMMAND_GRACE_MS = 3000;
+
     MitsubishiProtocol* proto_;
 
     SpanCharacteristic* active_;
@@ -57,53 +59,44 @@ public:
     }
 
     boolean update() override {
-        const heatpumpSettings& current = proto_->getCurrentSettings();
-
-        String power = current.power ? current.power : "OFF";
-        String mode = current.mode ? current.mode : "AUTO";
-        String fan = current.fan ? current.fan : "AUTO";
-        String vane = current.vane ? current.vane : "AUTO";
-        String wideVane = current.wideVane ? current.wideVane : "AIRFLOW CONTROL";
-        float targetTemperatureF = proto_->getTargetTemperatureF();
-
         if (active_->updated()) {
-            power = active_->getNewVal() ? "ON" : "OFF";
+            proto_->setPower(active_->getNewVal() ? "ON" : "OFF");
         }
 
         if (targetState_->updated()) {
-            power = "ON";
+            proto_->setPower("ON");
             switch (targetState_->getNewVal()) {
                 case 1:
-                    mode = "HEAT";
+                    proto_->setMode("HEAT");
                     break;
                 case 2:
-                    mode = "COOL";
+                    proto_->setMode("COOL");
                     break;
                 default:
-                    mode = "AUTO";
+                    proto_->setMode("AUTO");
                     break;
             }
         }
 
         if (coolingThreshold_->updated()) {
-            targetTemperatureF = celsiusToFahrenheit(coolingThreshold_->getNewVal<float>());
+            proto_->setTemperatureF(celsiusToFahrenheit(coolingThreshold_->getNewVal<float>()));
         }
 
         if (heatingThreshold_->updated()) {
-            targetTemperatureF = celsiusToFahrenheit(heatingThreshold_->getNewVal<float>());
+            proto_->setTemperatureF(celsiusToFahrenheit(heatingThreshold_->getNewVal<float>()));
         }
 
         if (rotationSpeed_->updated()) {
-            fan = percentToFan(rotationSpeed_->getNewVal<float>());
+            proto_->setFan(percentToFan(rotationSpeed_->getNewVal<float>()));
         }
 
         if (swingMode_->updated()) {
-            vane = swingMode_->getNewVal() ? "SWING" : "AUTO";
+            proto_->setVane(swingMode_->getNewVal() ? "SWING" : "AUTO");
         }
 
-        proto_->applyMockRemoteSettings(power, mode, targetTemperatureF, fan, vane, wideVane);
+        bool ok = proto_->commitSettings();
         syncFromProtocol();
-        return true;
+        return ok;
     }
 
     void loop() override {
@@ -111,6 +104,13 @@ public:
             return;
         }
         lastSyncMs_ = millis();
+
+        if (proto_->isRealTransportEnabled() &&
+            proto_->getLastCommandMs() != 0 &&
+            millis() - proto_->getLastCommandMs() < HOMEKIT_COMMAND_GRACE_MS) {
+            return;
+        }
+
         syncFromProtocol();
     }
 

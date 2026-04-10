@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "AppConfig.h"
+#include "DebugLog.h"
 
 class Cn105Serial {
 public:
@@ -18,7 +19,7 @@ public:
             serial.read();
         }
 
-        Serial.printf("[UART] CN105 serial initialized: uart=%d rx=%d tx=%d baud=%lu format=8E1\n",
+        DebugLog::printf("[UART] CN105 serial initialized: uart=%d rx=%d tx=%d baud=%lu format=8E1\n",
                       AppConfig::CN105_UART_PORT,
                       AppConfig::CN105_RX_PIN,
                       AppConfig::CN105_TX_PIN,

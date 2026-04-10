@@ -147,6 +147,12 @@ static const int ROOM_TEMP_MAP[32] = {
     34, 35, 36, 37, 38, 39, 40, 41
 };
 
+static const uint8_t STAGE[7] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+static const char* STAGE_MAP[7] = {"IDLE", "LOW", "GENTLE", "MEDIUM", "MODERATE", "HIGH", "DIFFUSE"};
+
+static const uint8_t SUB_MODE[5] = {0x00, 0x01, 0x02, 0x04, 0x08};
+static const char* SUB_MODE_MAP[5] = {"NORMAL", "WARMUP", "DEFROST", "PREHEAT", "STANDBY"};
+
 template <typename T>
 static T lookupByteMapValue(const T* map, const uint8_t* bytes, int len, uint8_t value) {
     for (int i = 0; i < len; i++) {
@@ -226,6 +232,8 @@ struct heatpumpStatus {
     float inputPower;
     float kWh;
     float runtimeHours;
+    const char* stage;
+    const char* subMode;
 
     void reset() {
         roomTemperature = NAN;
@@ -235,5 +243,7 @@ struct heatpumpStatus {
         inputPower = 0.0f;
         kWh = 0.0f;
         runtimeHours = 0.0f;
+        stage = nullptr;
+        subMode = nullptr;
     }
 };

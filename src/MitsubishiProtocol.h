@@ -4,10 +4,18 @@
 #include <math.h>
 
 #include "AppConfig.h"
+#include "DebugLog.h"
 #include "FahrenheitSupport.h"
 #include "MitsubishiTypes.h"
 
 class MitsubishiProtocol {
+    enum class AwaitingResponseType : uint8_t {
+        None,
+        Connect,
+        SetAck,
+        Info
+    };
+
 public:
     explicit MitsubishiProtocol(HardwareSerial* serial = nullptr)
         : serial_(serial) {
@@ -20,8 +28,31 @@ public:
     }
 
     void connect() {
-        connected_ = true;
-        currentSettings_.connected = true;
+        if (!isRealTransportEnabled()) {
+            connected_ = true;
+            currentSettings_.connected = true;
+            DebugLog::println("[CN105] Mock transport connected");
+            return;
+        }
+
+        if (!serial_) {
+            connected_ = false;
+            currentSettings_.connected = false;
+            DebugLog::println("[CN105] Real transport requested but CN105 serial is not configured");
+            return;
+        }
+
+        uint8_t packet[CONNECT_LEN];
+        memcpy(packet, CONNECT, CONNECT_LEN);
+        packet[CONNECT_LEN - 1] = calcCheckSum(packet, CONNECT_LEN - 1);
+
+        connected_ = false;
+        currentSettings_.connected = false;
+        writePacket(packet, CONNECT_LEN);
+        awaitResponse(AwaitingResponseType::Connect, 0);
+        lastConnectAttemptMs_ = millis();
+
+        DebugLog::printf("[CN105 TX] CONNECT %s\n", packetBytesToHex(packet, true, CONNECT_LEN).c_str());
     }
 
     void processInput() {
@@ -31,7 +62,7 @@ public:
 
         uint32_t now = millis();
         if (rxIndex_ > 0 && now - lastRxByteMs_ > AppConfig::CN105_RX_TIMEOUT_MS) {
-            Serial.printf("[CN105 RX] Timeout after %lums, dropping partial packet (%d bytes)\n",
+            DebugLog::printf("[CN105 RX] Timeout after %lums, dropping partial packet (%d bytes)\n",
                           static_cast<unsigned long>(now - lastRxByteMs_),
                           rxIndex_);
             resetRxState();
@@ -47,7 +78,179 @@ public:
     }
 
     void loopPollCycle() {
-        currentStatus_.runtimeHours = millis() / 3600000.0f;
+        if (!isRealTransportEnabled()) {
+            currentStatus_.runtimeHours = millis() / 3600000.0f;
+            return;
+        }
+
+        uint32_t now = millis();
+
+        if (awaitingResponse_) {
+            if (now - lastRequestMs_ > RESPONSE_TIMEOUT_MS) {
+                handleAwaitTimeout();
+            }
+            return;
+        }
+
+        if (!connected_) {
+            if (lastConnectAttemptMs_ == 0 || now - lastConnectAttemptMs_ >= CONNECT_RETRY_MS) {
+                DebugLog::println("[CN105] Not connected, retrying CONNECT");
+                connect();
+            }
+            return;
+        }
+
+        if (deferredCommit_ && wantedChanged_) {
+            commitSettings();
+            return;
+        }
+
+        if (cycleRunning_) {
+            sendNextPollRequest();
+            return;
+        }
+
+        if (now - lastPollCycleMs_ >= POLL_INTERVAL_MS) {
+            lastPollCycleMs_ = now;
+            cycleRunning_ = true;
+            currentPollIndex_ = 0;
+            sendNextPollRequest();
+        }
+    }
+
+    bool hasNewSettings() {
+        if (!newSettings_) {
+            return false;
+        }
+        newSettings_ = false;
+        return true;
+    }
+
+    bool hasNewStatus() {
+        if (!newStatus_) {
+            return false;
+        }
+        newStatus_ = false;
+        return true;
+    }
+
+    uint32_t getLastCommandMs() const {
+        return lastCommandMs_;
+    }
+
+    bool isRealTransportEnabled() const {
+        return AppConfig::CN105_TRANSPORT_MODE == AppConfig::Cn105TransportMode::Real;
+    }
+
+    bool applyRemoteSettings(const String& power,
+                             const String& mode,
+                             float temperatureF,
+                             const String& fan,
+                             const String& vane,
+                             const String& wideVane) {
+        if (!isRealTransportEnabled()) {
+            applyMockRemoteSettings(power, mode, temperatureF, fan, vane, wideVane);
+            return true;
+        }
+
+        setPower(power.c_str());
+        setMode(mode.c_str());
+        setTemperatureF(temperatureF);
+        setFan(fan.c_str());
+        setVane(vane.c_str());
+        setWideVane(wideVane.c_str());
+        return commitSettings();
+    }
+
+    void setPower(const char* power) {
+        wantedPowerStorage_ = power ? power : "";
+        wantedPowerChanged_ = true;
+        wantedChanged_ = true;
+    }
+
+    void setMode(const char* mode) {
+        wantedModeStorage_ = mode ? mode : "";
+        wantedModeChanged_ = true;
+        wantedChanged_ = true;
+    }
+
+    void setTemperatureF(float temperatureF) {
+        wantedTemperatureC_ = fahrenheitSupport_.setpointFahrenheitToDeviceCelsius(temperatureF);
+        wantedTemperatureChanged_ = true;
+        wantedChanged_ = true;
+    }
+
+    void setFan(const char* fan) {
+        wantedFanStorage_ = fan ? fan : "";
+        wantedFanChanged_ = true;
+        wantedChanged_ = true;
+    }
+
+    void setVane(const char* vane) {
+        wantedVaneStorage_ = vane ? vane : "";
+        wantedVaneChanged_ = true;
+        wantedChanged_ = true;
+    }
+
+    void setWideVane(const char* wideVane) {
+        wantedWideVaneStorage_ = wideVane ? wideVane : "";
+        wantedWideVaneChanged_ = true;
+        wantedChanged_ = true;
+    }
+
+    bool commitSettings() {
+        if (!wantedChanged_) {
+            return true;
+        }
+
+        if (!isRealTransportEnabled()) {
+            applyWantedToCurrentSettings();
+            updateDerivedMockStatus();
+            buildCurrentSetPacket();
+            clearWantedSettings();
+            return true;
+        }
+
+        if (!serial_) {
+            DebugLog::println("[CN105] Cannot send SET: serial is not configured");
+            clearWantedSettings();
+            return false;
+        }
+
+        if (!connected_) {
+            deferredCommit_ = true;
+            lastCommandMs_ = millis();
+            buildWantedSetPacket();
+            applyWantedToCurrentSettings();
+            DebugLog::println("[CN105] SET queued: CN105 is not connected yet");
+            return true;
+        }
+
+        if (awaitingResponse_) {
+            deferredCommit_ = true;
+            lastCommandMs_ = millis();
+            buildWantedSetPacket();
+            applyWantedToCurrentSettings();
+            DebugLog::println("[CN105] SET queued: waiting for previous CN105 response");
+            return true;
+        }
+
+        buildWantedSetPacket();
+        if (!lastBuild_.valid) {
+            DebugLog::println("[CN105] Cannot send SET: no valid fields to send");
+            clearWantedSettings();
+            return false;
+        }
+
+        writePacket(lastBuild_.bytes, PACKET_LEN);
+        applyWantedToCurrentSettings();
+        clearWantedSettings();
+        deferredCommit_ = false;
+        awaitResponse(AwaitingResponseType::SetAck, 0);
+        lastCommandMs_ = millis();
+
+        DebugLog::printf("[CN105 TX] SET %s\n", getLastPacketHex().c_str());
+        return true;
     }
 
     bool isConnected() const {
@@ -90,6 +293,8 @@ public:
         syncSettingPointers();
         updateDerivedMockStatus();
         buildCurrentSetPacket();
+        newSettings_ = true;
+        newStatus_ = true;
     }
 
     bool decodeMockResponse(uint8_t infoCode) {
@@ -111,6 +316,7 @@ public:
         ok = decodeMockResponse(0x02) && ok;
         ok = decodeMockResponse(0x03) && ok;
         ok = decodeMockResponse(0x06) && ok;
+        ok = decodeMockResponse(0x09) && ok;
         return ok;
     }
 
@@ -200,7 +406,7 @@ public:
         config += "vane=" + vaneStorage_ + "\n";
         config += "wideVane=" + wideVaneStorage_ + "\n";
         config += "transport=" + String(AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE)) + "\n";
-        config += "status=preview_only\n";
+        config += "status=" + String(isRealTransportEnabled() ? "real_transport_packet_ready" : "preview_only") + "\n";
         return config;
     }
 
@@ -213,15 +419,35 @@ public:
     }
 
 private:
+    static constexpr uint32_t POLL_INTERVAL_MS = 2000;
+    static constexpr uint32_t CONNECT_RETRY_MS = 10000;
+    static constexpr uint32_t RESPONSE_TIMEOUT_MS = 1000;
+    static constexpr int POLL_CODE_COUNT = 4;
+
     HardwareSerial* serial_;
     heatpumpSettings currentSettings_;
     heatpumpStatus currentStatus_;
     bool connected_ = false;
+    bool newSettings_ = false;
+    bool newStatus_ = false;
     String powerStorage_;
     String modeStorage_;
     String fanStorage_;
     String vaneStorage_;
     String wideVaneStorage_;
+    String wantedPowerStorage_;
+    String wantedModeStorage_;
+    String wantedFanStorage_;
+    String wantedVaneStorage_;
+    String wantedWideVaneStorage_;
+    float wantedTemperatureC_ = NAN;
+    bool wantedPowerChanged_ = false;
+    bool wantedModeChanged_ = false;
+    bool wantedTemperatureChanged_ = false;
+    bool wantedFanChanged_ = false;
+    bool wantedVaneChanged_ = false;
+    bool wantedWideVaneChanged_ = false;
+    bool wantedChanged_ = false;
     FahrenheitSupport fahrenheitSupport_;
     cn105SetPacketBuild lastBuild_;
     cn105InfoResponseBuild lastResponseBuild_;
@@ -229,6 +455,17 @@ private:
     int rxIndex_ = 0;
     int rxExpectedLength_ = 0;
     uint32_t lastRxByteMs_ = 0;
+    uint32_t lastConnectAttemptMs_ = 0;
+    uint32_t lastCommandMs_ = 0;
+    uint32_t lastPollCycleMs_ = 0;
+    uint32_t lastRequestMs_ = 0;
+    bool cycleRunning_ = false;
+    bool awaitingResponse_ = false;
+    bool deferredCommit_ = false;
+    int currentPollIndex_ = 0;
+    uint8_t awaitingInfoCode_ = 0;
+    AwaitingResponseType awaitingResponseType_ = AwaitingResponseType::None;
+    const uint8_t pollCodes_[POLL_CODE_COUNT] = {0x02, 0x03, 0x06, 0x09};
 
     void applyMockDefaults() {
         powerStorage_ = "ON";
@@ -260,18 +497,130 @@ private:
         lastRxByteMs_ = 0;
     }
 
+    void writePacket(const uint8_t* packet, int length) {
+        if (!serial_ || !packet || length <= 0) {
+            return;
+        }
+
+        serial_->write(packet, length);
+        serial_->flush();
+    }
+
+    void awaitResponse(AwaitingResponseType type, uint8_t infoCode) {
+        awaitingResponse_ = true;
+        awaitingResponseType_ = type;
+        awaitingInfoCode_ = infoCode;
+        lastRequestMs_ = millis();
+    }
+
+    void clearAwaitingResponse() {
+        awaitingResponse_ = false;
+        awaitingResponseType_ = AwaitingResponseType::None;
+        awaitingInfoCode_ = 0;
+        lastRequestMs_ = 0;
+    }
+
+    void handleAwaitTimeout() {
+        if (awaitingResponseType_ == AwaitingResponseType::Connect) {
+            DebugLog::println("[CN105] Timeout waiting for CONNECT reply");
+            connected_ = false;
+            currentSettings_.connected = false;
+        } else if (awaitingResponseType_ == AwaitingResponseType::SetAck) {
+            DebugLog::println("[CN105] Timeout waiting for SET ACK 0x61");
+        } else if (awaitingResponseType_ == AwaitingResponseType::Info) {
+            DebugLog::printf("[CN105] Timeout waiting for INFO 0x%02X response\n", awaitingInfoCode_);
+            advancePollCycle();
+        }
+
+        clearAwaitingResponse();
+    }
+
+    void advancePollCycle() {
+        currentPollIndex_++;
+        if (currentPollIndex_ >= POLL_CODE_COUNT) {
+            cycleRunning_ = false;
+            currentPollIndex_ = 0;
+        }
+    }
+
+    void sendInfoRequest(uint8_t code) {
+        uint8_t packet[PACKET_LEN];
+        memset(packet, 0, sizeof(packet));
+        memcpy(packet, INFOHEADER, INFOHEADER_LEN);
+        packet[5] = code;
+        packet[21] = calcCheckSum(packet, 21);
+
+        writePacket(packet, PACKET_LEN);
+        awaitResponse(AwaitingResponseType::Info, code);
+        DebugLog::debugf("[CN105 TX] INFO 0x%02X %s\n",
+                      code,
+                      packetBytesToHex(packet, true, PACKET_LEN).c_str());
+    }
+
+    void sendNextPollRequest() {
+        if (currentPollIndex_ >= POLL_CODE_COUNT) {
+            cycleRunning_ = false;
+            currentPollIndex_ = 0;
+            return;
+        }
+
+        sendInfoRequest(pollCodes_[currentPollIndex_]);
+    }
+
+    void clearWantedSettings() {
+        wantedPowerStorage_ = "";
+        wantedModeStorage_ = "";
+        wantedFanStorage_ = "";
+        wantedVaneStorage_ = "";
+        wantedWideVaneStorage_ = "";
+        wantedTemperatureC_ = NAN;
+        wantedPowerChanged_ = false;
+        wantedModeChanged_ = false;
+        wantedTemperatureChanged_ = false;
+        wantedFanChanged_ = false;
+        wantedVaneChanged_ = false;
+        wantedWideVaneChanged_ = false;
+        wantedChanged_ = false;
+        deferredCommit_ = false;
+    }
+
+    void applyWantedToCurrentSettings() {
+        if (wantedPowerChanged_) {
+            powerStorage_ = wantedPowerStorage_;
+        }
+        if (wantedModeChanged_) {
+            modeStorage_ = wantedModeStorage_;
+        }
+        if (wantedFanChanged_) {
+            fanStorage_ = wantedFanStorage_;
+        }
+        if (wantedVaneChanged_) {
+            vaneStorage_ = wantedVaneStorage_;
+        }
+        if (wantedWideVaneChanged_) {
+            wideVaneStorage_ = wantedWideVaneStorage_;
+        }
+        if (wantedTemperatureChanged_) {
+            currentSettings_.temperature = wantedTemperatureC_;
+        }
+
+        currentSettings_.connected = connected_;
+        syncSettingPointers();
+        newSettings_ = true;
+    }
+
     static int expectedPacketLengthForCommand(uint8_t command) {
         if (command == 0x7A || command == 0x7B) {
             return CONNECT_LEN;
         }
-        return PACKET_LEN;
+        return 0;
     }
 
     void processIncomingByte(uint8_t value) {
         uint32_t now = millis();
 
         if (rxIndex_ > 0 && now - lastRxByteMs_ > AppConfig::CN105_RX_TIMEOUT_MS) {
-            Serial.printf("[CN105 RX] Timeout after %lums, dropping partial packet (%d bytes)\n",
+            DebugLog::printf("[CN105 RX] Timeout after %lums, dropping partial packet (%d bytes)\n",
                           static_cast<unsigned long>(now - lastRxByteMs_),
                           rxIndex_);
             resetRxState();
@@ -288,7 +637,7 @@ private:
         }
 
         if (rxIndex_ >= PACKET_LEN) {
-            Serial.println("[CN105 RX] Buffer overflow, resetting packet state");
+            DebugLog::println("[CN105 RX] Buffer overflow, resetting packet state");
             resetRxState();
             if (value == 0xFC) {
                 rxBuffer_[rxIndex_++] = value;
@@ -303,6 +652,18 @@ private:
             rxExpectedLength_ = expectedPacketLengthForCommand(rxBuffer_[1]);
         }
 
+        if (rxExpectedLength_ == 0 && rxIndex_ == 5) {
+            int packetLength = static_cast<int>(rxBuffer_[4]) + 6;
+            if (packetLength <= 0 || packetLength > PACKET_LEN) {
+                DebugLog::printf("[CN105 RX] Unsupported packet length %d for cmd=0x%02X\n",
+                              packetLength,
+                              rxBuffer_[1]);
+                resetRxState();
+                return;
+            }
+            rxExpectedLength_ = packetLength;
+        }
+
         if (rxExpectedLength_ > 0 && rxIndex_ >= rxExpectedLength_) {
             handleCompletedRxPacket(rxExpectedLength_);
             resetRxState();
@@ -311,25 +672,83 @@ private:
 
     void handleCompletedRxPacket(int packetLength) {
         String packetHex = packetBytesToHex(rxBuffer_, true, packetLength);
-        Serial.printf("[CN105 RX] %s\n", packetHex.c_str());
+        DebugLog::debugf("[CN105 RX] %s\n", packetHex.c_str());
 
-        if (packetLength == CONNECT_LEN) {
-            Serial.printf("[CN105 RX] Short control packet: cmd=0x%02X\n", rxBuffer_[1]);
+        uint8_t expectedChecksum = calcCheckSum(rxBuffer_, packetLength - 1);
+        if (expectedChecksum != rxBuffer_[packetLength - 1]) {
+            DebugLog::printf("[CN105 RX] Checksum mismatch: expected %02X got %02X\n",
+                          expectedChecksum,
+                          rxBuffer_[packetLength - 1]);
+            return;
+        }
+
+        if (packetLength == CONNECT_LEN && (rxBuffer_[1] == 0x7A || rxBuffer_[1] == 0x7B)) {
+            handleConnectReply(rxBuffer_[1]);
+            return;
+        }
+
+        if (rxBuffer_[1] == 0x61) {
+            handleSetAck();
             return;
         }
 
         if (rxBuffer_[1] != 0x62) {
-            Serial.printf("[CN105 RX] Unsupported packet command 0x%02X\n", rxBuffer_[1]);
+            DebugLog::printf("[CN105 RX] Unsupported packet command 0x%02X\n", rxBuffer_[1]);
             return;
         }
 
-        String errorMessage;
-        if (!decodeRawResponseHex(packetHex, &errorMessage)) {
-            Serial.printf("[CN105 RX] Decode failed: %s\n", errorMessage.c_str());
+        if (packetLength != PACKET_LEN) {
+            DebugLog::printf("[CN105 RX] Unexpected INFO packet length %d\n", packetLength);
             return;
         }
 
-        Serial.printf("[CN105 RX] Applied INFO response 0x%02X\n", lastResponseBuild_.infoCode);
+        if (!parseInfoResponsePacket(rxBuffer_, PACKET_LEN)) {
+            DebugLog::println("[CN105 RX] Decode failed: packet rejected by CN105 response parser");
+            return;
+        }
+
+        memcpy(lastResponseBuild_.bytes, rxBuffer_, PACKET_LEN);
+        lastResponseBuild_.valid = true;
+        lastResponseBuild_.infoCode = rxBuffer_[5];
+        handleInfoResponseAck(lastResponseBuild_.infoCode);
+
+        DebugLog::debugf("[CN105 RX] Applied INFO response 0x%02X\n", lastResponseBuild_.infoCode);
+    }
+
+    void handleConnectReply(uint8_t command) {
+        if (command != 0x7A && command != 0x7B) {
+            DebugLog::printf("[CN105 RX] Unsupported short control packet: cmd=0x%02X\n", command);
+            return;
+        }
+
+        connected_ = true;
+        currentSettings_.connected = true;
+        clearAwaitingResponse();
+        lastPollCycleMs_ = 0;
+        cycleRunning_ = false;
+        currentPollIndex_ = 0;
+
+        DebugLog::printf("[CN105] Connected! reply=0x%02X\n", command);
+    }
+
+    void handleSetAck() {
+        if (awaitingResponse_ && awaitingResponseType_ == AwaitingResponseType::SetAck) {
+            clearAwaitingResponse();
+        }
+
+        DebugLog::println("[CN105] SET acknowledged (0x61)");
+    }
+
+    void handleInfoResponseAck(uint8_t infoCode) {
+        if (awaitingResponse_ && awaitingResponseType_ == AwaitingResponseType::Info) {
+            if (awaitingInfoCode_ != infoCode) {
+                DebugLog::printf("[CN105] INFO response mismatch: expected 0x%02X got 0x%02X\n",
+                              awaitingInfoCode_,
+                              infoCode);
+            }
+            clearAwaitingResponse();
+            advancePollCycle();
+        }
     }
 
     void syncSettingPointers() {
@@ -686,6 +1105,69 @@ private:
         lastBuild_.valid = true;
     }
 
+    void buildWantedSetPacket() {
+        lastBuild_.reset();
+        memcpy(lastBuild_.bytes, HEADER, HEADER_LEN);
+
+        if (wantedPowerChanged_) {
+            int idx = lookupByteMapIndex(POWER_MAP, 2, wantedPowerStorage_.c_str());
+            if (idx >= 0) {
+                lastBuild_.bytes[8] = POWER[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[0];
+            }
+        }
+
+        if (wantedModeChanged_) {
+            int idx = lookupByteMapIndex(MODE_MAP, 5, wantedModeStorage_.c_str());
+            if (idx >= 0) {
+                lastBuild_.bytes[9] = MODE[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[1];
+            }
+        }
+
+        if (wantedTemperatureChanged_ && !isnan(wantedTemperatureC_) && wantedTemperatureC_ > 0) {
+            lastBuild_.encodedTemperatureC = wantedTemperatureC_;
+            lastBuild_.usedHighPrecisionTemperature = true;
+            lastBuild_.bytes[19] = encodeHighPrecisionTemperatureByte(wantedTemperatureC_);
+
+            uint8_t legacyTemperature = 0;
+            if (encodeLegacySetTemperatureByte(wantedTemperatureC_, &legacyTemperature)) {
+                lastBuild_.bytes[10] = legacyTemperature;
+            }
+
+            lastBuild_.bytes[6] |= CONTROL_PACKET_1[2];
+        }
+
+        if (wantedFanChanged_) {
+            int idx = lookupByteMapIndex(FAN_MAP, 6, wantedFanStorage_.c_str());
+            if (idx >= 0) {
+                lastBuild_.bytes[11] = FAN[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[3];
+            }
+        }
+
+        if (wantedVaneChanged_) {
+            int idx = lookupByteMapIndex(VANE_MAP, 7, wantedVaneStorage_.c_str());
+            if (idx >= 0) {
+                lastBuild_.bytes[12] = VANE[idx];
+                lastBuild_.bytes[6] |= CONTROL_PACKET_1[4];
+            }
+        }
+
+        if (wantedWideVaneChanged_) {
+            int idx = lookupByteMapIndex(WIDEVANE_MAP, 8, wantedWideVaneStorage_.c_str());
+            if (idx >= 0) {
+                lastBuild_.bytes[18] = WIDEVANE[idx];
+                lastBuild_.bytes[7] |= CONTROL_PACKET_2[0];
+            }
+        }
+
+        lastBuild_.control1 = lastBuild_.bytes[6];
+        lastBuild_.control2 = lastBuild_.bytes[7];
+        lastBuild_.bytes[21] = calcCheckSum(lastBuild_.bytes, 21);
+        lastBuild_.valid = lastBuild_.control1 != 0 || lastBuild_.control2 != 0;
+    }
+
     bool buildMockInfoResponsePacket(uint8_t infoCode, cn105InfoResponseBuild* outBuild) const {
         if (!outBuild) {
             return false;
@@ -796,6 +1278,9 @@ private:
             }
             payload[7] = static_cast<uint8_t>((energyTenths >> 8) & 0xFF);
             payload[8] = static_cast<uint8_t>(energyTenths & 0xFF);
+        } else if (infoCode == 0x09) {
+            payload[3] = SUB_MODE[0];
+            payload[4] = STAGE[0];
         } else {
             return false;
         }
@@ -816,7 +1301,7 @@ private:
 
         uint8_t checksum = calcCheckSum(bytes, len - 1);
         if (checksum != bytes[len - 1]) {
-            Serial.printf("[CN105] Response checksum mismatch: expected %02X got %02X\n",
+            DebugLog::printf("[CN105] Response checksum mismatch: expected %02X got %02X\n",
                           checksum, bytes[len - 1]);
             return false;
         }
@@ -830,8 +1315,10 @@ private:
             parseRoomTempResponse(data);
         } else if (infoCode == 0x06) {
             parseStatusResponse(data);
+        } else if (infoCode == 0x09) {
+            parseStageResponse(data);
         } else {
-            Serial.printf("[CN105] Unsupported mock info response code: 0x%02X\n", infoCode);
+            DebugLog::printf("[CN105] Unsupported info response code: 0x%02X\n", infoCode);
             return false;
         }
 
@@ -861,8 +1348,9 @@ private:
 
         syncSettingPointers();
         buildCurrentSetPacket();
+        newSettings_ = true;
 
-        Serial.printf("[CN105] Parsed 0x02 settings: power=%s mode=%s temp=%.1fC fan=%s vane=%s wide=%s\n",
+        DebugLog::debugf("[CN105] Parsed 0x02 settings: power=%s mode=%s temp=%.1fC fan=%s vane=%s wide=%s\n",
                       currentSettings_.power,
                       currentSettings_.mode,
                       currentSettings_.temperature,
@@ -890,8 +1378,9 @@ private:
                                (static_cast<uint32_t>(data[12]) << 8) |
                                static_cast<uint32_t>(data[13])) /
             60.0f;
+        newStatus_ = true;
 
-        Serial.printf("[CN105] Parsed 0x03 temps: room=%.1fC outside=%.1fC runtime=%.1fh\n",
+        DebugLog::debugf("[CN105] Parsed 0x03 temps: room=%.1fC outside=%.1fC runtime=%.1fh\n",
                       currentStatus_.roomTemperature,
                       currentStatus_.outsideAirTemperature,
                       currentStatus_.runtimeHours);
@@ -904,11 +1393,22 @@ private:
             static_cast<float>((static_cast<uint16_t>(data[5]) << 8) | static_cast<uint16_t>(data[6]));
         currentStatus_.kWh =
             static_cast<float>((static_cast<uint16_t>(data[7]) << 8) | static_cast<uint16_t>(data[8])) / 10.0f;
+        newStatus_ = true;
 
-        Serial.printf("[CN105] Parsed 0x06 status: compressor=%.0fHz operating=%s power=%.0fW energy=%.1fkWh\n",
+        DebugLog::debugf("[CN105] Parsed 0x06 status: compressor=%.0fHz operating=%s power=%.0fW energy=%.1fkWh\n",
                       currentStatus_.compressorFrequency,
                       currentStatus_.operating ? "YES" : "NO",
                       currentStatus_.inputPower,
                       currentStatus_.kWh);
+    }
+
+    void parseStageResponse(const uint8_t* data) {
+        currentStatus_.subMode = lookupByteMapValue(SUB_MODE_MAP, SUB_MODE, 5, data[3]);
+        currentStatus_.stage = lookupByteMapValue(STAGE_MAP, STAGE, 7, data[4]);
+        newStatus_ = true;
+
+        DebugLog::debugf("[CN105] Parsed 0x09 stage: stage=%s subMode=%s\n",
+                      currentStatus_.stage,
+                      currentStatus_.subMode);
     }
 };

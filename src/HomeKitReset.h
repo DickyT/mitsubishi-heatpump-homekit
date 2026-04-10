@@ -4,6 +4,8 @@
 #include <esp_err.h>
 #include <nvs.h>
 
+#include "DebugLog.h"
+
 namespace HomeKitReset {
 
 static bool eraseNamespace(const char* name, String& message) {
@@ -50,7 +52,7 @@ static bool clearAllHomeSpanData(String& message) {
 }
 
 static void rebootNow() {
-    Serial.println("[HomeKitReset] Reboot requested from WebUI");
+    DebugLog::println("[HomeKitReset] Reboot requested from WebUI");
     delay(250);
     ESP.restart();
 }

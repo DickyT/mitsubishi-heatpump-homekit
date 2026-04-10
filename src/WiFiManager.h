@@ -37,7 +37,7 @@ public:
         }
 
         lastReconnectAttemptMs_ = now;
-        Serial.printf("[WiFi] Reconnecting at %s (status=%s)\n",
+        DebugLog::printf("[WiFi] Reconnecting at %s (status=%s)\n",
                       DebugLog::formatElapsedTime(now).c_str(),
                       DebugLog::wifiStatusLabel(WiFi.status()));
         WiFi.disconnect(false, false);
@@ -58,12 +58,12 @@ public:
 
     void logWebAddress() const {
         if (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA) {
-            Serial.printf("[WiFi] Open http://%s:%u/\n", WiFi.softAPIP().toString().c_str(), AppConfig::WEB_PORT);
+            DebugLog::printf("[WiFi] Open http://%s:%u/\n", WiFi.softAPIP().toString().c_str(), AppConfig::WEB_PORT);
             return;
         }
 
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.printf("[WiFi] Open http://%s:%u/\n", WiFi.localIP().toString().c_str(), AppConfig::WEB_PORT);
+            DebugLog::printf("[WiFi] Open http://%s:%u/\n", WiFi.localIP().toString().c_str(), AppConfig::WEB_PORT);
         }
     }
 
@@ -137,7 +137,7 @@ private:
                 break;
         }
 
-        Serial.printf("[WiFiEvent %s] %s\n",
+        DebugLog::printf("[WiFiEvent %s] %s\n",
                       DebugLog::formatElapsedTime(now).c_str(),
                       lastWiFiEventName_.c_str());
     }
@@ -146,7 +146,7 @@ private:
         uint32_t now = millis();
         uint32_t lastEventAgeMs = lastWiFiEventMs_ == 0 ? 0 : (now - lastWiFiEventMs_);
 
-        Serial.printf("%s status=%d(%s) mode=%d(%s) ip=%s rssi=%d mac=%s channel=%d bssid=%s lastEvent=%s age=%lums\n",
+        DebugLog::debugf("%s status=%d(%s) mode=%d(%s) ip=%s rssi=%d mac=%s channel=%d bssid=%s lastEvent=%s age=%lums\n",
                       prefix,
                       WiFi.status(),
                       DebugLog::wifiStatusLabel(WiFi.status()),
@@ -167,8 +167,8 @@ private:
         WiFi.mode(WIFI_AP);
         disableWiFiPowerSave("fallback-ap");
         WiFi.softAP(AppConfig::FALLBACK_AP_SSID, AppConfig::FALLBACK_AP_PASSWORD);
-        Serial.printf("[WiFi] Fallback AP started: %s\n", AppConfig::FALLBACK_AP_SSID);
-        Serial.printf("[WiFi] AP password: %s\n", AppConfig::FALLBACK_AP_PASSWORD);
+        DebugLog::printf("[WiFi] Fallback AP started: %s\n", AppConfig::FALLBACK_AP_SSID);
+        DebugLog::printf("[WiFi] AP password: %s\n", AppConfig::FALLBACK_AP_PASSWORD);
         logWebAddress();
     }
 
@@ -177,7 +177,7 @@ private:
         WiFi.setAutoReconnect(true);
 
         if (!hasConfiguredStaCredentials()) {
-            Serial.println("[WiFi] No STA credentials configured, starting fallback AP");
+            DebugLog::println("[WiFi] No STA credentials configured, starting fallback AP");
             startFallbackAp();
             return;
         }
@@ -186,22 +186,22 @@ private:
         disableWiFiPowerSave("sta-mode");
         WiFi.begin(AppConfig::WIFI_SSID, AppConfig::WIFI_PASSWORD);
         disableWiFiPowerSave("sta-begin");
-        Serial.printf("[WiFi] Connecting to %s", AppConfig::WIFI_SSID);
+        DebugLog::printf("[WiFi] Connecting to %s", AppConfig::WIFI_SSID);
 
         uint32_t start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < AppConfig::WIFI_CONNECT_TIMEOUT_MS) {
             delay(500);
-            Serial.print(".");
+            DebugLog::print(".");
         }
-        Serial.println();
+        DebugLog::println();
 
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.printf("[WiFi] Connected to %s\n", AppConfig::WIFI_SSID);
-            Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
+            DebugLog::printf("[WiFi] Connected to %s\n", AppConfig::WIFI_SSID);
+            DebugLog::printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
             return;
         }
 
-        Serial.println("[WiFi] STA connection failed, switching to fallback AP");
+        DebugLog::println("[WiFi] STA connection failed, switching to fallback AP");
         startFallbackAp();
     }
 
@@ -213,11 +213,11 @@ private:
         WiFi.setSleep(false);
         esp_err_t err = esp_wifi_set_ps(WIFI_PS_NONE);
         if (err == ESP_OK) {
-            Serial.printf("[WiFi] Power save disabled: stage=%s sleep=false ps=none\n", stage);
+            DebugLog::printf("[WiFi] Power save disabled: stage=%s sleep=false ps=none\n", stage);
             return;
         }
 
-        Serial.printf("[WiFi] Power save disable failed: stage=%s err=%s\n",
+        DebugLog::printf("[WiFi] Power save disable failed: stage=%s err=%s\n",
                       stage,
                       esp_err_to_name(err));
     }

@@ -15,6 +15,15 @@ enum class Cn105TransportMode : uint8_t {
     Real
 };
 
+enum class LogLevel : uint8_t {
+    Error = 0,
+    Warn = 1,
+    Info = 2,
+    Debug = 3,
+    Verbose = 4,
+    Off = 255
+};
+
 static constexpr const char* cn105TransportModeLabel(Cn105TransportMode mode) {
     switch (mode) {
         case Cn105TransportMode::Real:
@@ -38,6 +47,15 @@ static const bool WIFI_DISABLE_SLEEP = true;
 static const bool WIFI_DISABLE_POWER_SAVE = true;
 static const uint32_t WIFI_RECONNECT_INTERVAL_MS = 10000;
 static const uint32_t HEARTBEAT_INTERVAL_MS = 5000;
+static constexpr LogLevel LOG_LEVEL = LogLevel::Verbose;
+static constexpr bool LOG_TO_SERIAL = true;
+static constexpr bool LOG_TO_FILE = true;
+static constexpr size_t LOG_MAX_TOTAL_BYTES = 192 * 1024;
+static constexpr size_t LOG_EARLY_BUFFER_BYTES = 4096;
+static constexpr uint32_t LOG_TIME_SYNC_TIMEOUT_MS = 5000;
+static constexpr const char* LOG_TIMEZONE = "PST8PDT,M3.2.0,M11.1.0";
+static constexpr const char* LOG_NTP_SERVER_1 = "pool.ntp.org";
+static constexpr const char* LOG_NTP_SERVER_2 = "time.nist.gov";
 
 static constexpr const char* APP_TITLE = "ESP32 Web UI Ping Demo";
 static constexpr const char* HOMEKIT_DEVICE_NAME = "Mitsubishi AC";
