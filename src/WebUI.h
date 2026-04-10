@@ -7,14 +7,35 @@
 #include "MitsubishiProtocol.h"
 
 class WebUI {
+    using MaintenanceCallback = bool (*)(String& message);
+    using RebootCallback = void (*)();
+
     WebServer server_;
     int port_;
     uint32_t bootTime_;
     MitsubishiProtocol* proto_;
+    const char* pairingCode_;
+    const char* homekitName_;
+    MaintenanceCallback clearHomeKitCallback_;
+    MaintenanceCallback clearAllCallback_;
+    RebootCallback rebootCallback_;
 
 public:
-    WebUI(int port, MitsubishiProtocol* proto)
-        : server_(port), port_(port), proto_(proto) {
+    WebUI(int port,
+          MitsubishiProtocol* proto,
+          const char* pairingCode,
+          const char* homekitName,
+          MaintenanceCallback clearHomeKitCallback = nullptr,
+          MaintenanceCallback clearAllCallback = nullptr,
+          RebootCallback rebootCallback = nullptr)
+        : server_(port),
+          port_(port),
+          proto_(proto),
+          pairingCode_(pairingCode),
+          homekitName_(homekitName),
+          clearHomeKitCallback_(clearHomeKitCallback),
+          clearAllCallback_(clearAllCallback),
+          rebootCallback_(rebootCallback) {
         bootTime_ = millis();
     }
 
@@ -27,6 +48,9 @@ public:
         server_.on("/api/remote/build", HTTP_POST, [this]() { handleRemoteBuild(); });
         server_.on("/api/mock/decode", HTTP_POST, [this]() { handleMockDecode(); });
         server_.on("/api/raw/decode", HTTP_POST, [this]() { handleRawDecode(); });
+        server_.on("/api/homekit/clear", HTTP_POST, [this]() { handleClearHomeKit(); });
+        server_.on("/api/nvs/clear", HTTP_POST, [this]() { handleClearAll(); });
+        server_.on("/api/reboot", HTTP_POST, [this]() { handleReboot(); });
         server_.onNotFound([this]() { handleNotFound(); });
         server_.begin();
         Serial.printf("[WebUI] Started on port %d\n", port_);
@@ -40,12 +64,46 @@ private:
     void handleRemoteRoot() {
         Serial.printf("[WebUI] GET / from %s\n", server_.client().remoteIP().toString().c_str());
 
+        const heatpumpSettings& s = proto_->getCurrentSettings();
+        const heatpumpStatus& st = proto_->getCurrentStatus();
+
         String html = pageStart("CN105 Virtual Remote");
         html += "<div class='card'>";
         html += "<div class='header-row'><div><h1>CN105 Virtual Remote</h1>";
         html += "<p>先在本地组装遥控器 payload，只有点击 <code>Send To Server</code> 才会提交给服务端生成 CN105 配置预览。</p></div>";
-        html += "<a class='ghost-link' href='/debug'>Open Debug</a></div>";
-        html += metaLine();
+        html += "<div class='controls'><button id='homekitModalBtn' class='ghost-link ghost-button' type='button'>HomeKit 配对</button><a class='ghost-link' href='/debug'>Open Debug</a></div></div>";
+        html += "<div class='top-meta'>" + metaLine() + "</div>";
+
+        html += "<div class='section'>";
+        html += "<div class='section-title'>状态总览</div>";
+        html += "<div class='state-grid'>";
+        html += "<div id='homekitStatePanel' class='state-panel'><div class='section-title'>HomeKit 状态预览</div>";
+        html += statusRow("连接状态", proto_->isConnected() ? "已连接" : "未连接");
+        html += statusRow("电源", s.power ? s.power : "--");
+        html += statusRow("模式", homeKitModePreview(s.mode));
+        html += statusRow("目标温度", s.temperature > 0 ? String(proto_->getTargetTemperatureF(), 0) + " F" : "--");
+        html += statusRow("室温", !isnan(st.roomTemperature) ? String(proto_->getRoomTemperatureF(), 0) + " F" : "--");
+        html += statusRow("风速", homeKitFanPreview(s.fan));
+        html += statusRow("摆风", isSwingEnabled(s.vane) ? "开启" : "关闭");
+        html += "</div>";
+        html += "<div id='cn105StatePanel' class='state-panel'><div class='section-title'>CN105 完整状态</div>";
+        html += statusRow("连接状态", proto_->isConnected() ? "已连接" : "未连接");
+        html += statusRow("电源", s.power ? s.power : "--");
+        html += statusRow("模式", s.mode ? s.mode : "--");
+        html += statusRow("目标温度", s.temperature > 0 ? String(proto_->getTargetTemperatureF(), 0) + " F / " + String(s.temperature, 1) + " C" : "--");
+        html += statusRow("室温", !isnan(st.roomTemperature) ? String(proto_->getRoomTemperatureF(), 0) + " F / " + String(st.roomTemperature, 1) + " C" : "--");
+        html += statusRow("室外温度", !isnan(st.outsideAirTemperature) ? String(proto_->getOutsideTemperatureF(), 0) + " F / " + String(st.outsideAirTemperature, 1) + " C" : "--");
+        html += statusRow("风速", s.fan ? s.fan : "--");
+        html += statusRow("垂直风向", s.vane ? s.vane : "--");
+        html += statusRow("水平风向", s.wideVane ? s.wideVane : "--");
+        html += statusRow("i-see", s.iSee ? "开启" : "关闭");
+        html += statusRow("运行中", st.operating ? "是" : "否");
+        html += statusRow("压缩机频率", !isnan(st.compressorFrequency) ? String(st.compressorFrequency, 1) + " Hz" : "--");
+        html += statusRow("输入功率", !isnan(st.inputPower) ? String(st.inputPower, 1) + " W" : "--");
+        html += statusRow("累计电量", !isnan(st.kWh) ? String(st.kWh, 1) + " kWh" : "--");
+        html += statusRow("运行时长", !isnan(st.runtimeHours) ? String(st.runtimeHours, 1) + " h" : "--");
+        html += "</div></div>";
+        html += "</div>";
 
         html += "<div class='section'>";
         html += "<div class='section-title'>服务端回显</div>";
@@ -81,6 +139,7 @@ private:
         html += "<div class='controls' style='margin-top:12px;'><button id='decodeRawBtn' class='secondary'>解析原始回复</button></div>";
         html += "</div>";
         html += "</div>";
+        html += homeKitModalHtml();
 
         html += "<script>"
                 "const fields={"
@@ -93,6 +152,10 @@ private:
                 "const output=document.getElementById('output');"
                 "const draft=document.getElementById('draft');"
                 "const rawPacket=document.getElementById('rawPacket');"
+                "const homekitModal=document.getElementById('homekitModal');"
+                "const homekitStatePanel=document.getElementById('homekitStatePanel');"
+                "const cn105StatePanel=document.getElementById('cn105StatePanel');"
+                "const maintenanceOutput=document.getElementById('maintenanceOutput');"
                 "const defaults={power:'ON',mode:'AUTO',temperatureF:'" + String(AppConfig::DEFAULT_TARGET_TEMPERATURE_F, 0) + "',fan:'AUTO',vane:'AUTO',wideVane:'AIRFLOW CONTROL'};"
                 "function currentDraft(){return {"
                 "power:fields.power.value,"
@@ -166,7 +229,71 @@ private:
                 "if(status.fan) fields.fan.value=status.fan;"
                 "if(status.vane) fields.vane.value=status.vane;"
                 "if(status.wideVane) fields.wideVane.value=status.wideVane;"
+                "renderStatePanels(status);"
                 "renderDraft();"
+                "}"
+                "function stateRow(key,value){return `<div class='status-row'><div class='status-key'>${key}</div><div class='status-val'>${value ?? '--'}</div></div>`;}"
+                "function displayTemp(f,c){return f == null ? '--' : `${Math.round(Number(f))} F${c == null ? '' : ' / '+Number(c).toFixed(1)+' C'}`;}"
+                "function displayNumber(value,unit){return value == null ? '--' : `${Number(value).toFixed(1)} ${unit}`;}"
+                "function hkMode(mode){return mode === 'HEAT' || mode === 'COOL' || mode === 'AUTO' ? mode : `AUTO (CN105: ${mode || '--'})`;}"
+                "function hkFan(fan){"
+                "if(fan === 'AUTO') return '0% / AUTO';"
+                "if(fan === 'QUIET') return '14% / QUIET';"
+                "if(fan === '1') return '28% / 1';"
+                "if(fan === '2') return '42% / 2';"
+                "if(fan === '3') return '71% / 3';"
+                "if(fan === '4') return '100% / 4';"
+                "return fan || '--';"
+                "}"
+                "function renderStatePanels(status){"
+                "const swing=status.vane === 'SWING' ? '开启' : '关闭';"
+                "homekitStatePanel.innerHTML='<div class=\"section-title\">HomeKit 状态预览</div>' +"
+                "stateRow('连接状态',status.connected ? '已连接' : '未连接') +"
+                "stateRow('电源',status.power || '--') +"
+                "stateRow('模式',hkMode(status.mode)) +"
+                "stateRow('目标温度',status.targetTemperatureF == null ? '--' : `${Math.round(Number(status.targetTemperatureF))} F`) +"
+                "stateRow('室温',status.roomTemperatureF == null ? '--' : `${Math.round(Number(status.roomTemperatureF))} F`) +"
+                "stateRow('风速',hkFan(status.fan)) +"
+                "stateRow('摆风',swing);"
+                "cn105StatePanel.innerHTML='<div class=\"section-title\">CN105 完整状态</div>' +"
+                "stateRow('连接状态',status.connected ? '已连接' : '未连接') +"
+                "stateRow('电源',status.power || '--') +"
+                "stateRow('模式',status.mode || '--') +"
+                "stateRow('目标温度',displayTemp(status.targetTemperatureF,status.targetTemperatureRawC)) +"
+                "stateRow('室温',displayTemp(status.roomTemperatureF,status.roomTemperatureRawC)) +"
+                "stateRow('室外温度',displayTemp(status.outsideAirTemperatureF,status.outsideAirTemperatureRawC)) +"
+                "stateRow('风速',status.fan || '--') +"
+                "stateRow('垂直风向',status.vane || '--') +"
+                "stateRow('水平风向',status.wideVane || '--') +"
+                "stateRow('i-see',status.iSee ? '开启' : '关闭') +"
+                "stateRow('运行中',status.operating ? '是' : '否') +"
+                "stateRow('压缩机频率',displayNumber(status.compressorFrequency,'Hz')) +"
+                "stateRow('输入功率',displayNumber(status.inputPower,'W')) +"
+                "stateRow('累计电量',displayNumber(status.kWh,'kWh')) +"
+                "stateRow('运行时长',displayNumber(status.runtimeHours,'h'));"
+                "}"
+                "function renderHomeKitQr(){"
+                "const target=document.getElementById('homekitQr');"
+                "const payload=document.getElementById('setupPayload').textContent;"
+                "if(!window.QRCode){"
+                "target.textContent='QRCode library failed to load from cdnjs.';"
+                "return;"
+                "}"
+                "target.textContent='';"
+                "new QRCode(target,{text:payload,width:220,height:220,colorDark:'#0b1b2b',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});"
+                "}"
+                "function openHomeKitModal(){homekitModal.classList.add('open');renderHomeKitQr();}"
+                "function closeHomeKitModal(){homekitModal.classList.remove('open');}"
+                "async function maintenancePost(url,label,confirmText){"
+                "if(!confirm(confirmText)){return;}"
+                "maintenanceOutput.textContent='正在执行：'+label+'...';"
+                "try{"
+                "const resp=await fetch(url,{method:'POST'});"
+                "const data=await resp.json();"
+                "maintenanceOutput.textContent=JSON.stringify(data,null,2);"
+                "}catch(err){"
+                "maintenanceOutput.textContent=label+' 失败: '+err;"
+                "}"
                 "}"
                 "async function loadStatus(){"
                 "output.textContent='正在读取当前状态...';"
@@ -188,6 +315,13 @@ private:
                 "document.getElementById('mock06Btn').addEventListener('click',()=>loadMockResponse('0x06','运行状态'));"
                 "document.getElementById('mockAllBtn').addEventListener('click',()=>loadMockResponse('all','全部状态'));"
                 "document.getElementById('decodeRawBtn').addEventListener('click',decodeRawPacket);"
+                "document.getElementById('homekitModalBtn').addEventListener('click',openHomeKitModal);"
+                "document.getElementById('homekitCloseBtn').addEventListener('click',closeHomeKitModal);"
+                "document.getElementById('homekitModalBackdrop').addEventListener('click',closeHomeKitModal);"
+                "document.getElementById('clearHomeKitBtn').addEventListener('click',()=>maintenancePost('/api/homekit/clear','清除 HomeKit 数据','确定清除 HomeKit 配对数据吗？这不会自动重启。'));"
+                "document.getElementById('clearAllBtn').addEventListener('click',()=>maintenancePost('/api/nvs/clear','清除全部 HomeSpan 数据','确定清除全部 HomeSpan NVS 数据吗？这不会自动重启。'));"
+                "document.getElementById('rebootBtn').addEventListener('click',()=>maintenancePost('/api/reboot','重启设备','确定现在重启设备吗？'));"
+                "document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeHomeKitModal();}});"
                 "loadStatus();"
                 "</script>";
         html += pageEnd();
@@ -203,7 +337,7 @@ private:
         html += "<div class='header-row'><div><h1>Web Debug</h1>";
         html += "<p>这里保留最早的 ping 和串口回显调试能力，方便继续验证 HTTP 通路和串口输出。</p></div>";
         html += "<a class='ghost-link' href='/'>Open Remote</a></div>";
-        html += metaLine();
+        html += "<div class='top-meta'>" + metaLine() + "</div>";
         html += "<div class='section'>";
         html += "<div class='section-title'>Action Buttons</div>";
         html += "<input id='serialInput' type='text' maxlength='200' placeholder='Type something to send to Serial'>";
@@ -401,6 +535,46 @@ private:
         server_.send(200, "application/json", json);
     }
 
+    void handleClearHomeKit() {
+        handleMaintenanceAction("clear HomeKit data", clearHomeKitCallback_);
+    }
+
+    void handleClearAll() {
+        handleMaintenanceAction("clear all HomeSpan data", clearAllCallback_);
+    }
+
+    void handleReboot() {
+        Serial.printf("[WebUI] POST /api/reboot from %s\n", server_.client().remoteIP().toString().c_str());
+
+        if (!rebootCallback_) {
+            server_.send(501, "application/json", "{\"ok\":false,\"error\":\"reboot callback not configured\"}");
+            return;
+        }
+
+        server_.send(200, "application/json", "{\"ok\":true,\"message\":\"rebooting\"}");
+        rebootCallback_();
+    }
+
+    void handleMaintenanceAction(const char* label, MaintenanceCallback callback) {
+        Serial.printf("[WebUI] POST maintenance action '%s' from %s\n",
+                      label,
+                      server_.client().remoteIP().toString().c_str());
+
+        if (!callback) {
+            server_.send(501, "application/json", "{\"ok\":false,\"error\":\"maintenance callback not configured\"}");
+            return;
+        }
+
+        String message;
+        bool ok = callback(message);
+        String json = "{";
+        json += "\"ok\":" + String(ok ? "true" : "false") + ",";
+        json += "\"action\":\"" + jsonEscape(label) + "\",";
+        json += "\"message\":\"" + jsonEscape(message) + "\"";
+        json += "}";
+        server_.send(ok ? 200 : 500, "application/json", json);
+    }
+
     void handleNotFound() {
         Serial.printf("[WebUI] 404 %s from %s\n",
                       server_.uri().c_str(),
@@ -412,6 +586,9 @@ private:
         String html = "<!DOCTYPE html><html><head><meta charset='utf-8'>";
         html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
         html += "<title>" + String(title) + "</title>";
+        if (String(title) == "HomeKit" || String(title) == "CN105 Virtual Remote") {
+            html += "<script src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'></script>";
+        }
         html += "<style>";
         html += "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d1321;color:#dbe4ee;margin:0;padding:24px;}";
         html += ".card{max-width:860px;margin:0 auto;background:#1d2d44;border-radius:16px;padding:24px;box-shadow:0 18px 48px rgba(0,0,0,0.25);}";
@@ -420,19 +597,109 @@ private:
         html += "p{margin:0 0 12px;color:#b9c7d8;line-height:1.5;}";
         html += "code{background:#102a43;color:#d7f9ff;padding:2px 6px;border-radius:6px;}";
         html += ".meta{font-size:0.95rem;color:#9fb3c8;}";
+        html += ".top-meta{margin-top:14px;}";
+        html += ".top-meta .meta{margin-bottom:0;}";
         html += ".ghost-link{color:#d7f9ff;text-decoration:none;border:1px solid #486581;border-radius:10px;padding:10px 14px;display:inline-block;}";
+        html += ".ghost-button{background:transparent;}";
+        html += ".ghost-button:hover{background:#102a43;}";
         html += ".section{margin-top:18px;padding:18px;border-radius:14px;background:#13283d;border:1px solid #274560;}";
         html += ".section-title{margin:0 0 10px;color:#fff;font-size:1rem;font-weight:600;}";
         html += ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}";
+        html += ".state-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}";
+        html += ".state-panel{background:#102a43;border:1px solid #274560;border-radius:12px;padding:14px;}";
         html += ".field label{display:block;color:#b9c7d8;font-size:0.92rem;margin-bottom:6px;}";
         html += ".controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}";
+        html += ".pairing-card{background:#19324a;border:2px dashed #4a90d9;text-align:center;}";
+        html += ".pairing-code{font-size:2rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff;letter-spacing:0.15em;margin:10px 0;}";
+        html += ".pairing-hint{color:#b9c7d8;margin-top:8px;line-height:1.5;}";
+        html += ".qr-card{text-align:center;}";
+        html += ".qr-box{display:inline-flex;align-items:center;justify-content:center;min-width:220px;min-height:220px;background:#fff;border-radius:18px;padding:14px;color:#0b1b2b;}";
+        html += ".qr-box img,.qr-box canvas{border-radius:8px;}";
+        html += ".status-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #274560;}";
+        html += ".status-row:last-child{border-bottom:none;}";
+        html += ".status-key{color:#9fb3c8;}";
+        html += ".status-val{color:#fff;font-weight:600;}";
         html += "input,select,textarea{display:block;width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid #486581;background:#102a43;color:#f0f4f8;font-size:1rem;}";
         html += "textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}";
         html += "button{background:#3e5c76;color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:1rem;cursor:pointer;}";
         html += "button:hover{background:#537999;}";
         html += "button.secondary{background:#284b63;}";
+        html += "button.danger{background:#8a3b3b;}";
+        html += "button.danger:hover{background:#a84949;}";
+        html += ".modal{display:none;position:fixed;inset:0;z-index:10;align-items:center;justify-content:center;padding:20px;}";
+        html += ".modal.open{display:flex;}";
+        html += ".modal-backdrop{position:absolute;inset:0;background:rgba(4,10,18,0.72);}";
+        html += ".modal-panel{position:relative;max-width:760px;max-height:88vh;overflow:auto;background:#1d2d44;border:1px solid #486581;border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,0.45);}";
+        html += ".modal-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}";
+        html += ".modal-close{background:#284b63;padding:8px 12px;}";
         html += "pre{margin:12px 0 0;background:#0b1b2b;color:#d7f9ff;border-radius:12px;padding:16px;min-height:120px;white-space:pre-wrap;word-break:break-word;}";
         html += "</style></head><body>";
+        return html;
+    }
+
+    String statusRow(const String& key, const String& value) {
+        return "<div class='status-row'><div class='status-key'>" + key + "</div><div class='status-val'>" + value + "</div></div>";
+    }
+
+    bool isSwingEnabled(const char* vane) {
+        return vane && strcmp(vane, "SWING") == 0;
+    }
+
+    String formattedPairingCode() {
+        String rawCode = pairingCode_ ? String(pairingCode_) : String(AppConfig::HOMEKIT_PAIRING_CODE);
+        if (rawCode.length() == 8) {
+            return rawCode.substring(0, 3) + "-" + rawCode.substring(3, 5) + "-" + rawCode.substring(5, 8);
+        }
+        return rawCode;
+    }
+
+    String homeKitModePreview(const char* mode) {
+        if (!mode) return "--";
+        if (strcmp(mode, "HEAT") == 0) return "HEAT";
+        if (strcmp(mode, "COOL") == 0) return "COOL";
+        if (strcmp(mode, "AUTO") == 0) return "AUTO";
+        return String("AUTO (CN105: ") + mode + ")";
+    }
+
+    String homeKitFanPreview(const char* fan) {
+        if (!fan) return "--";
+        if (strcmp(fan, "AUTO") == 0) return "0% / AUTO";
+        if (strcmp(fan, "QUIET") == 0) return "14% / QUIET";
+        if (strcmp(fan, "1") == 0) return "28% / 1";
+        if (strcmp(fan, "2") == 0) return "42% / 2";
+        if (strcmp(fan, "3") == 0) return "71% / 3";
+        if (strcmp(fan, "4") == 0) return "100% / 4";
+        return fan;
+    }
+
+    String homeKitModalHtml() {
+        String html;
+        html += "<div id='homekitModal' class='modal' aria-hidden='true'>";
+        html += "<div id='homekitModalBackdrop' class='modal-backdrop'></div>";
+        html += "<div class='modal-panel'>";
+        html += "<div class='modal-header'><div><h1>HomeKit 配对</h1>";
+        html += "<p>打开 iPhone 的“家庭”App 添加配件，扫描二维码或输入下面的配对码。</p></div>";
+        html += "<button id='homekitCloseBtn' class='modal-close' type='button'>关闭</button></div>";
+        html += "<div class='section pairing-card'>";
+        html += "<div class='section-title'>配对信息</div>";
+        html += "<div class='pairing-code'>" + formattedPairingCode() + "</div>";
+        html += "<div class='pairing-hint'>设备名: " + String(homekitName_ ? homekitName_ : "--") + "</div>";
+        html += "<div class='pairing-hint'>Bridge: " + String(AppConfig::HOMEKIT_BRIDGE_NAME) + "</div>";
+        html += "<div class='pairing-hint'>QR ID: " + String(AppConfig::HOMEKIT_QR_ID) + "</div>";
+        html += "</div>";
+        html += "<div class='section qr-card'>";
+        html += "<div class='section-title'>HomeKit 二维码</div>";
+        html += "<div id='homekitQr' class='qr-box'></div>";
+        html += "<div class='pairing-hint'>Setup Payload: <code id='setupPayload'>" + String(AppConfig::HOMEKIT_SETUP_PAYLOAD.data()) + "</code></div>";
+        html += "<div class='pairing-hint'>如果二维码没出现，说明当前浏览器没法从 cdnjs 加载二维码库；配对码依然可以手动输入。</div>";
+        html += "</div>";
+        html += "<div class='section'>";
+        html += "<div class='section-title'>维护操作</div>";
+        html += "<p>清除动作只擦 NVS 数据，不会自动重启；重启后 HomeSpan 才会完整重新加载这些状态。</p>";
+        html += "<div class='controls' style='margin-top:12px;'><button id='clearHomeKitBtn' class='danger'>清除 HomeKit 数据</button><button id='clearAllBtn' class='danger'>清除全部 HomeSpan 数据</button><button id='rebootBtn' class='secondary'>重启设备</button></div>";
+        html += "<pre id='maintenanceOutput'>等待操作...</pre>";
+        html += "</div>";
+        html += "</div></div>";
         return html;
     }
 
