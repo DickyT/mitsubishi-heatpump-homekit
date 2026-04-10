@@ -37,6 +37,8 @@ void setup() {
     delay(300);
     Serial.println();
     Serial.printf("=== %s ===\n", AppConfig::APP_TITLE);
+    Serial.printf("[SETUP] CN105 transport mode: %s\n",
+                  AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE));
 
     Cn105Serial::begin(g_cn105Serial);
     g_wifiManager.begin();

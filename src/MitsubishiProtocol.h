@@ -199,7 +199,7 @@ public:
         config += "fan=" + fanStorage_ + "\n";
         config += "vane=" + vaneStorage_ + "\n";
         config += "wideVane=" + wideVaneStorage_ + "\n";
-        config += "transport=mock\n";
+        config += "transport=" + String(AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE)) + "\n";
         config += "status=preview_only\n";
         return config;
     }

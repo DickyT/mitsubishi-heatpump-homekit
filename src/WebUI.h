@@ -78,6 +78,7 @@ private:
         html += "<div class='section-title'>状态总览</div>";
         html += "<div class='state-grid'>";
         html += "<div id='homekitStatePanel' class='state-panel'><div class='section-title'>HomeKit 状态预览</div>";
+        html += statusRow("通讯模式", AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE));
         html += statusRow("连接状态", proto_->isConnected() ? "已连接" : "未连接");
         html += statusRow("电源", s.power ? s.power : "--");
         html += statusRow("模式", homeKitModePreview(s.mode));
@@ -87,6 +88,7 @@ private:
         html += statusRow("摆风", isSwingEnabled(s.vane) ? "开启" : "关闭");
         html += "</div>";
         html += "<div id='cn105StatePanel' class='state-panel'><div class='section-title'>CN105 完整状态</div>";
+        html += statusRow("通讯模式", AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE));
         html += statusRow("连接状态", proto_->isConnected() ? "已连接" : "未连接");
         html += statusRow("电源", s.power ? s.power : "--");
         html += statusRow("模式", s.mode ? s.mode : "--");
@@ -250,6 +252,7 @@ private:
                 "function renderStatePanels(status){"
                 "const swing=status.vane === 'SWING' ? '开启' : '关闭';"
                 "homekitStatePanel.innerHTML='<div class=\"section-title\">HomeKit 状态预览</div>' +"
+                "stateRow('通讯模式',status.transportMode || '--') +"
                 "stateRow('连接状态',status.connected ? '已连接' : '未连接') +"
                 "stateRow('电源',status.power || '--') +"
                 "stateRow('模式',hkMode(status.mode)) +"
@@ -258,6 +261,7 @@ private:
                 "stateRow('风速',hkFan(status.fan)) +"
                 "stateRow('摆风',swing);"
                 "cn105StatePanel.innerHTML='<div class=\"section-title\">CN105 完整状态</div>' +"
+                "stateRow('通讯模式',status.transportMode || '--') +"
                 "stateRow('连接状态',status.connected ? '已连接' : '未连接') +"
                 "stateRow('电源',status.power || '--') +"
                 "stateRow('模式',status.mode || '--') +"
@@ -728,7 +732,9 @@ private:
     String metaLine() {
         uint32_t sec = (millis() - bootTime_) / 1000;
         return "<p class='meta'>WiFi Mode: " + wifiModeLabel() + " | SSID: " + wifiSsid() + " | IP: " + wifiIp() +
-               " | Signal: " + wifiRssi() + " | Uptime: " + String(sec) + "s</p>";
+               " | Signal: " + wifiRssi() + " | CN105: " +
+               AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE) +
+               " | Uptime: " + String(sec) + "s</p>";
     }
 
     String selectField(const char* label, const char* id, const char* csv, const char* defaultValue) {
@@ -768,6 +774,7 @@ private:
 
         String json = "{";
         json += "\"connected\":" + String(proto_->isConnected() ? "true" : "false") + ",";
+        json += "\"transportMode\":\"" + String(AppConfig::cn105TransportModeLabel(AppConfig::CN105_TRANSPORT_MODE)) + "\",";
         json += "\"power\":\"" + jsonEscape(s.power ? s.power : "") + "\",";
         json += "\"mode\":\"" + jsonEscape(s.mode ? s.mode : "") + "\",";
         json += "\"targetTemperatureF\":" + jsonFloat(proto_->getTargetTemperatureF(), 0) + ",";

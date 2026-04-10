@@ -10,8 +10,24 @@
 
 namespace AppConfig {
 
+enum class Cn105TransportMode : uint8_t {
+    Mock,
+    Real
+};
+
+static constexpr const char* cn105TransportModeLabel(Cn105TransportMode mode) {
+    switch (mode) {
+        case Cn105TransportMode::Real:
+            return "Real";
+        case Cn105TransportMode::Mock:
+        default:
+            return "Mock";
+    }
+}
+
 static const uint32_t SERIAL_BAUD = 115200;
 static const uint16_t WEB_PORT = 8080;
+static constexpr Cn105TransportMode CN105_TRANSPORT_MODE = Cn105TransportMode::Mock;
 static const uint32_t CN105_UART_BAUD = 2400;
 static const int CN105_UART_PORT = 1;
 static const int CN105_RX_PIN = 32;
