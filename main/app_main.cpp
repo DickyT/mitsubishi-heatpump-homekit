@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "platform_fs.h"
 #include "platform_log.h"
+#include "platform_wifi.h"
 
 static const char* TAG = "bootstrap";
 
@@ -46,10 +47,18 @@ extern "C" void app_main(void) {
         ESP_LOGE(TAG, "CN105 UART init failed: %s", esp_err_to_name(uart_err));
     }
 
+    const esp_err_t wifi_err = platform_wifi::init();
+    if (wifi_err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(wifi_err));
+    }
+
     uint32_t heartbeat = 0;
     while (true) {
-        ESP_LOGI(TAG, "Phase 2 heartbeat #%lu - filesystem logging is alive",
-                 static_cast<unsigned long>(heartbeat++));
+        platform_wifi::maintain();
+        ESP_LOGI(TAG, "Phase 3 heartbeat #%lu - WiFi service is alive",
+                 static_cast<unsigned long>(heartbeat));
+        platform_wifi::logStatus("heartbeat");
+        heartbeat++;
         vTaskDelay(pdMS_TO_TICKS(app_config::kHeartbeatIntervalMs));
     }
 }

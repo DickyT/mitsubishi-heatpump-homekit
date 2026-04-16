@@ -39,3 +39,4 @@ __pycache__/
 
 # Local secrets / overrides
 *.local
+components/app_config/include/app_config_local.h

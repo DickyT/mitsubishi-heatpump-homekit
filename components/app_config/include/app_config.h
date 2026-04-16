@@ -4,10 +4,22 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 
+#if __has_include("app_config_local.h")
+#include "app_config_local.h"
+#endif
+
+#ifndef APP_WIFI_SSID
+#define APP_WIFI_SSID "YOUR_WIFI_SSID"
+#endif
+
+#ifndef APP_WIFI_PASSWORD
+#define APP_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#endif
+
 namespace app_config {
 
 inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump Matter";
-inline constexpr char kPhaseName[] = "Phase 2 SPIFFS persistent logging skeleton";
+inline constexpr char kPhaseName[] = "Phase 3 WiFi service foundation";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
@@ -16,6 +28,14 @@ inline constexpr char kSpiffsBasePath[] = "/spiffs";
 inline constexpr char kSpiffsPartitionLabel[] = "spiffs";
 inline constexpr int kSpiffsMaxOpenFiles = 5;
 inline constexpr char kPersistentLogPath[] = "/spiffs/latest.log";
+
+inline constexpr char kWifiSsid[] = APP_WIFI_SSID;
+inline constexpr char kWifiPassword[] = APP_WIFI_PASSWORD;
+inline constexpr char kFallbackApSsid[] = "Mitsubishi-Setup";
+inline constexpr char kFallbackApPassword[] = "12345678";
+inline constexpr bool kWifiDisablePowerSave = true;
+inline constexpr uint32_t kWifiConnectTimeoutMs = 15000;
+inline constexpr uint32_t kWifiReconnectIntervalMs = 10000;
 
 inline constexpr uart_port_t kCn105UartPort = UART_NUM_1;
 inline constexpr gpio_num_t kCn105RxPin = GPIO_NUM_26;
