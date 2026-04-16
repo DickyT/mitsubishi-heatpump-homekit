@@ -1,218 +1,148 @@
-# ESP-IDF + ESP HomeKit SDK 从零重建迁移计划
+# ESP-IDF + ESP HomeKit SDK 迁移计划（按当前仓库状态重排）
 
 ## Summary
 
-目标是把当前 Arduino/HomeSpan 项目视为“功能参考实现”，在 `main` 上直接重建为一个 **纯 ESP-IDF + Espressif ESP HomeKit SDK** 工程。
-不保留 Arduino 代码路径，不做双轨维护；旧实现已经在分支里作为回滚和对照来源。
+当前仓库已经不是原始 `PLAN.md` 里“从零开始”的状态，而是已经完成了当前 README 中记录的 **M0-M3 platform foundation**。为避免混乱，后续计划统一用 **Milestone** 表示，不再使用旧 Phase 编号描述未来开发顺序。
 
-新的 HomeKit 方向：
+当前真实基线：
 
-- 使用 Espressif [`esp-homekit-sdk`](https://github.com/espressif/esp-homekit-sdk)，不是 HomeSpan，也不是 esp-matter。
-- 优先参考 `esp-homekit-sdk/examples/common` 里的 Wi-Fi、provisioning、factory/setup 辅助结构。
-- 首版仍然以 Apple Home / HomeKit 为目标，不做 Matter/Android commission 目标。
-- Wi-Fi 只做 STA。连接失败时保持离线并持续重连，**不要回退开启 AP**。
+- `main` 已是 ESP-IDF 工程，不再是 Arduino/HomeSpan 工程。
+- 已完成组件：`app_config`、`platform_log`、`platform_fs`、`platform_uart`、`platform_wifi`。
+- CN105 UART 固定为 `RX=GPIO26`、`TX=GPIO32`、`2400 8E1`。
+- Wi-Fi 已改为 STA-only，不再 fallback AP。
+- 本地 build wrapper 已支持 `./build.py --quiet-first build`。
+- 目标已从 Matter 改为 `ESP-IDF + Espressif esp-homekit-sdk`。
 
-执行策略是：
+## Milestone Plan
 
-1. 先把 `main` 清到只剩一个可编译的 IDF hello world。
-2. 建立新的组件化工程骨架。
-3. 先恢复基础设施与 CN105 核心。
-4. 再恢复 WebUI 与诊断能力。
-5. 最后接入 `esp-homekit-sdk`，并逐步补齐 HomeKit 能表达的控制能力。
+### M0-M3: Platform Foundation（已完成，作为当前基线）
 
-首版原则：
+这些不再作为未来 TODO：
 
-- WebUI 尽量保留当前大部分能力。
-- HomeKit 目标是稳定覆盖开关、模式、当前温度、目标温度、风速等核心控制面。
-- 对 HomeKit 标准模型无法完整表达的 CN105 细粒度语义，先保留在本地 WebUI/后端，不阻塞主迁移。
+- `M0`: ESP-IDF skeleton，可 build/flash。
+- `M1`: 基础组件化结构，CN105 UART 初始化。
+- `M2`: SPIFFS 分区、文件系统挂载、persistent log。
+- `M3`: STA-only Wi-Fi、禁用 power save、heartbeat 网络状态日志。
 
-## Implementation Changes
+需要补验证但不改设计：
 
-### 1. 仓库重置与新工程骨架
+- 关闭 Arduino 串口监视器后重新 flash 当前固件。
+- serial 确认 `Mitsubishi Heat Pump HomeKit`、`STA_GOT_IP`、`fallbackAp=no`。
+- 若验证 OK，再 commit/push 之后进入 M4。
 
-- 在 `main` 上移除当前 Arduino 入口与旧结构，只保留文档、参考分支信息和必要配置模板。
-- 新建标准 ESP-IDF 工程结构：
-  - `main/app_main.cpp`
-  - `components/app_config`
-  - `components/platform_log`
-  - `components/platform_fs`
-  - `components/platform_wifi`
-  - `components/platform_uart`
-  - `components/core_cn105`
-  - `components/web`
-  - `components/homekit_bridge`
-- 使用 `ESP-IDF v5.4.1` 作为当前本地验证版本。
-- 后续接入 `esp-homekit-sdk` 作为 HomeKit 主依赖，优先对齐它的 example/common 结构。
-- `main/app_main.cpp` 只负责系统启动、组件初始化顺序和主生命周期编排。
+### M4: Minimal WebUI Foundation（下一步）
 
-### 2. 先建立最小可运行基线
+目标是恢复“能访问网页 + 能打通 API”的最小 Web 层，不恢复完整旧 WebUI。
 
-- Phase 0/1/2/3 只做 IDF skeleton、日志、SPIFFS、CN105 UART、Wi-Fi STA。
-- 先验证：
-  - `./build.py build` 正常
-  - `./build.py flash-auto --no-build` 正常
-  - 串口日志正常
-  - 分区表满足 app + SPIFFS + NVS 需求
-  - `GPIO26 RX / GPIO32 TX` 作为 CN105 UART 初始化
-  - Wi-Fi STA 能连接；连接失败时不启动 fallback AP
-- 这一阶段不接 CN105 protocol、不接 WebUI、不接 HomeKit，只把平台地基打稳。
+实现要求：
 
-### 3. 代码分层与 .h/.cpp 拆分规则
+- 新增 `components/web`，使用 ESP-IDF `esp_http_server`，端口固定 `80`。
+- 初始化顺序：filesystem/log/uart/wifi 完成后启动 Web server。
+- 首批接口：
+  - `GET /`: 一个极简中文状态页。
+  - `GET /api/health`: 返回 `{ ok, uptime_ms, device, phase }`。
+  - `GET /api/status`: 返回 Wi-Fi 状态、SPIFFS 状态、CN105 UART 配置、当前 transport 占位状态。
+- 页面只显示平台状态，不做 CN105 遥控器。
+- 代码注释英文，UI 文案中文。
 
-- 所有 header-heavy 代码迁入明确的 `.h/.cpp` 对：
-  - `MitsubishiProtocol`
-  - `DebugLog`
-  - `FileSystemManager`
-  - `WiFiManager`
-  - `WebUI`
-  - `Cn105Serial`
-  - HomeKit 服务绑定改为基于 `esp-homekit-sdk` 的 `homekit_bridge`
-- 保留为 header-only 的只限：
-  - `app_config`
-  - `MitsubishiTypes`
-  - 极小型纯函数/constexpr 工具
-- `core_cn105` 不允许直接依赖以下对象：
-  - Arduino `HardwareSerial`
-  - Arduino `String`
-  - Arduino `WebServer`
-  - Arduino `WiFiClass`
-  - SPIFFS 具体 API
-  - HomeSpan
-  - esp-homekit-sdk
-- 平台相关能力通过窄接口注入：
-  - `IUartTransport`
-  - `ILogSink`
-  - `IClock`
-  - `IFileStore`
-  - `INetworkStatus`
+验收：
 
-### 4. 基础设施恢复顺序
+- `./build.py --quiet-first build` 成功。
+- flash 后访问 `http://<esp-ip>/` 成功。
+- `curl http://<esp-ip>/api/health` 返回 JSON。
+- serial heartbeat 继续正常，无 watchdog/noise 问题。
 
-- 先恢复 `platform_log`
-  - 保留串口日志和文件日志。
-  - SPIFFS 满时，当前 active log 清空后继续记录，不中断运行。
-- 再恢复 `platform_fs`
-  - 后续支持 `/logs`、`/files` 页面所需的文件列举、下载、上传、删除、伪目录能力。
-- 再恢复 `platform_wifi`
-  - 只使用 STA。
-  - 禁用 Wi-Fi power save。
-  - heartbeat 状态日志保留 IP、RSSI、MAC、last event。
-  - 连接失败或无 credentials 时不启动 AP，只保持离线并按间隔重连。
-- 再恢复 `platform_uart`
-  - 固定 `RX=26`、`TX=32`
-  - 2400 8E1
-  - debug 串口保持默认系统日志通道，不与 CN105 复用。
+### M5: CN105 Offline Core + Mock State
 
-### 5. CN105 业务核心恢复顺序
+目标是先把旧项目中已经验证过的 CN105 协议核心恢复到 ESP-IDF 组件里，但不依赖真实空调线缆。
 
-- 先恢复 `Mock` 模式，确保：
-  - payload builder
-  - 状态模型
-  - 华氏度优先行为
-  - 原始包解析
-  - WebUI 状态同步
-- 再恢复 `Real` transport：
-  - CONNECT/ACK
-  - INFO 轮询
-  - SET payload builder
-  - 状态回填
-- 这一层完成后，系统即便还没 HomeKit，也必须具备“旧项目同等级别的本地调试能力”。
+实现要求：
 
-### 6. WebUI 恢复策略
+- 新增 `components/core_cn105`。
+- 恢复协议常量、SET payload builder、INFO/response parser、checksum、状态模型。
+- 温度逻辑继续以华氏度为项目默认输入/输出；内部可按协议需要转换，但 API 对 Web/HomeKit 暴露华氏度。
+- 提供 Mock transport，WebUI 可以调用 build/decode/status。
+- 暂不做真实 UART 轮询。
 
-- 用 `esp_http_server` 重写 Web 层，不保留 Arduino `WebServer`。
-- 首阶段保留当前主要页面与接口：
-  - `/`
-  - `/debug`
-  - `/logs`
-  - `/files`
-  - `/api/status`
-  - `/api/remote/build`
-  - `/api/mock/decode`
-  - `/api/raw/decode`
-  - 日志与文件管理相关 API
-- WebUI 文案继续中文，代码注释继续英文。
-- 页面结构保留现有信息架构，但实现上允许先不追求完全像素级一致；行为一致优先于视觉一致。
+验收：
 
-### 7. ESP HomeKit SDK 集成策略
+- 固定输入例如 `77F` build 后，再 decode/mock apply 回读仍是 `77F`。
+- 支持旧项目已有的 raw packet decode 测试样例。
+- `/api/status` 能返回完整 CN105 mock state。
 
-- 不迁移 `HomeSpan` 代码；`homekit_bridge` 直接基于 `esp-homekit-sdk` 重新实现。
-- 优先参考 `esp-homekit-sdk/examples/common`：
-  - Wi-Fi/provisioning 结构可以参考，但本项目当前使用本地 hardcoded STA config。
-  - setup code/setup id/factory NVS 的设计要和 SDK 习惯保持兼容。
-- HomeKit 首先建立一个稳定可 pair 的空调主设备模型，优先恢复：
-  - 开关
-  - 模式
-  - 当前温度
-  - 目标温度
-  - 设备在线/连接状态
-- 之后再补 fan/swing/更多运行状态映射。
-- 对标准 HomeKit 模型无法精确承载的 CN105 功能：
-  - 内部状态仍完整保留
-  - WebUI 继续完整可见可调
-  - HomeKit 暂时映射到最接近的标准语义，不为了“全量暴露”破坏设备一致性
+### M6: WebUI Feature Restore
 
-### 8. 删除旧实现的时机
+目标是恢复旧 WebUI 的主要调试体验，但继续用 ESP-IDF 原生 HTTP server。
 
-- 真正删除旧 Arduino 文件发生在 Phase 0 开始时，即创建 IDF hello world 骨架之前。
-- 删除范围包括：
-  - `.ino` 入口
-  - 旧 `src/` 中不再复用的 Arduino/HomeSpan 绑定实现
-  - PlatformIO/Arduino 专属构建痕迹
-- 但在逻辑层面，`MitsubishiTypes`、协议常量、协议映射表、状态语义、Mock 数据行为仍作为迁移参考继续使用。
+实现要求：
+
+- 首页变成当前状态 + 虚拟遥控器。
+- `/debug` 恢复 ping、serial message、raw decode、mock decode。
+- `/logs` 和 `/files` 恢复最小可用版本：列文件、下载、删除；上传/目录管理可排后。
+- WebUI 文案中文；避免重新引入 React/build pipeline。
+
+验收：
+
+- 手机/电脑浏览器都能打开首页。
+- 点击遥控器只本地 build payload，按发送才调用 API。
+- log 文件可从浏览器下载。
+- 不明显增加 app size 到接近 2MB 分区上限。
+
+### M7: Real CN105 Transport
+
+目标是线缆到位后接入真实空调通信。
+
+实现要求：
+
+- `platform_uart` 提供 read/write transport 接口给 `core_cn105`。
+- 实现 CONNECT/ACK、INFO 轮询、SET 发送、超时和错误日志。
+- 保留 config 开关：`Mock` / `Real` transport，默认先由 `app_config` 编译期决定。
+- WebUI 必须显示当前 transport mode 和最后一次 CN105 错误。
+
+验收：
+
+- 插线后可 CONNECT。
+- INFO 能读到空调状态。
+- WebUI 修改温度/模式后，空调状态能变化并回填。
+- 断线时不会 crash，WebUI 能显示离线或错误。
+
+### M8: ESP HomeKit SDK Integration
+
+目标是接入 Espressif `esp-homekit-sdk`，替代旧 HomeSpan 路径。
+
+实现要求：
+
+- 新增 `components/homekit_bridge`。
+- 参考 `esp-homekit-sdk/examples/common` 的 setup/factory/common 结构，但当前 Wi-Fi 仍使用本项目 hardcoded STA config。
+- HomeKit 首版只暴露稳定核心能力：
+  - power
+  - target mode
+  - current temperature
+  - target temperature
+  - online/active status
+- HomeKit 不支持或容易误映射的 CN105 能力先只保留在 WebUI。
+- pairing code、setup id、manufacturer、model、device name 继续集中放 `app_config`。
+
+验收：
+
+- Apple Home 可配对。
+- 断电重启后 pairing 保留。
+- Home App 改温度/模式能进入 CN105 command flow。
+- 遥控器或 CN105 侧出现 HomeKit 不支持的状态时，不主动覆写为空调错误状态。
 
 ## Test Plan
 
-### Phase 0: IDF skeleton
+每个 Milestone 都按同一节奏执行：
 
-- `./build.py build` 成功
-- `./build.py flash-auto --no-build` 成功
-- 设备启动打印版本、分区、heap、挂载状态
-
-### Phase 1: platform services
-
-- SPIFFS 可写
-- 持久日志文件能创建
-- UART1 使用 `GPIO26/32` 正常初始化
-
-### Phase 2: Wi-Fi STA
-
-- `MUJI` 本地配置能连接
-- Wi-Fi power save 关闭
-- heartbeat 显示 STA IP/RSSI/MAC/last event
-- Wi-Fi 失败时不会启动 fallback AP
-
-### Phase 3: minimal WebUI
-
-- HTTP server 端口 80 可访问
-- `/api/health` 或等价最小接口正常
-- 页面能显示 Wi-Fi/platform status
-
-### Phase 4: mock CN105
-
-- `/api/status` 返回与旧项目等价字段
-- `/api/remote/build` 行为与旧项目一致
-- 华氏度输入/回读一致
-- raw packet decode 与 mock state apply 正常
-
-### Phase 5: real CN105
-
-- CONNECT 成功
-- INFO 轮询稳定
-- SET 指令能触发真实空调状态变化
-- 真实状态变化能回填到内部模型和 WebUI
-
-### Phase 6: HomeKit
-
-- 设备可被 Apple Home 配对
-- 开关/模式/温度双向同步
-- 断电重启后 pairing 信息与设备状态恢复符合预期
-- HomeKit 不支持的 CN105 状态不被错误覆写
+- 先 `./build.py --quiet-first build`。
+- 再 `./build.py --quiet-first flash-auto --no-build`。
+- 再 `./build.py serial-log --seconds 20`。
+- 用户验证 OK 后，再 commit；需要远端备份时 push。
+- 如果串口被 Arduino/serial monitor 占用，先停下并提示，不 kill 用户进程，除非用户明确同意。
 
 ## Assumptions
 
-- 旧 Arduino/HomeSpan 代码不再作为生产路径维护，只作为参考来源。
-- `main` 可以直接被重建，不需要保留现有文件布局。
-- 线缆到位后才做真实 CN105 端到端回归，但在此之前可以完成大部分平台与 Mock 迁移。
-- WebUI 第一阶段保留大部分功能，不做前端工程化重构。
-- HomeKit 目标是“稳定可用优先，全量能力逐步补齐”。若标准模型不支持某些 CN105 细粒度能力，这些能力先保留在 WebUI，不阻塞首版上线。
+- `README.md` 的当前状态是事实来源；`PLAN.md` 应改成这份 Milestone 计划，避免再出现 Phase 编号冲突。
+- 当前本地 Wi-Fi credential 文件 `app_config_local.h` 继续 gitignored，不进入 commit。
+- 暂不恢复 fallback AP；未来若需要 provisioning，也优先参考 `esp-homekit-sdk/examples/common`，不是恢复旧 AP fallback。
+- 下一步实际编码应从 `M4 Minimal WebUI Foundation` 开始。

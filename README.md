@@ -4,22 +4,35 @@ ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + 
 
 ## Current Status
 
-This repository is at **Phase 3** of the migration:
+Current baseline: **M0-M3 platform foundation complete**.
+
+[`PLAN.md`](./PLAN.md) now uses Milestone numbering for future work. Older "Phase" labels refer only to historical checkpoints and should not be used as the forward-looking implementation order.
+
+Completed baseline:
 
 - Old Arduino/HomeSpan implementation has been removed from `main`
-- `main` is now an ESP-IDF project with component-based platform services
+- `main` is now an ESP-IDF project skeleton
+- Componentized platform services are in place: logging, SPIFFS, CN105 UART, and STA-only Wi-Fi
 - CN105 UART is initialized as `UART1 RX=GPIO26 TX=GPIO32 2400 8E1`
 - SPIFFS is mounted on a custom 4MB flash partition table
 - ESP-IDF logs are mirrored to `/spiffs/latest.log` after filesystem mount
-- Wi-Fi is initialized as STA-only through a reusable ESP-IDF component with power save disabled
+- Wi-Fi power save is disabled; Wi-Fi failure stays in STA/reconnect mode and does not start a fallback AP
+- The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
+
+Not restored yet:
+
+- WebUI
+- CN105 protocol core and mock state
+- real CN105 transport
+- HomeKit SDK integration
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
-## Phase 3 Goal
+## Current Baseline Verification
 
-Verify that the ESP-IDF platform foundation can bring up networking before WebUI, CN105 protocol, or HomeKit SDK logic is brought back.
+Verify that the platform foundation is healthy before M4 WebUI, CN105 protocol, real transport, or HomeKit SDK logic is brought back.
 
-Phase 3 is considered complete when:
+The current baseline is considered healthy when:
 
 - it builds successfully
 - it flashes successfully
@@ -72,7 +85,7 @@ You can activate the environment manually with:
 source "/Users/dkt/.espressif/tools/activate_idf_v5.4.1.sh"
 ```
 
-Then this phase can be tested with the usual flow:
+Then the current baseline can be tested with the usual flow:
 
 ```bash
 idf.py set-target esp32
@@ -130,7 +143,7 @@ Expected serial output:
 - `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
 - `WiFi power save disabled`
 - either `Connected to ...` or reconnect/offline STA status
-- a repeating Phase 3 heartbeat every 5 seconds with Wi-Fi status
+- a repeating platform heartbeat every 5 seconds with Wi-Fi status
 
 ## Upstream Reference
 
@@ -140,8 +153,10 @@ Expected serial output:
 
 ## Next Planned Step
 
-Reintroduce the minimal HTTP/WebUI foundation:
+M4: Reintroduce the minimal HTTP/WebUI foundation:
 
 - HTTP server on port 80
-- simple health endpoint
+- `GET /`
+- `GET /api/health`
+- `GET /api/status`
 - small status page driven by the Wi-Fi/platform status components
