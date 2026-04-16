@@ -1,0 +1,553 @@
+#include "cn105_core.h"
+
+#include "esp_log.h"
+
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
+namespace {
+
+const char* TAG = "cn105_core";
+
+static const int PACKET_LEN = 22;
+static const int CONNECT_LEN = 8;
+static const int HEADER_LEN = 8;
+static const int INFOHEADER_LEN = 5;
+
+// Standard CN105 handshake. Byte 1 can be changed to 0x5B for installer mode later.
+static const uint8_t CONNECT[CONNECT_LEN] = {
+    0xFC, 0x5A, 0x01, 0x30, 0x02, 0xCA, 0x01, 0xA8
+};
+
+// SET packet prefix. The following 16 data bytes describe which fields changed and their new values.
+static const uint8_t HEADER[HEADER_LEN] = {
+    0xFC, 0x41, 0x01, 0x30, 0x10, 0x01, 0x00, 0x00
+};
+
+// INFO request prefix. Byte 5 carries the specific info code, then zero padding and checksum.
+static const uint8_t INFOHEADER[INFOHEADER_LEN] = {
+    0xFC, 0x42, 0x01, 0x30, 0x10
+};
+
+// SET byte 6 bit masks: power, mode, temperature, fan, vertical vane.
+static const uint8_t CONTROL_PACKET_1[5] = {
+    0x01, 0x02, 0x04, 0x08, 0x10
+};
+
+// SET byte 7 bit masks: horizontal vane.
+static const uint8_t CONTROL_PACKET_2[1] = {
+    0x01
+};
+
+static const uint8_t POWER[2] = { 0x00, 0x01 };
+static const char* POWER_MAP[2] = { "OFF", "ON" };
+
+static const uint8_t MODE[5] = { 0x01, 0x02, 0x03, 0x07, 0x08 };
+static const char* MODE_MAP[5] = { "HEAT", "DRY", "COOL", "FAN", "AUTO" };
+
+// Legacy temperature is whole Celsius only and reversed: 0x00 = 31C, 0x0F = 16C.
+// The project exposes Fahrenheit, so SET builder uses the high precision byte when possible.
+static const uint8_t TEMP[16] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+};
+static const int TEMP_MAP[16] = {
+    31, 30, 29, 28, 27, 26, 25, 24,
+    23, 22, 21, 20, 19, 18, 17, 16
+};
+
+static const uint8_t FAN[6] = { 0x00, 0x01, 0x02, 0x03, 0x05, 0x06 };
+static const char* FAN_MAP[6] = { "AUTO", "QUIET", "1", "2", "3", "4" };
+
+static const uint8_t VANE[7] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x07 };
+static const char* VANE_MAP[7] = { "AUTO", "1", "2", "3", "4", "5", "SWING" };
+
+static const uint8_t WIDEVANE[8] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0C, 0x00 };
+static const char* WIDEVANE_MAP[8] = { "<<", "<", "|", ">", ">>", "<>", "SWING", "AIRFLOW CONTROL" };
+
+static const uint8_t ROOM_TEMP[32] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+};
+static const int ROOM_TEMP_MAP[32] = {
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41
+};
+
+cn105_core::MockState mock_state;
+char last_packet_hex[cn105_core::kMaxHexLen] = "";
+char last_error[96] = "";
+
+void setError(char* error, size_t error_len, const char* message) {
+    if (error != nullptr && error_len > 0) {
+        std::snprintf(error, error_len, "%s", message);
+    }
+}
+
+bool equals(const char* a, const char* b) {
+    return a != nullptr && b != nullptr && std::strcmp(a, b) == 0;
+}
+
+int lookupIndex(const char* const* map, size_t len, const char* value) {
+    for (size_t i = 0; i < len; ++i) {
+        if (equals(map[i], value)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+const char* lookupString(const char* const* map, const uint8_t* values, size_t len, uint8_t value) {
+    for (size_t i = 0; i < len; ++i) {
+        if (values[i] == value) {
+            return map[i];
+        }
+    }
+    return map[0];
+}
+
+int lookupInt(const int* map, const uint8_t* values, size_t len, uint8_t value, int fallback) {
+    for (size_t i = 0; i < len; ++i) {
+        if (values[i] == value) {
+            return map[i];
+        }
+    }
+    return fallback;
+}
+
+int clampInt(int value, int min, int max) {
+    if (value < min) {
+        return min;
+    }
+    if (value > max) {
+        return max;
+    }
+    return value;
+}
+
+float fahrenheitToCn105Celsius(int fahrenheit) {
+    const float celsius = (static_cast<float>(fahrenheit) - 32.0f) / 1.8f;
+    return std::round(celsius * 2.0f) / 2.0f;
+}
+
+int cn105CelsiusToFahrenheit(float celsius) {
+    return static_cast<int>(std::lround((celsius * 1.8f) + 32.0f));
+}
+
+uint8_t encodeHighPrecisionTemperatureF(int fahrenheit) {
+    const float celsius = fahrenheitToCn105Celsius(fahrenheit);
+    return static_cast<uint8_t>(std::lround(celsius * 2.0f) + 128);
+}
+
+int decodeTemperatureF(uint8_t legacyByte, uint8_t highPrecisionByte) {
+    if (highPrecisionByte != 0x00) {
+        return cn105CelsiusToFahrenheit((static_cast<float>(highPrecisionByte) - 128.0f) / 2.0f);
+    }
+
+    const int celsius = lookupInt(TEMP_MAP, TEMP, 16, legacyByte, 25);
+    return cn105CelsiusToFahrenheit(static_cast<float>(celsius));
+}
+
+int hexValue(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+void rememberPacket(const uint8_t* bytes, size_t len) {
+    cn105_core::bytesToHex(bytes, len, last_packet_hex, sizeof(last_packet_hex));
+    mock_state.lastPacketHex = last_packet_hex;
+}
+
+void rememberError(const char* error) {
+    std::snprintf(last_error, sizeof(last_error), "%s", error == nullptr ? "" : error);
+    mock_state.lastError = last_error;
+}
+
+}  // namespace
+
+namespace cn105_core {
+
+uint8_t checksum(const uint8_t* bytes, size_t len) {
+    uint8_t sum = 0;
+    for (size_t i = 0; i < len; ++i) {
+        sum += bytes[i];
+    }
+    return static_cast<uint8_t>((0xFC - sum) & 0xFF);
+}
+
+bool bytesToHex(const uint8_t* bytes, size_t len, char* out, size_t out_len) {
+    if (bytes == nullptr || out == nullptr || out_len == 0) {
+        return false;
+    }
+
+    size_t offset = 0;
+    for (size_t i = 0; i < len; ++i) {
+        const int written = std::snprintf(out + offset, out_len - offset, "%s%02X", i == 0 ? "" : " ", bytes[i]);
+        if (written < 0 || static_cast<size_t>(written) >= out_len - offset) {
+            out[out_len - 1] = '\0';
+            return false;
+        }
+        offset += static_cast<size_t>(written);
+    }
+    return true;
+}
+
+bool parseHex(const char* hex, uint8_t* out, size_t max_len, size_t* out_len, char* error, size_t error_len) {
+    if (hex == nullptr || out == nullptr || out_len == nullptr) {
+        setError(error, error_len, "missing hex input");
+        return false;
+    }
+
+    size_t count = 0;
+    int high = -1;
+    for (const char* cursor = hex; *cursor != '\0'; ++cursor) {
+        const char c = *cursor;
+        if (c == ' ' || c == ':' || c == ',' || c == '-' || c == '\n' || c == '\r' || c == '\t') {
+            continue;
+        }
+
+        const int value = hexValue(c);
+        if (value < 0) {
+            setError(error, error_len, "hex contains a non-hex character");
+            return false;
+        }
+
+        if (high < 0) {
+            high = value;
+            continue;
+        }
+
+        if (count >= max_len) {
+            setError(error, error_len, "too many bytes for one CN105 packet");
+            return false;
+        }
+
+        out[count++] = static_cast<uint8_t>((high << 4) | value);
+        high = -1;
+    }
+
+    if (high >= 0) {
+        setError(error, error_len, "hex string has an odd number of digits");
+        return false;
+    }
+
+    *out_len = count;
+    return true;
+}
+
+bool buildConnectPacket(Packet* packet, char* error, size_t error_len) {
+    if (packet == nullptr) {
+        setError(error, error_len, "packet output is null");
+        return false;
+    }
+
+    std::memset(packet, 0, sizeof(Packet));
+    std::memcpy(packet->bytes, CONNECT, CONNECT_LEN);
+    packet->bytes[CONNECT_LEN - 1] = checksum(packet->bytes, CONNECT_LEN - 1);
+    packet->length = CONNECT_LEN;
+    return true;
+}
+
+bool buildInfoPacket(uint8_t infoCode, Packet* packet, char* error, size_t error_len) {
+    if (packet == nullptr) {
+        setError(error, error_len, "packet output is null");
+        return false;
+    }
+
+    std::memset(packet, 0, sizeof(Packet));
+    std::memcpy(packet->bytes, INFOHEADER, INFOHEADER_LEN);
+    packet->bytes[5] = infoCode;
+    packet->bytes[kPacketLen - 1] = checksum(packet->bytes, kPacketLen - 1);
+    packet->length = kPacketLen;
+    return true;
+}
+
+bool buildSetPacket(const SetCommand& command, Packet* packet, char* error, size_t error_len) {
+    if (packet == nullptr) {
+        setError(error, error_len, "packet output is null");
+        return false;
+    }
+
+    std::memset(packet, 0, sizeof(Packet));
+    std::memcpy(packet->bytes, HEADER, HEADER_LEN);
+    packet->length = kPacketLen;
+
+    if (command.hasPower) {
+        const int index = lookupIndex(POWER_MAP, 2, command.power);
+        if (index < 0) {
+            setError(error, error_len, "unknown power value");
+            return false;
+        }
+        packet->bytes[8] = POWER[index];
+        packet->bytes[6] |= CONTROL_PACKET_1[0];
+    }
+
+    if (command.hasMode) {
+        const int index = lookupIndex(MODE_MAP, 5, command.mode);
+        if (index < 0) {
+            setError(error, error_len, "unknown mode value");
+            return false;
+        }
+        packet->bytes[9] = MODE[index];
+        packet->bytes[6] |= CONTROL_PACKET_1[1];
+    }
+
+    if (command.hasTemperatureF) {
+        const int clampedF = clampInt(command.temperatureF, 61, 88);
+        packet->bytes[19] = encodeHighPrecisionTemperatureF(clampedF);
+        packet->bytes[6] |= CONTROL_PACKET_1[2];
+    }
+
+    if (command.hasFan) {
+        const int index = lookupIndex(FAN_MAP, 6, command.fan);
+        if (index < 0) {
+            setError(error, error_len, "unknown fan value");
+            return false;
+        }
+        packet->bytes[11] = FAN[index];
+        packet->bytes[6] |= CONTROL_PACKET_1[3];
+    }
+
+    if (command.hasVane) {
+        const int index = lookupIndex(VANE_MAP, 7, command.vane);
+        if (index < 0) {
+            setError(error, error_len, "unknown vertical vane value");
+            return false;
+        }
+        packet->bytes[12] = VANE[index];
+        packet->bytes[6] |= CONTROL_PACKET_1[4];
+    }
+
+    if (command.hasWideVane) {
+        const int index = lookupIndex(WIDEVANE_MAP, 8, command.wideVane);
+        if (index < 0) {
+            setError(error, error_len, "unknown horizontal vane value");
+            return false;
+        }
+        packet->bytes[18] = WIDEVANE[index];
+        packet->bytes[7] |= CONTROL_PACKET_2[0];
+    }
+
+    if (packet->bytes[6] == 0 && packet->bytes[7] == 0) {
+        setError(error, error_len, "SET command does not change any field");
+        return false;
+    }
+
+    packet->bytes[kPacketLen - 1] = checksum(packet->bytes, kPacketLen - 1);
+    return true;
+}
+
+bool decodePacket(const uint8_t* bytes, size_t len, DecodedPacket* decoded, char* error, size_t error_len) {
+    if (bytes == nullptr || decoded == nullptr) {
+        setError(error, error_len, "decode input is null");
+        return false;
+    }
+    if (len < 6) {
+        setError(error, error_len, "packet is too short");
+        return false;
+    }
+    if (bytes[0] != 0xFC) {
+        setError(error, error_len, "packet does not start with 0xFC");
+        return false;
+    }
+
+    const uint8_t data_len = bytes[4];
+    const size_t expected_len = static_cast<size_t>(data_len) + 6;
+    if (len != expected_len) {
+        setError(error, error_len, "packet length does not match data length byte");
+        return false;
+    }
+
+    *decoded = DecodedPacket{};
+    decoded->command = bytes[1];
+    decoded->dataLength = data_len;
+    decoded->checksumOk = bytes[len - 1] == checksum(bytes, len - 1);
+    if (!decoded->checksumOk) {
+        setError(error, error_len, "checksum mismatch");
+        return false;
+    }
+
+    switch (decoded->command) {
+        case 0x41: {
+            std::snprintf(decoded->type, sizeof(decoded->type), "set");
+            const int tempF = decodeTemperatureF(bytes[10], bytes[19]);
+            std::snprintf(decoded->summary,
+                          sizeof(decoded->summary),
+                          "SET flags=%02X/%02X power=%s mode=%s temp=%dF fan=%s vane=%s wide=%s",
+                          bytes[6],
+                          bytes[7],
+                          lookupString(POWER_MAP, POWER, 2, bytes[8]),
+                          lookupString(MODE_MAP, MODE, 5, bytes[9]),
+                          tempF,
+                          lookupString(FAN_MAP, FAN, 6, bytes[11]),
+                          lookupString(VANE_MAP, VANE, 7, bytes[12]),
+                          lookupString(WIDEVANE_MAP, WIDEVANE, 8, bytes[18] & 0x0F));
+            break;
+        }
+        case 0x42:
+            std::snprintf(decoded->type, sizeof(decoded->type), "info_request");
+            decoded->infoCode = bytes[5];
+            std::snprintf(decoded->summary, sizeof(decoded->summary), "INFO request code=0x%02X", bytes[5]);
+            break;
+        case 0x61:
+            std::snprintf(decoded->type, sizeof(decoded->type), "set_ack");
+            std::snprintf(decoded->summary, sizeof(decoded->summary), "SET acknowledged");
+            break;
+        case 0x62: {
+            std::snprintf(decoded->type, sizeof(decoded->type), "info_response");
+            decoded->infoCode = bytes[5];
+            const uint8_t* data = &bytes[5];
+            if (data[0] == 0x02) {
+                std::snprintf(decoded->summary,
+                              sizeof(decoded->summary),
+                              "SETTINGS power=%s mode=%s temp=%dF fan=%s vane=%s wide=%s",
+                              lookupString(POWER_MAP, POWER, 2, data[3]),
+                              lookupString(MODE_MAP, MODE, 5, data[4] > 0x08 ? data[4] - 0x08 : data[4]),
+                              decodeTemperatureF(data[5], data[11]),
+                              lookupString(FAN_MAP, FAN, 6, data[6]),
+                              lookupString(VANE_MAP, VANE, 7, data[7]),
+                              lookupString(WIDEVANE_MAP, WIDEVANE, 8, data[10] & 0x0F));
+            } else if (data[0] == 0x03) {
+                const int roomF = data[6] != 0 ? cn105CelsiusToFahrenheit((static_cast<float>(data[6]) - 128.0f) / 2.0f)
+                                                : cn105CelsiusToFahrenheit(static_cast<float>(lookupInt(ROOM_TEMP_MAP, ROOM_TEMP, 32, data[3], 24)));
+                std::snprintf(decoded->summary, sizeof(decoded->summary), "ROOM temperature=%dF", roomF);
+            } else if (data[0] == 0x06) {
+                std::snprintf(decoded->summary,
+                              sizeof(decoded->summary),
+                              "STATUS compressor=%uHz operating=%s input=%uW",
+                              data[3],
+                              data[4] != 0 ? "yes" : "no",
+                              static_cast<unsigned>((data[5] << 8) | data[6]));
+            } else {
+                std::snprintf(decoded->summary, sizeof(decoded->summary), "INFO response code=0x%02X", data[0]);
+            }
+            break;
+        }
+        case 0x7A:
+        case 0x7B:
+            std::snprintf(decoded->type, sizeof(decoded->type), "connect_ack");
+            std::snprintf(decoded->summary, sizeof(decoded->summary), "CONNECT acknowledged command=0x%02X", decoded->command);
+            break;
+        default:
+            std::snprintf(decoded->type, sizeof(decoded->type), "unknown");
+            std::snprintf(decoded->summary, sizeof(decoded->summary), "Unknown command=0x%02X", decoded->command);
+            break;
+    }
+
+    return true;
+}
+
+void initMockState() {
+    mock_state = MockState{};
+    mock_state.lastPacketHex = last_packet_hex;
+    mock_state.lastError = last_error;
+    ESP_LOGI(TAG,
+             "CN105 mock initialized: power=%s mode=%s target=%dF room=%dF transport=mock",
+             mock_state.power,
+             mock_state.mode,
+             mock_state.targetTemperatureF,
+             mock_state.roomTemperatureF);
+}
+
+MockState getMockState() {
+    mock_state.lastPacketHex = last_packet_hex;
+    mock_state.lastError = last_error;
+    return mock_state;
+}
+
+bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t error_len) {
+    DecodedPacket decoded{};
+    if (!decodePacket(bytes, len, &decoded, error, error_len)) {
+        rememberError(error);
+        return false;
+    }
+    if (decoded.command != 0x41) {
+        setError(error, error_len, "mock apply expects a SET packet");
+        rememberError(error);
+        return false;
+    }
+
+    if ((bytes[6] & CONTROL_PACKET_1[0]) != 0) {
+        mock_state.power = lookupString(POWER_MAP, POWER, 2, bytes[8]);
+    }
+    if ((bytes[6] & CONTROL_PACKET_1[1]) != 0) {
+        mock_state.mode = lookupString(MODE_MAP, MODE, 5, bytes[9]);
+    }
+    if ((bytes[6] & CONTROL_PACKET_1[2]) != 0) {
+        mock_state.targetTemperatureF = decodeTemperatureF(bytes[10], bytes[19]);
+    }
+    if ((bytes[6] & CONTROL_PACKET_1[3]) != 0) {
+        mock_state.fan = lookupString(FAN_MAP, FAN, 6, bytes[11]);
+    }
+    if ((bytes[6] & CONTROL_PACKET_1[4]) != 0) {
+        mock_state.vane = lookupString(VANE_MAP, VANE, 7, bytes[12]);
+    }
+    if ((bytes[7] & CONTROL_PACKET_2[0]) != 0) {
+        mock_state.wideVane = lookupString(WIDEVANE_MAP, WIDEVANE, 8, bytes[18] & 0x0F);
+    }
+
+    mock_state.operating = equals(mock_state.power, "ON");
+    mock_state.compressorFrequencyHz = mock_state.operating ? 42 : 0;
+    mock_state.inputPowerW = mock_state.operating ? 650 : 0;
+    rememberPacket(bytes, len);
+    rememberError("");
+    return true;
+}
+
+bool runSelfTest(char* error, size_t error_len) {
+    SetCommand command{};
+    command.hasPower = true;
+    command.power = "ON";
+    command.hasMode = true;
+    command.mode = "COOL";
+    command.hasTemperatureF = true;
+    command.temperatureF = 77;
+    command.hasFan = true;
+    command.fan = "AUTO";
+    command.hasVane = true;
+    command.vane = "AUTO";
+    command.hasWideVane = true;
+    command.wideVane = "|";
+
+    Packet packet{};
+    if (!buildSetPacket(command, &packet, error, error_len)) {
+        return false;
+    }
+
+    MockState before = mock_state;
+    char previous_packet_hex[sizeof(last_packet_hex)] = {};
+    char previous_error[sizeof(last_error)] = {};
+    std::snprintf(previous_packet_hex, sizeof(previous_packet_hex), "%s", last_packet_hex);
+    std::snprintf(previous_error, sizeof(previous_error), "%s", last_error);
+    if (!applySetPacketToMock(packet.bytes, packet.length, error, error_len)) {
+        mock_state = before;
+        std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
+        std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
+        return false;
+    }
+
+    const int roundTripF = mock_state.targetTemperatureF;
+    mock_state = before;
+    std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
+    std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
+    if (roundTripF != 77) {
+        setError(error, error_len, "77F SET roundtrip failed");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "CN105 offline self-test passed: 77F SET roundtrip");
+    return true;
+}
+
+}  // namespace cn105_core

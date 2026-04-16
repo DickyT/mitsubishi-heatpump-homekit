@@ -2,15 +2,16 @@
 
 ## Summary
 
-当前仓库已经不是原始 `PLAN.md` 里“从零开始”的状态，而是已经完成了当前 README 中记录的 **M0-M4 platform + minimal WebUI foundation**。为避免混乱，后续计划统一用 **Milestone** 表示，不再使用旧 Phase 编号描述未来开发顺序。
+当前仓库已经不是原始 `PLAN.md` 里“从零开始”的状态，而是已经完成了当前 README 中记录的 **M0-M5 platform + minimal WebUI + CN105 offline core**。为避免混乱，后续计划统一用 **Milestone** 表示，不再使用旧 Phase 编号描述未来开发顺序。
 
 当前真实基线：
 
 - `main` 已是 ESP-IDF 工程，不再是 Arduino/HomeSpan 工程。
-- 已完成组件：`app_config`、`platform_log`、`platform_fs`、`platform_uart`、`platform_wifi`、`web`。
+- 已完成组件：`app_config`、`platform_log`、`platform_fs`、`platform_uart`、`platform_wifi`、`web`、`core_cn105`。
 - CN105 UART 固定为 `RX=GPIO26`、`TX=GPIO32`、`2400 8E1`。
 - Wi-Fi 已改为 STA-only，不再 fallback AP。
 - Minimal WebUI 已恢复，端口固定 `80`，包含 `/`、`/api/health`、`/api/status`。
+- CN105 offline core 已恢复，包含 SET payload builder、decode、mock state 和 Fahrenheit roundtrip 验证。
 - 本地 build wrapper 已支持 `./build.py --quiet-first build`。
 - 目标已从 Matter 改为 `ESP-IDF + Espressif esp-homekit-sdk`。
 
@@ -55,7 +56,7 @@
 - `curl http://192.168.1.205/api/status` 返回 `200`。
 - serial heartbeat 继续正常，无 watchdog/noise 问题。
 
-### M5: CN105 Offline Core + Mock State（下一步）
+### M5: CN105 Offline Core + Mock State（已完成）
 
 目标是先把旧项目中已经验证过的 CN105 协议核心恢复到 ESP-IDF 组件里，但不依赖真实空调线缆。
 
@@ -69,11 +70,12 @@
 
 验收：
 
-- 固定输入例如 `77F` build 后，再 decode/mock apply 回读仍是 `77F`。
-- 支持旧项目已有的 raw packet decode 测试样例。
+- 固定输入 `77F` build 后，再 decode/mock apply 回读仍是 `77F`。
+- `GET /api/cn105/decode?hex=...` 可 decode raw packet 并验证 checksum。
 - `/api/status` 能返回完整 CN105 mock state。
+- serial 自检显示 `CN105 offline self-test passed: 77F SET roundtrip`。
 
-### M6: WebUI Feature Restore
+### M6: WebUI Feature Restore（下一步）
 
 目标是恢复旧 WebUI 的主要调试体验，但继续用 ESP-IDF 原生 HTTP server。
 
@@ -148,4 +150,4 @@
 - `README.md` 的当前状态是事实来源；`PLAN.md` 应改成这份 Milestone 计划，避免再出现 Phase 编号冲突。
 - 当前本地 Wi-Fi credential 文件 `app_config_local.h` 继续 gitignored，不进入 commit。
 - 暂不恢复 fallback AP；未来若需要 provisioning，也优先参考 `esp-homekit-sdk/examples/common`，不是恢复旧 AP fallback。
-- 下一步实际编码应从 `M5 CN105 Offline Core + Mock State` 开始。
+- 下一步实际编码应从 `M6 WebUI Feature Restore` 开始。

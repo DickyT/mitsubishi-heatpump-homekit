@@ -4,7 +4,7 @@ ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + 
 
 ## Current Status
 
-Current baseline: **M0-M4 platform + minimal WebUI foundation complete**.
+Current baseline: **M0-M5 platform, minimal WebUI, and CN105 offline core complete**.
 
 [`PLAN.md`](./PLAN.md) now uses Milestone numbering for future work. Older "Phase" labels refer only to historical checkpoints and should not be used as the forward-looking implementation order.
 
@@ -19,12 +19,14 @@ Completed baseline:
 - Wi-Fi power save is disabled; Wi-Fi failure stays in STA/reconnect mode and does not start a fallback AP
 - Minimal ESP-IDF WebUI is available on port `80`
 - `GET /`, `GET /api/health`, and `GET /api/status` are available for platform verification
+- CN105 offline protocol core is available with SET payload builder, packet decode, and mock state
+- Project-facing temperature APIs use Fahrenheit; the protocol core converts to CN105 Celsius payload bytes internally
 - The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
 
 Not restored yet:
 
-- CN105 protocol core and mock state
 - real CN105 transport
+- full WebUI virtual remote/debug pages
 - HomeKit SDK integration
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
@@ -46,6 +48,8 @@ The current baseline is considered healthy when:
 - `http://<esp-ip>/` loads
 - `http://<esp-ip>/api/health` returns JSON
 - `http://<esp-ip>/api/status` returns JSON with Wi-Fi, SPIFFS, and CN105 UART status
+- CN105 offline self-test logs `77F SET roundtrip`
+- `GET /api/cn105/mock/build-set?...temperature_f=77...&apply=1` builds and applies a mock SET packet that reads back as `77F`
 
 ## Repository Layout
 
@@ -57,6 +61,7 @@ The current baseline is considered healthy when:
 - [`components/platform_uart`](./components/platform_uart): CN105 UART setup
 - [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
 - [`components/web`](./components/web): minimal ESP-IDF HTTP/WebUI foundation
+- [`components/core_cn105`](./components/core_cn105): offline CN105 protocol core and mock state
 - [`partitions.csv`](./partitions.csv): custom 4MB flash partition table
 - [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local project guide and hardware rules
 - [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
@@ -147,6 +152,7 @@ Expected serial output:
 - `Persistent log enabled: /spiffs/latest.log`
 - `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
 - `WiFi power save disabled`
+- `CN105 offline self-test passed: 77F SET roundtrip`
 - `WebUI ready: http://<esp-ip>:80/`
 - either `Connected to ...` or reconnect/offline STA status
 - a repeating platform heartbeat every 5 seconds with Wi-Fi status
@@ -159,9 +165,9 @@ Expected serial output:
 
 ## Next Planned Step
 
-M5: Reintroduce the CN105 offline core and mock state:
+M6: Restore the WebUI feature layer on top of the offline CN105 core:
 
-- add `components/core_cn105`
-- restore protocol constants, checksum, SET payload builder, response parser, and state model
-- keep Fahrenheit as the Web/HomeKit-facing temperature unit
-- add mock state so Web/API can build, decode, and apply CN105 packets without a real air-conditioner connection
+- homepage current status plus virtual remote
+- `/debug` for ping, raw decode, and mock payload workflows
+- minimal `/logs` and `/files` support if app size stays comfortable
+- keep real CN105 UART transport disabled until M7

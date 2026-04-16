@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "app_config.h"
+#include "cn105_core.h"
 #include "cn105_uart.h"
 #include "esp_chip_info.h"
 #include "esp_err.h"
@@ -46,6 +47,12 @@ extern "C" void app_main(void) {
     const esp_err_t uart_err = cn105_uart::init();
     if (uart_err != ESP_OK) {
         ESP_LOGE(TAG, "CN105 UART init failed: %s", esp_err_to_name(uart_err));
+    }
+
+    cn105_core::initMockState();
+    char cn105_self_test_error[96] = {};
+    if (!cn105_core::runSelfTest(cn105_self_test_error, sizeof(cn105_self_test_error))) {
+        ESP_LOGW(TAG, "CN105 offline self-test failed: %s", cn105_self_test_error);
     }
 
     const esp_err_t wifi_err = platform_wifi::init();
