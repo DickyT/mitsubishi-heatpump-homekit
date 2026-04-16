@@ -12,24 +12,30 @@ Icon?
 *.swo
 *~
 
-# Arduino / ESP32 build artifacts
+# ESP-IDF build artifacts
 build/
-dist/
-*.elf
+sdkconfig
+sdkconfig.old
+.idf/
+eim_config.toml
+serial_logs/
 *.bin
+*.elf
 *.map
 *.hex
 *.eep
+flasher_args.json
+partition-table.bin
+ota_data_initial.bin
+bootloader.bin
 
-# PlatformIO
-.pio/
-.pioenvs/
-.piolibdeps/
+# Generic build artifacts
+dist/
+*.map
 
 # Python
 __pycache__/
 *.pyc
 
 # Local secrets / overrides
-src/AppSecrets.h
 *.local
