@@ -8,12 +8,20 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "platform_fs.h"
 #include "platform_log.h"
 
 static const char* TAG = "bootstrap";
 
 extern "C" void app_main(void) {
     platform_log::init();
+
+    const esp_err_t fs_err = platform_fs::init();
+    if (fs_err == ESP_OK) {
+        platform_log::enablePersistentLog();
+    } else {
+        ESP_LOGE(TAG, "SPIFFS init failed: %s", esp_err_to_name(fs_err));
+    }
 
     esp_chip_info_t chip_info{};
     uint32_t flash_size = 0;
@@ -40,7 +48,7 @@ extern "C" void app_main(void) {
 
     uint32_t heartbeat = 0;
     while (true) {
-        ESP_LOGI(TAG, "Phase 1 heartbeat #%lu - platform services are alive",
+        ESP_LOGI(TAG, "Phase 2 heartbeat #%lu - filesystem logging is alive",
                  static_cast<unsigned long>(heartbeat++));
         vTaskDelay(pdMS_TO_TICKS(app_config::kHeartbeatIntervalMs));
     }

@@ -4,29 +4,38 @@ ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + 
 
 ## Current Status
 
-This repository has been reset to **Phase 0** of the migration:
+This repository is at **Phase 2** of the migration:
 
 - Old Arduino/HomeSpan implementation has been removed from `main`
-- `main` is now a minimal ESP-IDF project skeleton
-- The only runtime behavior is a simple `app_main()` hello-world style bootstrap with a heartbeat log
+- `main` is now an ESP-IDF project with component-based platform services
+- CN105 UART is initialized as `UART1 RX=GPIO26 TX=GPIO32 2400 8E1`
+- SPIFFS is mounted on a custom 4MB flash partition table
+- ESP-IDF logs are mirrored to `/spiffs/latest.log` after filesystem mount
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
-## Phase 0 Goal
+## Phase 2 Goal
 
-Verify that the repository now works as a clean ESP-IDF project before any CN105, WebUI, filesystem, or Matter logic is brought back.
+Verify that the ESP-IDF platform foundation works before Wi-Fi, WebUI, CN105 protocol, or Matter logic is brought back.
 
-Phase 0 is considered complete when:
+Phase 2 is considered complete when:
 
-- the project opens correctly in VSCode with the ESP-IDF extension
 - it builds successfully
 - it flashes successfully
-- serial monitor shows the bootstrap logs and repeating heartbeat
+- serial output shows the custom 4MB partition table
+- serial output shows SPIFFS mounted
+- serial output shows persistent logging enabled at `/spiffs/latest.log`
+- serial output shows CN105 UART initialized on `rx=26 tx=32`
 
 ## Repository Layout
 
 - [`CMakeLists.txt`](./CMakeLists.txt): ESP-IDF project root
-- [`main/app_main.cpp`](./main/app_main.cpp): Phase 0 bootstrap entrypoint
+- [`main/app_main.cpp`](./main/app_main.cpp): app bootstrap entrypoint
+- [`components/app_config`](./components/app_config): centralized compile-time config
+- [`components/platform_fs`](./components/platform_fs): SPIFFS mount and filesystem stats
+- [`components/platform_log`](./components/platform_log): ESP-IDF log setup and persistent log mirroring
+- [`components/platform_uart`](./components/platform_uart): CN105 UART setup
+- [`partitions.csv`](./partitions.csv): custom 4MB flash partition table
 - [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local project guide and hardware rules
 - [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
 
@@ -59,7 +68,7 @@ You can activate the environment manually with:
 source "/Users/dkt/.espressif/tools/activate_idf_v5.4.1.sh"
 ```
 
-Then Phase 0 can be tested with the usual flow:
+Then this phase can be tested with the usual flow:
 
 ```bash
 idf.py set-target esp32
@@ -87,9 +96,11 @@ The project default flash baud is `115200` for the current M5Stack/ESP32 board.
 
 Expected serial output:
 
-- startup banner mentioning `Phase 0`
-- chip/flash information
-- a repeating heartbeat every 5 seconds
+- custom partition table with `factory` and `spiffs`
+- `SPIFFS mounted`
+- `Persistent log enabled: /spiffs/latest.log`
+- `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
+- a repeating Phase 2 heartbeat every 5 seconds
 
 ## Upstream Reference
 
@@ -97,9 +108,9 @@ Expected serial output:
 
 ## Next Planned Step
 
-Reintroduce the first layer of reusable platform infrastructure on ESP-IDF:
+Add the Wi-Fi service foundation:
 
-- structured logging
-- filesystem mount
-- Wi-Fi service
-- CN105 UART service
+- centralized Wi-Fi config placeholders
+- STA connection
+- power-save disabled
+- basic network heartbeat fields

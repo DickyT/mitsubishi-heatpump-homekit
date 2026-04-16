@@ -3,9 +3,32 @@
 #include "app_config.h"
 #include "esp_log.h"
 
+#include <cstdarg>
+#include <cstdio>
+
 namespace {
 
 const char* TAG = "platform_log";
+
+vprintf_like_t previous_vprintf = nullptr;
+FILE* log_file = nullptr;
+
+int teeVprintf(const char* format, va_list args) {
+    va_list console_args;
+    va_copy(console_args, args);
+    const int written = previous_vprintf ? previous_vprintf(format, console_args) : vprintf(format, console_args);
+    va_end(console_args);
+
+    if (log_file) {
+        va_list file_args;
+        va_copy(file_args, args);
+        vfprintf(log_file, format, file_args);
+        fflush(log_file);
+        va_end(file_args);
+    }
+
+    return written;
+}
 
 const char* logLevelName(esp_log_level_t level) {
     switch (level) {
@@ -32,6 +55,21 @@ namespace platform_log {
 
 void init() {
     esp_log_level_set("*", app_config::kDefaultLogLevel);
+}
+
+void enablePersistentLog() {
+    if (log_file) {
+        return;
+    }
+
+    log_file = fopen(app_config::kPersistentLogPath, "w");
+    if (!log_file) {
+        ESP_LOGE(TAG, "Unable to open persistent log file: %s", app_config::kPersistentLogPath);
+        return;
+    }
+
+    previous_vprintf = esp_log_set_vprintf(teeVprintf);
+    ESP_LOGI(TAG, "Persistent log enabled: %s", app_config::kPersistentLogPath);
 }
 
 void logStartupSummary() {

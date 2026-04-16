@@ -7,10 +7,15 @@
 namespace app_config {
 
 inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump Matter";
-inline constexpr char kPhaseName[] = "Phase 1 platform services skeleton";
+inline constexpr char kPhaseName[] = "Phase 2 SPIFFS persistent logging skeleton";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
+
+inline constexpr char kSpiffsBasePath[] = "/spiffs";
+inline constexpr char kSpiffsPartitionLabel[] = "spiffs";
+inline constexpr int kSpiffsMaxOpenFiles = 5;
+inline constexpr char kPersistentLogPath[] = "/spiffs/latest.log";
 
 inline constexpr uart_port_t kCn105UartPort = UART_NUM_1;
 inline constexpr gpio_num_t kCn105RxPin = GPIO_NUM_26;
