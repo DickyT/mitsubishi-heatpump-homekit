@@ -7,6 +7,7 @@
 namespace {
 
 const char* TAG = "cn105_uart";
+bool initialized = false;
 
 const char* parityName(uart_parity_t parity) {
     switch (parity) {
@@ -72,8 +73,20 @@ esp_err_t init() {
         return err;
     }
 
+    initialized = true;
     ESP_LOGI(TAG, "CN105 UART ready");
     return ESP_OK;
+}
+
+Status getStatus() {
+    return Status{
+        .initialized = initialized,
+        .uart = static_cast<int>(app_config::kCn105UartPort),
+        .rxPin = static_cast<int>(app_config::kCn105RxPin),
+        .txPin = static_cast<int>(app_config::kCn105TxPin),
+        .baudRate = app_config::kCn105BaudRate,
+        .format = "8E1",
+    };
 }
 
 }  // namespace cn105_uart

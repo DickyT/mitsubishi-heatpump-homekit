@@ -11,6 +11,7 @@
 #include "platform_fs.h"
 #include "platform_log.h"
 #include "platform_wifi.h"
+#include "web_server.h"
 
 static const char* TAG = "bootstrap";
 
@@ -52,10 +53,15 @@ extern "C" void app_main(void) {
         ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(wifi_err));
     }
 
+    const esp_err_t web_err = web_server::start();
+    if (web_err != ESP_OK) {
+        ESP_LOGE(TAG, "WebUI start failed: %s", esp_err_to_name(web_err));
+    }
+
     uint32_t heartbeat = 0;
     while (true) {
         platform_wifi::maintain();
-        ESP_LOGI(TAG, "Phase 3 heartbeat #%lu - WiFi service is alive",
+        ESP_LOGI(TAG, "Platform heartbeat #%lu - services are alive",
                  static_cast<unsigned long>(heartbeat));
         platform_wifi::logStatus("heartbeat");
         heartbeat++;

@@ -19,10 +19,11 @@
 namespace app_config {
 
 inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump HomeKit";
-inline constexpr char kPhaseName[] = "Phase 3 WiFi service foundation";
+inline constexpr char kPhaseName[] = "M4 minimal WebUI foundation";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
+inline constexpr uint16_t kWebServerPort = 80;
 
 inline constexpr char kSpiffsBasePath[] = "/spiffs";
 inline constexpr char kSpiffsPartitionLabel[] = "spiffs";
