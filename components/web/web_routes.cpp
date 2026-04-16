@@ -55,13 +55,30 @@ void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t ou
 }
 
 esp_err_t rootHandler(httpd_req_t* req) {
-    constexpr size_t kRootBodyLen = 4096;
+    constexpr size_t kRootBodyLen = 12000;
     char* body = static_cast<char*>(std::calloc(kRootBodyLen, sizeof(char)));
     if (body == nullptr) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
     }
 
     if (!web_pages::renderRoot(body, kRootBodyLen)) {
+        std::free(body);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "page render failed");
+    }
+
+    const esp_err_t err = web_http::sendText(req, "text/html; charset=utf-8", body);
+    std::free(body);
+    return err;
+}
+
+esp_err_t debugHandler(httpd_req_t* req) {
+    constexpr size_t kDebugBodyLen = 9000;
+    char* body = static_cast<char*>(std::calloc(kDebugBodyLen, sizeof(char)));
+    if (body == nullptr) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
+    }
+
+    if (!web_pages::renderDebug(body, kDebugBodyLen)) {
         std::free(body);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "page render failed");
     }
@@ -291,6 +308,7 @@ esp_err_t cn105DecodeHandler(httpd_req_t* req) {
 
 const web_http::Route ROUTES[] = {
     { "/", HTTP_GET, rootHandler },
+    { "/debug", HTTP_GET, debugHandler },
     { "/api/health", HTTP_GET, healthHandler },
     { "/api/status", HTTP_GET, statusHandler },
     { "/api/cn105/mock/status", HTTP_GET, cn105MockStatusHandler },
