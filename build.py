@@ -98,9 +98,30 @@ def detect_serial_ports() -> list[str]:
     return sorted(set(ports))
 
 
-def run_idf(args: list[str]) -> int:
+def run_idf(args: list[str], quiet_first: bool = False) -> int:
     cmd = [str(IDF_PYTHON), str(IDF_SCRIPT), *args]
-    return subprocess.call(cmd, cwd=PROJECT_ROOT, env=build_env())
+    env = build_env()
+    if not quiet_first:
+        return subprocess.call(cmd, cwd=PROJECT_ROOT, env=env)
+
+    print(f"Running quietly: idf.py {' '.join(args)}", flush=True)
+    result = subprocess.run(
+        cmd,
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode == 0:
+        print(f"Quiet run succeeded: idf.py {' '.join(args)}", flush=True)
+        return 0
+
+    print(
+        f"Quiet run failed with exit code {result.returncode}; re-running once with normal verbose output...",
+        flush=True,
+    )
+    return subprocess.call(cmd, cwd=PROJECT_ROOT, env=env)
 
 
 def flash(args: argparse.Namespace) -> int:
@@ -130,7 +151,7 @@ def flash(args: argparse.Namespace) -> int:
         idf_args.extend(["build", "flash"])
     if args.monitor:
         idf_args.append("monitor")
-    return run_idf(idf_args)
+    return run_idf(idf_args, quiet_first=args.quiet_first)
 
 
 def serial_log(args: argparse.Namespace) -> int:
@@ -185,25 +206,37 @@ def serial_log(args: argparse.Namespace) -> int:
 def main() -> int:
     ensure_idf_python()
 
-    if len(sys.argv) > 1 and sys.argv[1] == "flash-auto":
+    argv = sys.argv[1:]
+    quiet_first = False
+    if "--quiet-first" in argv:
+        quiet_first = True
+        argv = [arg for arg in argv if arg != "--quiet-first"]
+    if "-q" in argv:
+        quiet_first = True
+        argv = [arg for arg in argv if arg != "-q"]
+
+    if len(argv) > 0 and argv[0] == "flash-auto":
         parser = argparse.ArgumentParser(description="Auto-detect ESP32 serial port and flash this project.")
         parser.add_argument("-p", "--port", help="Serial port, for example /dev/cu.usbserial-xxxx")
         parser.add_argument("-b", "--baud", default=DEFAULT_FLASH_BAUD, type=int, help="Flash baud rate")
         parser.add_argument("--monitor", action="store_true", help="Open serial monitor after flashing")
         parser.add_argument("--no-build", action="store_true", help="Skip build and only flash existing binaries")
-        return flash(parser.parse_args(sys.argv[2:]))
+        parser.add_argument("--quiet-first", action="store_true", help="Capture idf.py output first, rerun verbose only on failure")
+        parsed = parser.parse_args(argv[1:])
+        parsed.quiet_first = parsed.quiet_first or quiet_first
+        return flash(parsed)
 
-    if len(sys.argv) > 1 and sys.argv[1] == "serial-log":
+    if len(argv) > 0 and argv[0] == "serial-log":
         parser = argparse.ArgumentParser(description="Auto-detect ESP32 serial port and print serial logs briefly.")
         parser.add_argument("-p", "--port", help="Serial port, for example /dev/cu.usbserial-xxxx")
         parser.add_argument("-b", "--baud", default=115200, type=int, help="Serial baud rate")
         parser.add_argument("-s", "--seconds", default=15, type=int, help="How many seconds to read")
         parser.add_argument("--no-save", dest="save", action="store_false", help="Do not save a local log copy")
         parser.set_defaults(save=True)
-        return serial_log(parser.parse_args(sys.argv[2:]))
+        return serial_log(parser.parse_args(argv[1:]))
 
-    args = sys.argv[1:] or ["build"]
-    return run_idf(args)
+    args = argv or ["build"]
+    return run_idf(args, quiet_first=quiet_first)
 
 
 if __name__ == "__main__":

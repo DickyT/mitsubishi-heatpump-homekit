@@ -1,6 +1,6 @@
 # mitsubishi-heatpump-homekit
 
-ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + esp-matter**.
+ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + Espressif ESP HomeKit SDK**.
 
 ## Current Status
 
@@ -11,13 +11,13 @@ This repository is at **Phase 3** of the migration:
 - CN105 UART is initialized as `UART1 RX=GPIO26 TX=GPIO32 2400 8E1`
 - SPIFFS is mounted on a custom 4MB flash partition table
 - ESP-IDF logs are mirrored to `/spiffs/latest.log` after filesystem mount
-- Wi-Fi is initialized through a reusable ESP-IDF component with power save disabled
+- Wi-Fi is initialized as STA-only through a reusable ESP-IDF component with power save disabled
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
 ## Phase 3 Goal
 
-Verify that the ESP-IDF platform foundation can bring up networking before WebUI, CN105 protocol, or Matter logic is brought back.
+Verify that the ESP-IDF platform foundation can bring up networking before WebUI, CN105 protocol, or HomeKit SDK logic is brought back.
 
 Phase 3 is considered complete when:
 
@@ -27,7 +27,7 @@ Phase 3 is considered complete when:
 - serial output shows SPIFFS mounted
 - serial output shows persistent logging enabled at `/spiffs/latest.log`
 - serial output shows CN105 UART initialized on `rx=26 tx=32`
-- serial output shows either STA Wi-Fi connected or fallback AP started
+- serial output shows STA Wi-Fi connected, or STA reconnect attempts if Wi-Fi is unavailable
 - heartbeat logs include Wi-Fi mode, IP, RSSI, MAC, and last event
 
 ## Repository Layout
@@ -38,7 +38,7 @@ Phase 3 is considered complete when:
 - [`components/platform_fs`](./components/platform_fs): SPIFFS mount and filesystem stats
 - [`components/platform_log`](./components/platform_log): ESP-IDF log setup and persistent log mirroring
 - [`components/platform_uart`](./components/platform_uart): CN105 UART setup
-- [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA/AP setup and network heartbeat status
+- [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
 - [`partitions.csv`](./partitions.csv): custom 4MB flash partition table
 - [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local project guide and hardware rules
 - [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
@@ -95,6 +95,13 @@ Or use the project-specific auto-flash helper:
 ./build.py serial-log --seconds 15
 ```
 
+For quieter Codex/tool runs, use `--quiet-first`. It captures the first `idf.py` run and only reruns with verbose output if the quiet attempt fails:
+
+```bash
+./build.py --quiet-first build
+./build.py --quiet-first flash-auto --no-build
+```
+
 The project default flash baud is `115200` for the current M5Stack/ESP32 board.
 `serial-log` also overwrites an ignored local copy at `serial_logs/latest-serial.log` by default.
 
@@ -113,7 +120,7 @@ Then edit `components/app_config/include/app_config_local.h`:
 #define APP_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 ```
 
-If no real SSID is configured, the device starts a fallback AP named `Mitsubishi-Setup` with password `12345678`.
+If no real SSID is configured, the device stays offline and does not start a fallback AP. If STA connection fails, it keeps retrying in STA mode.
 
 Expected serial output:
 
@@ -122,12 +129,14 @@ Expected serial output:
 - `Persistent log enabled: /spiffs/latest.log`
 - `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
 - `WiFi power save disabled`
-- either `Connected to ...` or `Fallback AP started`
+- either `Connected to ...` or reconnect/offline STA status
 - a repeating Phase 3 heartbeat every 5 seconds with Wi-Fi status
 
 ## Upstream Reference
 
 - Upstream reference: [echavet/MitsubishiCN105ESPHome](https://github.com/echavet/MitsubishiCN105ESPHome)
+- HomeKit SDK target: [espressif/esp-homekit-sdk](https://github.com/espressif/esp-homekit-sdk)
+- HomeKit SDK common examples: [esp-homekit-sdk/examples/common](https://github.com/espressif/esp-homekit-sdk/tree/master/examples/common)
 
 ## Next Planned Step
 

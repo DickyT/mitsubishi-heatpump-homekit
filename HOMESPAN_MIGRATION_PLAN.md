@@ -1,4 +1,7 @@
-# 迁移计划：MitsubishiCN105ESPHome -> ESP HomeSpan
+# LEGACY 迁移计划：MitsubishiCN105ESPHome -> ESP HomeSpan
+
+> 当前文件已被 `PLAN.md` 取代，只保留作旧 Arduino/HomeSpan 实现的参考。
+> 当前生产迁移方向是 `ESP-IDF + Espressif esp-homekit-sdk`，不要继续按本文件实现 HomeSpan。
 
 ## 目标
 

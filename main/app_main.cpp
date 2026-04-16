@@ -30,7 +30,7 @@ extern "C" void app_main(void) {
     esp_chip_info(&chip_info);
     esp_flash_get_size(nullptr, &flash_size);
 
-    ESP_LOGI(TAG, "Mitsubishi Heat Pump Matter bootstrap starting");
+    ESP_LOGI(TAG, "Mitsubishi Heat Pump HomeKit bootstrap starting");
     platform_log::logStartupSummary();
     ESP_LOGI(TAG,
              "Chip: cores=%d, revision=%d, features=%s%s%s%s",

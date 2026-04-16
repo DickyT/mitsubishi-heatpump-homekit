@@ -21,14 +21,12 @@ const char* TAG = "platform_wifi";
 
 bool initialized = false;
 bool sta_connected = false;
-bool fallback_ap_active = false;
 bool sta_mode_active = false;
 int64_t last_event_us = 0;
 int64_t last_reconnect_us = 0;
 char current_ip[16] = "0.0.0.0";
 char last_event[32] = "boot";
 esp_netif_t* sta_netif = nullptr;
-esp_netif_t* ap_netif = nullptr;
 
 bool hasConfiguredStaCredentials() {
     return std::strcmp(app_config::kWifiSsid, "YOUR_WIFI_SSID") != 0 && app_config::kWifiSsid[0] != '\0';
@@ -49,16 +47,6 @@ void formatMac(char* out, size_t out_len) {
     }
 
     snprintf(out, out_len, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-}
-
-void formatNetifIp(esp_netif_t* netif, char* out, size_t out_len) {
-    esp_netif_ip_info_t ip_info = {};
-    if (!netif || esp_netif_get_ip_info(netif, &ip_info) != ESP_OK) {
-        std::strncpy(out, "0.0.0.0", out_len);
-        return;
-    }
-
-    snprintf(out, out_len, IPSTR, IP2STR(&ip_info.ip));
 }
 
 const char* modeName(wifi_mode_t mode) {
@@ -126,11 +114,9 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
                 break;
             case WIFI_EVENT_AP_START:
                 setLastEvent("AP_START");
-                fallback_ap_active = true;
                 break;
             case WIFI_EVENT_AP_STOP:
                 setLastEvent("AP_STOP");
-                fallback_ap_active = false;
                 break;
             case WIFI_EVENT_HOME_CHANNEL_CHANGE:
                 setLastEvent("HOME_CHANNEL_CHANGE");
@@ -153,32 +139,6 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
     }
 }
 
-esp_err_t startFallbackAp() {
-    if (!ap_netif) {
-        ap_netif = esp_netif_create_default_wifi_ap();
-    }
-
-    wifi_config_t ap_config = {};
-    std::strncpy(reinterpret_cast<char*>(ap_config.ap.ssid), app_config::kFallbackApSsid, sizeof(ap_config.ap.ssid));
-    ap_config.ap.ssid_len = std::strlen(app_config::kFallbackApSsid);
-    std::strncpy(reinterpret_cast<char*>(ap_config.ap.password),
-                 app_config::kFallbackApPassword,
-                 sizeof(ap_config.ap.password));
-    ap_config.ap.channel = 1;
-    ap_config.ap.max_connection = 4;
-    ap_config.ap.authmode = std::strlen(app_config::kFallbackApPassword) == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
-
-    ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_AP), TAG, "esp_wifi_set_mode AP failed");
-    ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap_config), TAG, "esp_wifi_set_config AP failed");
-    ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "esp_wifi_start AP failed");
-    disablePowerSave("fallback-ap");
-
-    fallback_ap_active = true;
-    sta_mode_active = false;
-    ESP_LOGI(TAG, "Fallback AP started: ssid=%s password=%s", app_config::kFallbackApSsid, app_config::kFallbackApPassword);
-    return ESP_OK;
-}
-
 esp_err_t startSta() {
     if (!sta_netif) {
         sta_netif = esp_netif_create_default_wifi_sta();
@@ -197,12 +157,11 @@ esp_err_t startSta() {
     disablePowerSave("sta-start");
 
     sta_mode_active = true;
-    fallback_ap_active = false;
     ESP_LOGI(TAG, "Connecting to WiFi SSID: %s", app_config::kWifiSsid);
     return ESP_OK;
 }
 
-esp_err_t waitForStaOrFallback() {
+esp_err_t waitForStaConnection() {
     const int64_t deadline_us = esp_timer_get_time() + (static_cast<int64_t>(app_config::kWifiConnectTimeoutMs) * 1000);
     while (!sta_connected && esp_timer_get_time() < deadline_us) {
         vTaskDelay(pdMS_TO_TICKS(250));
@@ -212,11 +171,9 @@ esp_err_t waitForStaOrFallback() {
         return ESP_OK;
     }
 
-    ESP_LOGW(TAG, "STA connection timed out after %lums; switching to fallback AP",
+    ESP_LOGW(TAG, "STA connection timed out after %lums; staying in STA mode and continuing reconnect attempts",
              static_cast<unsigned long>(app_config::kWifiConnectTimeoutMs));
-    sta_mode_active = false;
-    ESP_RETURN_ON_ERROR(esp_wifi_stop(), TAG, "esp_wifi_stop before fallback failed");
-    return startFallbackAp();
+    return ESP_OK;
 }
 
 }  // namespace
@@ -250,30 +207,26 @@ esp_err_t init() {
     initialized = true;
 
     if (!hasConfiguredStaCredentials()) {
-        ESP_LOGW(TAG, "No STA WiFi credentials configured; starting fallback AP");
-        return startFallbackAp();
+        ESP_LOGW(TAG, "No STA WiFi credentials configured; WiFi will remain offline and no fallback AP will be started");
+        return ESP_OK;
     }
 
     ESP_RETURN_ON_ERROR(startSta(), TAG, "start STA failed");
-    return waitForStaOrFallback();
+    return waitForStaConnection();
 }
 
 Status getStatus() {
     Status status{};
     status.initialized = initialized;
     status.staConnected = sta_connected;
-    status.fallbackApActive = fallback_ap_active;
+    status.fallbackApActive = false;
 
     wifi_mode_t mode = WIFI_MODE_NULL;
     if (initialized && esp_wifi_get_mode(&mode) == ESP_OK) {
         std::strncpy(status.mode, modeName(mode), sizeof(status.mode) - 1);
     }
 
-    if (fallback_ap_active) {
-        formatNetifIp(ap_netif, status.ip, sizeof(status.ip));
-    } else {
-        std::strncpy(status.ip, current_ip, sizeof(status.ip) - 1);
-    }
+    std::strncpy(status.ip, current_ip, sizeof(status.ip) - 1);
     formatMac(status.mac, sizeof(status.mac));
     std::strncpy(status.lastEvent, last_event, sizeof(status.lastEvent) - 1);
 
@@ -287,8 +240,6 @@ Status getStatus() {
             status.rssi = ap_info.rssi;
             status.channel = ap_info.primary;
         }
-    } else if (fallback_ap_active) {
-        status.channel = 1;
     }
 
     return status;

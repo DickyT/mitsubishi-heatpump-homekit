@@ -18,7 +18,7 @@
 
 namespace app_config {
 
-inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump Matter";
+inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump HomeKit";
 inline constexpr char kPhaseName[] = "Phase 3 WiFi service foundation";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
@@ -31,8 +31,6 @@ inline constexpr char kPersistentLogPath[] = "/spiffs/latest.log";
 
 inline constexpr char kWifiSsid[] = APP_WIFI_SSID;
 inline constexpr char kWifiPassword[] = APP_WIFI_PASSWORD;
-inline constexpr char kFallbackApSsid[] = "Mitsubishi-Setup";
-inline constexpr char kFallbackApPassword[] = "12345678";
 inline constexpr bool kWifiDisablePowerSave = true;
 inline constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 inline constexpr uint32_t kWifiReconnectIntervalMs = 10000;

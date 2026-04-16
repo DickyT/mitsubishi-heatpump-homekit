@@ -1,4 +1,4 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(mitsubishi_heatpump_matter)
+project(mitsubishi_heatpump_homekit)
