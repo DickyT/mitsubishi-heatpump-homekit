@@ -4,7 +4,10 @@
 #include "cn105_core.h"
 #include "cn105_transport.h"
 #include "cn105_uart.h"
+#include "esp_system.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "homekit_bridge.h"
 #include "platform_fs.h"
 #include "platform_wifi.h"
@@ -86,7 +89,7 @@ void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t ou
 }
 
 esp_err_t rootHandler(httpd_req_t* req) {
-    constexpr size_t kRootBodyLen = 12000;
+    constexpr size_t kRootBodyLen = 14000;
     char* body = static_cast<char*>(std::calloc(kRootBodyLen, sizeof(char)));
     if (body == nullptr) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
@@ -369,11 +372,35 @@ esp_err_t cn105DecodeHandler(httpd_req_t* req) {
     return web_http::sendText(req, "application/json", body);
 }
 
+esp_err_t adminHandler(httpd_req_t* req) {
+    constexpr size_t kAdminBodyLen = 8000;
+    char* body = static_cast<char*>(std::calloc(kAdminBodyLen, sizeof(char)));
+    if (body == nullptr) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
+    }
+    if (!web_pages::renderAdmin(body, kAdminBodyLen)) {
+        std::free(body);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "page render failed");
+    }
+    const esp_err_t err = web_http::sendText(req, "text/html; charset=utf-8", body);
+    std::free(body);
+    return err;
+}
+
+esp_err_t rebootHandler(httpd_req_t* req) {
+    web_http::sendText(req, "application/json", "{\"ok\":true,\"message\":\"rebooting\"}");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+    return ESP_OK;
+}
+
 const web_http::Route ROUTES[] = {
     { "/", HTTP_GET, rootHandler },
     { "/debug", HTTP_GET, debugHandler },
+    { "/admin", HTTP_GET, adminHandler },
     { "/api/health", HTTP_GET, healthHandler },
     { "/api/status", HTTP_GET, statusHandler },
+    { "/api/reboot", HTTP_POST, rebootHandler },
     { "/api/cn105/mock/status", HTTP_GET, cn105MockStatusHandler },
     { "/api/cn105/mock/build-set", HTTP_GET, cn105BuildSetHandler },
     { "/api/cn105/mock/build-set", HTTP_POST, cn105BuildSetHandler },
