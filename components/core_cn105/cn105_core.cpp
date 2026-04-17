@@ -139,6 +139,34 @@ uint8_t encodeHighPrecisionTemperatureF(int fahrenheit) {
     return static_cast<uint8_t>(std::lround(celsius * 2.0f) + 128);
 }
 
+// Precise F-to-half-C mapping matching Mitsubishi's expected values.
+// Each entry is {fahrenheit, celsius_x10} where celsius_x10 is 0.1C units.
+struct FahrenheitEntry { int f; int c10; };
+static const FahrenheitEntry F_TO_C[] = {
+    {50,100},{51,105},{52,110},{53,115},{54,120},{55,125},{56,135},{57,140},
+    {58,145},{59,150},{60,155},{61,160},{62,165},{63,170},{64,175},{65,185},
+    {66,190},{67,195},{68,200},{69,210},{70,210},{71,215},{72,220},{73,230},
+    {74,235},{75,240},{76,245},{77,250},{78,255},{79,260},{80,265},{81,270},
+    {82,280},{83,285},{84,290},{85,295},{86,300},{87,305},{88,310},
+};
+constexpr int kFTableSize = sizeof(F_TO_C) / sizeof(F_TO_C[0]);
+
+float lookupCelsiusForFahrenheit(int fahrenheit) {
+    for (int i = 0; i < kFTableSize; ++i) {
+        if (F_TO_C[i].f == fahrenheit) {
+            return static_cast<float>(F_TO_C[i].c10) / 10.0f;
+        }
+    }
+    return fahrenheitToCn105Celsius(fahrenheit);
+}
+
+uint8_t encodeLegacyTemperatureByte(float celsius) {
+    int whole = static_cast<int>(celsius + 0.25f);
+    if (whole < 16) whole = 16;
+    if (whole > 31) whole = 31;
+    return static_cast<uint8_t>(31 - whole);
+}
+
 int decodeTemperatureF(uint8_t legacyByte, uint8_t highPrecisionByte) {
     if (highPrecisionByte != 0x00) {
         return cn105CelsiusToFahrenheit((static_cast<float>(highPrecisionByte) - 128.0f) / 2.0f);
@@ -302,7 +330,9 @@ bool buildSetPacket(const SetCommand& command, Packet* packet, char* error, size
 
     if (command.hasTemperatureF) {
         const int clampedF = clampInt(command.temperatureF, 50, 88);
-        packet->bytes[19] = encodeHighPrecisionTemperatureF(clampedF);
+        const float celsius = lookupCelsiusForFahrenheit(clampedF);
+        packet->bytes[19] = static_cast<uint8_t>(std::lround(celsius * 2.0f) + 128);
+        packet->bytes[10] = encodeLegacyTemperatureByte(celsius);
         packet->bytes[6] |= CONTROL_PACKET_1[2];
     }
 

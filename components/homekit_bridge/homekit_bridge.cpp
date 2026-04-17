@@ -2,8 +2,10 @@
 
 #include "app_config.h"
 #include "cn105_core.h"
+#include "cn105_transport.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 extern "C" {
 #include "hap.h"
@@ -37,6 +39,8 @@ constexpr float kMaxTargetCelsius = 31.0f;
 constexpr float kTargetStepCelsius = 0.5f;
 
 bool started = false;
+int64_t last_command_us = 0;
+constexpr int64_t kGracePeriodUs = 3 * 1000 * 1000;
 hap_acc_t* accessory = nullptr;
 hap_serv_t* heater_cooler = nullptr;
 hap_char_t* active_char = nullptr;
@@ -195,7 +199,17 @@ void updateCharFloat(hap_char_t* character, float value) {
     hap_char_update_val(character, &hap_value);
 }
 
-bool applyToMock(const cn105_core::SetCommand& command) {
+bool applyCommand(const cn105_core::SetCommand& command) {
+    if (app_config::kCn105UseRealTransport) {
+        if (!cn105_transport::queueSetCommand(command)) {
+            setLastError("transport queue full");
+            ESP_LOGW(TAG, "HomeKit command queue failed");
+            return false;
+        }
+        setLastError("");
+        return true;
+    }
+
     cn105_core::Packet packet{};
     char error[96] = {};
     if (!cn105_core::buildSetPacket(command, &packet, error, sizeof(error))) {
@@ -208,7 +222,6 @@ bool applyToMock(const cn105_core::SetCommand& command) {
         ESP_LOGW(TAG, "HomeKit command mock apply failed: %s", error);
         return false;
     }
-
     setLastError("");
     return true;
 }
@@ -300,7 +313,7 @@ int heaterCoolerWrite(hap_write_data_t write_data[], int count, void*, void*) {
         }
     }
 
-    if (should_apply && !applyToMock(command)) {
+    if (should_apply && !applyCommand(command)) {
         for (int i = 0; i < count; ++i) {
             if (write_data[i].status != nullptr) {
                 *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
@@ -310,6 +323,7 @@ int heaterCoolerWrite(hap_write_data_t write_data[], int count, void*, void*) {
     }
 
     homekit_bridge::syncFromMock();
+    last_command_us = esp_timer_get_time();
     setLastEvent("heater-cooler-write");
     return HAP_SUCCESS;
 }
@@ -463,6 +477,10 @@ Status getStatus() {
 
 void syncFromMock() {
     if (!started) {
+        return;
+    }
+    if (app_config::kCn105UseRealTransport &&
+        (esp_timer_get_time() - last_command_us) < kGracePeriodUs) {
         return;
     }
 

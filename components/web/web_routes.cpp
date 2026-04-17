@@ -301,8 +301,14 @@ esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
     char apply_value[8] = {};
     const bool apply = req->method == HTTP_POST ||
         (web_http::queryValue(query, "apply", apply_value, sizeof(apply_value)) && std::strcmp(apply_value, "1") == 0);
-    if (apply && !cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
-        return web_http::sendJsonError(req, error);
+    if (apply) {
+        if (app_config::kCn105UseRealTransport) {
+            if (!cn105_transport::queueSetCommand(command)) {
+                return web_http::sendJsonError(req, "transport queue full");
+            }
+        } else if (!cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
+            return web_http::sendJsonError(req, error);
+        }
     }
 
     char packet_hex[cn105_core::kMaxHexLen] = {};
