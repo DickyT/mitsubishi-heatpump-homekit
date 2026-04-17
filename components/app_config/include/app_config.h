@@ -19,7 +19,7 @@
 namespace app_config {
 
 inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump HomeKit";
-inline constexpr char kPhaseName[] = "M7 HomeKit over mock CN105";
+inline constexpr char kPhaseName[] = "ESP-IDF stable baseline";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;

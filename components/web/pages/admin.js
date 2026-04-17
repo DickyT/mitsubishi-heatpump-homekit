@@ -46,7 +46,7 @@ async function loadInfo(){
     const r=await fetch('/api/status');const j=await r.json();
     homekitStatus=j.homekit||null;
     $('i-device').textContent=j.device;
-    $('i-phase').textContent=j.phase;
+    $('i-runtime').textContent=j.cn105.transport==='real'?'真实 CN105':'Mock CN105';
     $('i-uptime').textContent=Math.floor(j.uptime_ms/1000)+'s';
     $('i-wifi').textContent=j.wifi.ip+' ('+j.wifi.rssi+'dBm)';
     $('i-mac').textContent=j.wifi.mac;
@@ -56,7 +56,6 @@ async function loadInfo(){
     $('i-hk-code').textContent=j.homekit.setup_code;
     $('i-log-current').textContent=j.log.current||'-';
     $('i-log-level').textContent=j.log.level||'-';
-    $('i-transport').textContent=j.cn105.transport;
   }catch(e){$('msg').textContent='\u52a0\u8f7d\u5931\u8d25: '+e;}
 }
 async function reboot(){

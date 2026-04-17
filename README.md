@@ -4,9 +4,9 @@ ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + 
 
 ## Current Status
 
-Current baseline: **M0-M7 platform, WebUI, CN105 offline core, and HomeKit-over-mock code complete**.
+Current baseline: **ESP-IDF platform, WebUI, CN105 offline core, HomeKit bridge, and real CN105 transport implementation are in place**.
 
-[`PLAN.md`](./PLAN.md) now uses Milestone numbering for future work. Older "Phase" labels refer only to historical checkpoints and should not be used as the forward-looking implementation order.
+[`PLAN.md`](./PLAN.md) now describes the repository in terms of current status and remaining validation work. Older `M7/M8` wording should be treated as historical migration context, not the current forward plan.
 
 Completed baseline:
 
@@ -21,19 +21,20 @@ Completed baseline:
 - `GET /`, `GET /api/health`, and `GET /api/status` are available for platform verification
 - CN105 offline protocol core is available with SET payload builder, packet decode, and mock state
 - WebUI feature layer is available: `/` is the virtual remote, `/debug` is the raw decode/API console, `/logs` is log viewing/live tail, and `/files` is the SPIFFS file manager
-- HomeKit SDK bridge is integrated over the same mock CN105 state; hardware/Home app validation is the next checkpoint
+- HomeKit SDK bridge is integrated and can run over the shared CN105 state model
 - Project-facing temperature APIs use Fahrenheit; the protocol core converts to CN105 Celsius payload bytes internally
 - The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
+- Real CN105 transport code is present; the default build still keeps `mock` transport enabled until final hardware validation is locked down
 
 Not restored yet:
 
-- real CN105 transport validation against physical hardware
+- making real CN105 transport the default compiled mode after final hardware verification
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
 ## Current Baseline Verification
 
-Verify that the platform and minimal WebUI foundation is healthy before CN105 protocol, real transport, or HomeKit SDK logic is brought back.
+Verify that the full ESP-IDF baseline is healthy before switching the default build from mock transport to real CN105 transport.
 
 The current baseline is considered healthy when:
 
@@ -55,6 +56,7 @@ The current baseline is considered healthy when:
 - `http://<esp-ip>:8080/files` can list, download, upload, create, and delete SPIFFS files
 - serial output shows HomeKit started with setup code and setup payload
 - Apple Home can pair, then WebUI and HomeKit show the same mock power/mode/temperature state after refresh
+- if `kCn105UseRealTransport=true`, serial output shows CN105 connect/info polling and the WebUI runtime mode reflects `真实 CN105`
 
 ## Repository Layout
 
@@ -173,11 +175,12 @@ Expected serial output:
 
 ## Next Planned Step
 
-M7 device validation, then M8 real CN105 transport:
+Finish the last hardware-oriented checkpoint:
 
 - flash the current build
 - open WebUI on `http://<esp-ip>:8080/`
 - pair Apple Home using setup code `111-22-333`
 - verify Home App changes show in WebUI after refresh
-- verify WebUI mock sends update HomeKit characteristics
-- if M7 validation passes, move to M8 real CN105 transport
+- verify WebUI changes update HomeKit characteristics
+- when CN105 wiring is connected, set `kCn105UseRealTransport=true` and verify real connect/info/set flow
+- after that passes, switch the default build to real CN105 transport and treat mock as a fallback/dev mode
