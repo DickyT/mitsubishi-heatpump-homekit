@@ -1,3 +1,6 @@
 [submodule "original_version"]
 	path = original_version
 	url = https://github.com/echavet/MitsubishiCN105ESPHome.git
+[submodule "external/esp-homekit-sdk"]
+	path = external/esp-homekit-sdk
+	url = https://github.com/espressif/esp-homekit-sdk.git

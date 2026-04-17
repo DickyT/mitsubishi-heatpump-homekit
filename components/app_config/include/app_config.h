@@ -19,12 +19,23 @@
 namespace app_config {
 
 inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump HomeKit";
-inline constexpr char kPhaseName[] = "M6 WebUI feature restore";
+inline constexpr char kPhaseName[] = "M7 HomeKit over mock CN105";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
-inline constexpr uint16_t kWebServerPort = 80;
+inline constexpr uint16_t kWebServerPort = 8080;
 inline constexpr uint32_t kWebServerStackBytes = 12288;
+inline constexpr uint8_t kWebServerMaxOpenSockets = 3;
+
+inline constexpr bool kHomeKitEnabled = true;
+inline constexpr char kHomeKitAccessoryName[] = "Mitsubishi AC";
+inline constexpr char kHomeKitManufacturer[] = "dkt smart home";
+inline constexpr char kHomeKitModel[] = "Mitsubishi Heat Pump";
+inline constexpr char kHomeKitSerialNumber[] = "DKT-MITSU-001";
+inline constexpr char kHomeKitFirmwareRevision[] = "0.7.0";
+inline constexpr char kHomeKitHardwareRevision[] = "1.0";
+inline constexpr char kHomeKitSetupCode[] = "111-22-333";
+inline constexpr char kHomeKitSetupId[] = "DKT1";
 
 inline constexpr char kSpiffsBasePath[] = "/spiffs";
 inline constexpr char kSpiffsPartitionLabel[] = "spiffs";

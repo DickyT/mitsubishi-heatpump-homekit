@@ -4,6 +4,7 @@
 #include "cn105_core.h"
 #include "cn105_uart.h"
 #include "esp_timer.h"
+#include "homekit_bridge.h"
 #include "platform_fs.h"
 #include "platform_wifi.h"
 #include "web_http.h"
@@ -52,6 +53,31 @@ void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t ou
                   static_cast<double>(state.energyKwh),
                   state.lastPacketHex,
                   state.lastError);
+}
+
+void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t out_len) {
+    std::snprintf(out,
+                  out_len,
+                  "\"homekit\":{"
+                  "\"enabled\":%s,"
+                  "\"started\":%s,"
+                  "\"paired_controllers\":%d,"
+                  "\"accessory_name\":\"%s\","
+                  "\"setup_code\":\"%s\","
+                  "\"setup_id\":\"%s\","
+                  "\"setup_payload\":\"%s\","
+                  "\"last_event\":\"%s\","
+                  "\"last_error\":\"%s\""
+                  "}",
+                  status.enabled ? "true" : "false",
+                  status.started ? "true" : "false",
+                  status.pairedControllers,
+                  status.accessoryName,
+                  status.setupCode,
+                  status.setupId,
+                  status.setupPayload,
+                  status.lastEvent,
+                  status.lastError);
 }
 
 esp_err_t rootHandler(httpd_req_t* req) {
@@ -105,11 +131,15 @@ esp_err_t statusHandler(httpd_req_t* req) {
     const platform_fs::Status fs = platform_fs::getStatus();
     const cn105_uart::Status cn105 = cn105_uart::getStatus();
     const cn105_core::MockState mock = cn105_core::getMockState();
+    const homekit_bridge::Status homekit = homekit_bridge::getStatus();
 
     char mock_json[768] = {};
     writeMockStateJson(mock, mock_json, sizeof(mock_json));
 
-    constexpr size_t kStatusBodyLen = 3072;
+    char homekit_json[512] = {};
+    writeHomeKitJson(homekit, homekit_json, sizeof(homekit_json));
+
+    constexpr size_t kStatusBodyLen = 4096;
     char* body = static_cast<char*>(std::calloc(kStatusBodyLen, sizeof(char)));
     if (body == nullptr) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
@@ -123,6 +153,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"phase\":\"%s\","
                   "\"uptime_ms\":%llu,"
                   "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
+                  "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
                   "\"cn105\":{\"uart_initialized\":%s,\"uart\":%d,\"rx_pin\":%d,\"tx_pin\":%d,\"baud\":%d,\"format\":\"%s\",\"transport\":\"mock\",%s}"
                   "}",
@@ -138,6 +169,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   wifi.mac,
                   wifi.lastEvent,
                   static_cast<unsigned long>(wifi.lastEventAgeMs),
+                  homekit_json,
                   fs.mounted ? "true" : "false",
                   platform_fs::basePath(),
                   static_cast<unsigned>(fs.totalBytes),
@@ -246,6 +278,9 @@ esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
     const bool apply = web_http::queryValue(query, "apply", apply_value, sizeof(apply_value)) && std::strcmp(apply_value, "1") == 0;
     if (apply && !cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
         return web_http::sendJsonError(req, error);
+    }
+    if (apply) {
+        homekit_bridge::syncFromMock();
     }
 
     char packet_hex[cn105_core::kMaxHexLen] = {};

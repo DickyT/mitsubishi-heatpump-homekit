@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已经不是原始 `PLAN.md` 里“从零开始”的状态，而是已经完成了当前 README 中记录的 **M0-M5 platform + minimal WebUI + CN105 offline core**。为避免混乱，后续计划统一用 **Milestone** 表示，不再使用旧 Phase 编号描述未来开发顺序。
+当前仓库已经不是原始 `PLAN.md` 里“从零开始”的状态，而是已经完成了当前 README 中记录的 **M0-M7 platform + WebUI + CN105 offline core + HomeKit over mock code**。为避免混乱，后续计划统一用 **Milestone** 表示，不再使用旧 Phase 编号描述未来开发顺序。
 
 当前真实基线：
 
@@ -10,8 +10,10 @@
 - 已完成组件：`app_config`、`platform_log`、`platform_fs`、`platform_uart`、`platform_wifi`、`web`、`core_cn105`。
 - CN105 UART 固定为 `RX=GPIO26`、`TX=GPIO32`、`2400 8E1`。
 - Wi-Fi 已改为 STA-only，不再 fallback AP。
-- Minimal WebUI 已恢复，端口固定 `80`，包含 `/`、`/api/health`、`/api/status`。
+- WebUI 已恢复，当前端口为 `8080`；HomeKit/HAP 使用默认端口 `80`。
 - CN105 offline core 已恢复，包含 SET payload builder、decode、mock state 和 Fahrenheit roundtrip 验证。
+- WebUI feature layer 已恢复：`/` 为虚拟遥控器，`/debug` 为 raw decode/API 调试入口，当前仍只操作 mock state。
+- `esp-homekit-sdk` 已作为 submodule 接入，`components/homekit_bridge` 已绑定 mock CN105 state。
 - 本地 build wrapper 已支持 `./build.py --quiet-first build`。
 - 目标已从 Matter 改为 `ESP-IDF + Espressif esp-homekit-sdk`。
 
@@ -38,7 +40,7 @@
 
 实现要求：
 
-- 新增 `components/web`，使用 ESP-IDF `esp_http_server`，端口固定 `80`。
+- 新增 `components/web`，使用 ESP-IDF `esp_http_server`。M4 当时端口为 `80`，M7 之后 WebUI 已迁移到 `8080` 以避开 HomeKit/HAP。
 - 初始化顺序：filesystem/log/uart/wifi 完成后启动 Web server。
 - 首批接口：
   - `GET /`: 一个极简中文状态页。
@@ -75,7 +77,7 @@
 - `/api/status` 能返回完整 CN105 mock state。
 - serial 自检显示 `CN105 offline self-test passed: 77F SET roundtrip`。
 
-### M6: WebUI Feature Restore（下一步）
+### M6: WebUI Feature Restore（已完成）
 
 目标是恢复旧 WebUI 的主要调试体验，但继续用 ESP-IDF 原生 HTTP server。
 
@@ -83,17 +85,46 @@
 
 - 首页变成当前状态 + 虚拟遥控器。
 - `/debug` 恢复 ping、serial message、raw decode、mock decode。
-- `/logs` 和 `/files` 恢复最小可用版本：列文件、下载、删除；上传/目录管理可排后。
+- `/logs` 和 `/files` 暂缓到后续维护 milestone，避免阻塞 HomeKit over Mock。
 - WebUI 文案中文；避免重新引入 React/build pipeline。
 
 验收：
 
 - 手机/电脑浏览器都能打开首页。
 - 点击遥控器只本地 build payload，按发送才调用 API。
-- log 文件可从浏览器下载。
+- `/debug` 可 decode raw packet，并可调用 status/mock API。
 - 不明显增加 app size 到接近 2MB 分区上限。
 
-### M7: Real CN105 Transport
+### M7: ESP HomeKit SDK over Mock CN105（已实现，待设备验证）
+
+目标是先接入 Espressif `esp-homekit-sdk`，但暂时只绑定 mock CN105 state。这样可以先验证 HomeKit pairing、NVS persistence、Home App 控制流、WebUI 与 HomeKit 双向同步，而不被真实线缆/CN105 transport 风险阻塞。
+
+实现要求：
+
+- 新增 `components/homekit_bridge`。（已完成）
+- 参考 `esp-homekit-sdk/examples/common` 的 setup/factory/common 结构，但当前 Wi-Fi 仍使用本项目 hardcoded STA config。（已完成，无 provisioning/fallback AP）
+- WebUI 迁移到 `8080`，避免和 HomeKit/HAP 默认 `80` 冲突。（已完成）
+- HomeKit 首版只暴露稳定核心能力：（已完成）
+  - power
+  - target mode
+  - current temperature
+  - target temperature
+  - Fahrenheit display units
+- HomeKit 写入先更新同一份 mock CN105 state。（已完成）
+- WebUI 写入 mock state 后，HomeKit characteristic 需要同步更新；HomeKit 写入后，WebUI 刷新也要看到更新。（已完成，待真机验证）
+- pairing code、setup id、manufacturer、model、device name 继续集中放 `app_config`。（已完成）
+- HomeKit 不支持或容易误映射的 CN105 能力先只保留在 WebUI。（已完成）
+
+验收：
+
+- `./build.py --quiet-first build` 成功。（已完成）
+- Apple Home 可配对。（待设备验证）
+- 断电重启后 pairing 保留。（待设备验证）
+- Home App 改温度/开关/模式后，WebUI 刷新可看到同一份 mock state。（待设备验证）
+- WebUI 改温度/开关/模式后，Home App 能看到同步后的 characteristic。（待设备验证）
+- 不引入真实 CN105 UART 读写，也不要求插空调线。（已完成）
+
+### M8: Real CN105 Transport
 
 目标是线缆到位后接入真实空调通信。
 
@@ -111,29 +142,23 @@
 - WebUI 修改温度/模式后，空调状态能变化并回填。
 - 断线时不会 crash，WebUI 能显示离线或错误。
 
-### M8: ESP HomeKit SDK Integration
+### M9: HomeKit over Real CN105 Polish
 
-目标是接入 Espressif `esp-homekit-sdk`，替代旧 HomeSpan 路径。
+目标是在 M7 HomeKit 和 M8 real transport 都跑通之后，把 HomeKit 从 mock state 切到真实 CN105 state/command flow，并补齐长期运行细节。
 
 实现要求：
 
-- 新增 `components/homekit_bridge`。
-- 参考 `esp-homekit-sdk/examples/common` 的 setup/factory/common 结构，但当前 Wi-Fi 仍使用本项目 hardcoded STA config。
-- HomeKit 首版只暴露稳定核心能力：
-  - power
-  - target mode
-  - current temperature
-  - target temperature
-  - online/active status
-- HomeKit 不支持或容易误映射的 CN105 能力先只保留在 WebUI。
-- pairing code、setup id、manufacturer、model、device name 继续集中放 `app_config`。
+- HomeKit bridge 支持 `Mock` / `Real` transport 下的同一套状态接口。
+- Home App 改温度/模式能进入真实 CN105 SET command flow。
+- 真实 CN105 INFO 轮询回来的状态能推送到 HomeKit characteristic。
+- 保留遥控器/空调侧状态优先原则：HomeKit 不支持的 DRY/FAN/特殊状态，不主动覆写为空调错误状态。
+- 加入必要 grace period，避免刚发 HomeKit 命令后被旧 CN105 轮询结果立刻覆盖。
 
 验收：
 
-- Apple Home 可配对。
-- 断电重启后 pairing 保留。
-- Home App 改温度/模式能进入 CN105 command flow。
-- 遥控器或 CN105 侧出现 HomeKit 不支持的状态时，不主动覆写为空调错误状态。
+- HomeKit 与真实空调状态长期同步。
+- WebUI、HomeKit、真实遥控器三方状态不会互相错误覆盖。
+- 断线/重连时 HomeKit 显示合理 online/offline/active 状态。
 
 ## Test Plan
 
@@ -150,4 +175,4 @@
 - `README.md` 的当前状态是事实来源；`PLAN.md` 应改成这份 Milestone 计划，避免再出现 Phase 编号冲突。
 - 当前本地 Wi-Fi credential 文件 `app_config_local.h` 继续 gitignored，不进入 commit。
 - 暂不恢复 fallback AP；未来若需要 provisioning，也优先参考 `esp-homekit-sdk/examples/common`，不是恢复旧 AP fallback。
-- 下一步实际编码应从 `M6 WebUI Feature Restore` 开始。
+- 下一步实际验证应从 `M7 ESP HomeKit SDK over Mock CN105` 真机配对开始；验证通过后再进入 M8 real CN105 transport。

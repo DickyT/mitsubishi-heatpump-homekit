@@ -65,17 +65,23 @@ function fill(s){
   $('summary').textContent=`${m.power} / ${m.mode} / ${m.target_temperature_f}F / fan ${m.fan} / vane ${m.vane} / wide ${m.wide_vane}`;
   $('wifi').textContent=`${s.wifi.mode} ${s.wifi.ip} ${s.wifi.rssi} dBm`;
   $('uart').textContent=`UART${s.cn105.uart} RX=${s.cn105.rx_pin} TX=${s.cn105.tx_pin} ${s.cn105.baud} ${s.cn105.format}`;
+  if(s.homekit)$('homekit').textContent=`${s.homekit.started?'已启动':'未启动'} / 已配对 ${s.homekit.paired_controllers} / ${s.homekit.setup_code}`;
 }
-async function refresh(){
+async function statusOnly(){
   const r=await fetch('/api/status');
   const j=await r.json();
+  fill(j);
+  return j;
+}
+async function refresh(){
+  const j=await statusOnly();
   fill(j);
   show('当前状态',j.cn105.mock_state);
 }
 async function build(apply){
   const r=await fetch('/api/cn105/mock/build-set?'+params(apply));
   const j=await r.json();
-  if(j.ok&&j.mock_state)fill({wifi:{mode:'STA',ip:'',rssi:0},cn105:{...j.mock_state,uart:1,rx_pin:26,tx_pin:32,baud:2400,format:'8E1',mock_state:j.mock_state}});
+  if(j.ok)await statusOnly();
   show(apply?'已发送到 Mock':'已生成 CN105 SET payload',j);
 }
 window.addEventListener('load',refresh);
@@ -124,10 +130,10 @@ bool renderRoot(char* out, size_t out_len) {
 <style>%s</style>
 </head>
 <body><main>
-<nav><div class="pill"><strong>三菱空调桥接器</strong><span class="muted">M6 / Mock</span></div><div class="links"><a class="pill" href="/">遥控器</a><a class="pill" href="/debug">Debug</a><a class="pill" href="/api/status">JSON</a></div></nav>
+<nav><div class="pill"><strong>三菱空调桥接器</strong><span class="muted">M7 / HomeKit Mock</span></div><div class="links"><a class="pill" href="/">遥控器</a><a class="pill" href="/debug">Debug</a><a class="pill" href="/api/status">JSON</a></div></nav>
 <section class="hero">
 <h1>虚拟遥控器</h1>
-<p>当前仍然是离线 Mock 模式：你在这里改设置只会生成 CN105 SET payload，并在按“发送到 Mock”之后更新 ESP32 内存里的模拟状态，不会控制真实空调。</p>
+<p>当前是真实 HomeKit + 离线 CN105 Mock：你在网页或 Home app 里改设置，都会同步到 ESP32 内存里的模拟状态；真实空调 transport 还没接上。</p>
 <pre id="echo">正在读取当前状态...</pre>
 <div class="grid">
 <section class="panel">
@@ -148,10 +154,11 @@ bool renderRoot(char* out, size_t out_len) {
 <h2>当前同步状态</h2>
 <div class="cards">
 <div class="card"><div class="label">CN105 Mock</div><div class="value" id="summary">--</div></div>
+<div class="card"><div class="label">HomeKit</div><div class="value" id="homekit">--</div></div>
 <div class="card"><div class="label">Wi-Fi</div><div class="value" id="wifi">--</div></div>
 <div class="card"><div class="label">UART</div><div class="value" id="uart">--</div></div>
 </div>
-<p class="muted">下一步接真实 transport 前，我们先让 WebUI 和协议层离线跑稳。这里生成的 payload 可以复制去 Debug 页 decode。</p>
+<p class="muted">HomeKit 使用默认 HAP 端口 80；这个 WebUI 现在运行在 8080。这里生成的 payload 可以复制去 Debug 页 decode。</p>
 </section>
 </div>
 </section>

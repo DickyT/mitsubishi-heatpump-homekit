@@ -4,7 +4,7 @@ ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + 
 
 ## Current Status
 
-Current baseline: **M0-M5 platform, minimal WebUI, and CN105 offline core complete**.
+Current baseline: **M0-M7 platform, WebUI, CN105 offline core, and HomeKit-over-mock code complete**.
 
 [`PLAN.md`](./PLAN.md) now uses Milestone numbering for future work. Older "Phase" labels refer only to historical checkpoints and should not be used as the forward-looking implementation order.
 
@@ -17,17 +17,18 @@ Completed baseline:
 - SPIFFS is mounted on a custom 4MB flash partition table
 - ESP-IDF logs are mirrored to `/spiffs/latest.log` after filesystem mount
 - Wi-Fi power save is disabled; Wi-Fi failure stays in STA/reconnect mode and does not start a fallback AP
-- Minimal ESP-IDF WebUI is available on port `80`
+- ESP-IDF WebUI is available on port `8080`; HomeKit/HAP owns port `80`
 - `GET /`, `GET /api/health`, and `GET /api/status` are available for platform verification
 - CN105 offline protocol core is available with SET payload builder, packet decode, and mock state
+- WebUI feature layer is available: `/` is the virtual remote, `/debug` is the raw decode/API console
+- HomeKit SDK bridge is integrated over the same mock CN105 state; hardware/Home app validation is the next checkpoint
 - Project-facing temperature APIs use Fahrenheit; the protocol core converts to CN105 Celsius payload bytes internally
 - The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
 
 Not restored yet:
 
 - real CN105 transport
-- full WebUI virtual remote/debug pages
-- HomeKit SDK integration
+- logs/files maintenance pages
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
@@ -45,11 +46,14 @@ The current baseline is considered healthy when:
 - serial output shows CN105 UART initialized on `rx=26 tx=32`
 - serial output shows STA Wi-Fi connected, or STA reconnect attempts if Wi-Fi is unavailable
 - heartbeat logs include Wi-Fi mode, IP, RSSI, MAC, and last event
-- `http://<esp-ip>/` loads
-- `http://<esp-ip>/api/health` returns JSON
-- `http://<esp-ip>/api/status` returns JSON with Wi-Fi, SPIFFS, and CN105 UART status
+- `http://<esp-ip>:8080/` loads
+- `http://<esp-ip>:8080/api/health` returns JSON
+- `http://<esp-ip>:8080/api/status` returns JSON with Wi-Fi, SPIFFS, CN105 UART status, and HomeKit status
 - CN105 offline self-test logs `77F SET roundtrip`
-- `GET /api/cn105/mock/build-set?...temperature_f=77...&apply=1` builds and applies a mock SET packet that reads back as `77F`
+- `GET http://<esp-ip>:8080/api/cn105/mock/build-set?...temperature_f=77...&apply=1` builds and applies a mock SET packet that reads back as `77F`
+- `http://<esp-ip>:8080/debug` loads and raw decode returns JSON
+- serial output shows HomeKit started with setup code and setup payload
+- Apple Home can pair, then WebUI and HomeKit show the same mock power/mode/temperature state after refresh
 
 ## Repository Layout
 
@@ -62,9 +66,11 @@ The current baseline is considered healthy when:
 - [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
 - [`components/web`](./components/web): minimal ESP-IDF HTTP/WebUI foundation
 - [`components/core_cn105`](./components/core_cn105): offline CN105 protocol core and mock state
+- [`components/homekit_bridge`](./components/homekit_bridge): Espressif HomeKit SDK binding over mock CN105 state
 - [`partitions.csv`](./partitions.csv): custom 4MB flash partition table
 - [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local project guide and hardware rules
 - [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
+- [`external/esp-homekit-sdk`](./external/esp-homekit-sdk): Espressif HomeKit SDK submodule
 
 ## Hardware Assumptions
 
@@ -153,7 +159,8 @@ Expected serial output:
 - `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
 - `WiFi power save disabled`
 - `CN105 offline self-test passed: 77F SET roundtrip`
-- `WebUI ready: http://<esp-ip>:80/`
+- `HomeKit started: name=Mitsubishi AC setup_code=111-22-333 ...`
+- `WebUI ready: http://<esp-ip>:8080/`
 - either `Connected to ...` or reconnect/offline STA status
 - a repeating platform heartbeat every 5 seconds with Wi-Fi status
 
@@ -165,9 +172,11 @@ Expected serial output:
 
 ## Next Planned Step
 
-M6: Restore the WebUI feature layer on top of the offline CN105 core:
+M7 device validation, then M8 real CN105 transport:
 
-- homepage current status plus virtual remote
-- `/debug` for ping, raw decode, and mock payload workflows
-- minimal `/logs` and `/files` support if app size stays comfortable
-- keep real CN105 UART transport disabled until M7
+- flash the current build
+- open WebUI on `http://<esp-ip>:8080/`
+- pair Apple Home using setup code `111-22-333`
+- verify Home App changes show in WebUI after refresh
+- verify WebUI mock sends update HomeKit characteristics
+- if M7 validation passes, move to M8 real CN105 transport

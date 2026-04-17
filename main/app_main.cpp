@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "homekit_bridge.h"
 #include "platform_fs.h"
 #include "platform_log.h"
 #include "platform_wifi.h"
@@ -60,6 +61,11 @@ extern "C" void app_main(void) {
         ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(wifi_err));
     }
 
+    const esp_err_t homekit_err = homekit_bridge::start();
+    if (homekit_err != ESP_OK) {
+        ESP_LOGE(TAG, "HomeKit start failed: %s", esp_err_to_name(homekit_err));
+    }
+
     const esp_err_t web_err = web_server::start();
     if (web_err != ESP_OK) {
         ESP_LOGE(TAG, "WebUI start failed: %s", esp_err_to_name(web_err));
@@ -68,6 +74,7 @@ extern "C" void app_main(void) {
     uint32_t heartbeat = 0;
     while (true) {
         platform_wifi::maintain();
+        homekit_bridge::syncFromMock();
         ESP_LOGI(TAG, "Platform heartbeat #%lu - services are alive",
                  static_cast<unsigned long>(heartbeat));
         platform_wifi::logStatus("heartbeat");
