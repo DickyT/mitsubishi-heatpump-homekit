@@ -2,7 +2,10 @@
 
 #include "app_config.h"
 #include "esp_log.h"
-#include "esp_timer.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/message_buffer.h"
+#include "freertos/task.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -11,10 +14,14 @@ namespace {
 
 const char* TAG = "platform_log";
 
+constexpr size_t kMsgBufBytes = 4096;
+constexpr size_t kLineBufBytes = 256;
+constexpr size_t kFlushIntervalMs = 30000;
+constexpr size_t kTaskStackBytes = 3072;
+
 vprintf_like_t previous_vprintf = nullptr;
 FILE* log_file = nullptr;
-int64_t last_flush_us = 0;
-constexpr int64_t kFlushIntervalUs = 30 * 1000 * 1000;
+MessageBufferHandle_t msg_buf = nullptr;
 
 int teeVprintf(const char* format, va_list args) {
     va_list console_args;
@@ -22,20 +29,39 @@ int teeVprintf(const char* format, va_list args) {
     const int written = previous_vprintf ? previous_vprintf(format, console_args) : vprintf(format, console_args);
     va_end(console_args);
 
-    if (log_file) {
+    if (msg_buf) {
+        char line[kLineBufBytes];
         va_list file_args;
         va_copy(file_args, args);
-        vfprintf(log_file, format, file_args);
+        const int n = vsnprintf(line, sizeof(line), format, file_args);
         va_end(file_args);
 
-        const int64_t now = esp_timer_get_time();
-        if (now - last_flush_us >= kFlushIntervalUs) {
-            fflush(log_file);
-            last_flush_us = now;
+        if (n > 0) {
+            const size_t len = static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n) : sizeof(line) - 1;
+            xMessageBufferSend(msg_buf, line, len, 0);
         }
     }
 
     return written;
+}
+
+void logWriterTask(void*) {
+    char buf[kLineBufBytes];
+    TickType_t last_flush = xTaskGetTickCount();
+
+    while (true) {
+        const size_t received = xMessageBufferReceive(msg_buf, buf, sizeof(buf) - 1, pdMS_TO_TICKS(kFlushIntervalMs));
+        if (received > 0 && log_file) {
+            buf[received] = '\0';
+            fputs(buf, log_file);
+        }
+
+        const TickType_t now = xTaskGetTickCount();
+        if (log_file && (now - last_flush) >= pdMS_TO_TICKS(kFlushIntervalMs)) {
+            fflush(log_file);
+            last_flush = now;
+        }
+    }
 }
 
 const char* logLevelName(esp_log_level_t level) {
@@ -76,8 +102,17 @@ void enablePersistentLog() {
         return;
     }
 
+    msg_buf = xMessageBufferCreate(kMsgBufBytes);
+    if (!msg_buf) {
+        ESP_LOGE(TAG, "Failed to create log message buffer");
+        fclose(log_file);
+        log_file = nullptr;
+        return;
+    }
+
+    xTaskCreate(logWriterTask, "log_writer", kTaskStackBytes, nullptr, 1, nullptr);
     previous_vprintf = esp_log_set_vprintf(teeVprintf);
-    ESP_LOGI(TAG, "Persistent log enabled: %s", app_config::kPersistentLogPath);
+    ESP_LOGI(TAG, "Persistent log enabled (async): %s", app_config::kPersistentLogPath);
 }
 
 void logStartupSummary() {
