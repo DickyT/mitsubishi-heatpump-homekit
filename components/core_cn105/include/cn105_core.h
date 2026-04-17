@@ -73,5 +73,7 @@ void initMockState();
 MockState getMockState();
 bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t error_len);
 bool runSelfTest(char* error, size_t error_len);
+bool isMockDirty();
+void clearMockDirty();
 
 }  // namespace cn105_core

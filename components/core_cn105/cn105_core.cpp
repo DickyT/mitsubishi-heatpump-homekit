@@ -1,6 +1,8 @@
 #include "cn105_core.h"
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <cmath>
 #include <cstdio>
@@ -66,20 +68,15 @@ static const char* VANE_MAP[7] = { "AUTO", "1", "2", "3", "4", "5", "SWING" };
 static const uint8_t WIDEVANE[8] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0C, 0x00 };
 static const char* WIDEVANE_MAP[8] = { "<<", "<", "|", ">", ">>", "<>", "SWING", "AIRFLOW CONTROL" };
 
-static const uint8_t ROOM_TEMP[32] = {
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
-};
-static const int ROOM_TEMP_MAP[32] = {
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-    26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41
-};
+int roomTempFromByte(uint8_t value) {
+    return static_cast<int>(value) + 10;
+}
 
 cn105_core::MockState mock_state;
 char last_packet_hex[cn105_core::kMaxHexLen] = "";
 char last_error[96] = "";
+SemaphoreHandle_t mock_mutex = nullptr;
+bool mock_dirty = false;
 
 void setError(char* error, size_t error_len, const char* message) {
     if (error != nullptr && error_len > 0) {
@@ -304,7 +301,7 @@ bool buildSetPacket(const SetCommand& command, Packet* packet, char* error, size
     }
 
     if (command.hasTemperatureF) {
-        const int clampedF = clampInt(command.temperatureF, 61, 88);
+        const int clampedF = clampInt(command.temperatureF, 50, 88);
         packet->bytes[19] = encodeHighPrecisionTemperatureF(clampedF);
         packet->bytes[6] |= CONTROL_PACKET_1[2];
     }
@@ -408,7 +405,7 @@ bool decodePacket(const uint8_t* bytes, size_t len, DecodedPacket* decoded, char
             std::snprintf(decoded->type, sizeof(decoded->type), "info_response");
             decoded->infoCode = bytes[5];
             const uint8_t* data = &bytes[5];
-            if (data[0] == 0x02) {
+            if (data[0] == 0x02 && data_len >= 12) {
                 std::snprintf(decoded->summary,
                               sizeof(decoded->summary),
                               "SETTINGS power=%s mode=%s temp=%dF fan=%s vane=%s wide=%s",
@@ -418,11 +415,11 @@ bool decodePacket(const uint8_t* bytes, size_t len, DecodedPacket* decoded, char
                               lookupString(FAN_MAP, FAN, 6, data[6]),
                               lookupString(VANE_MAP, VANE, 7, data[7]),
                               lookupString(WIDEVANE_MAP, WIDEVANE, 8, data[10] & 0x0F));
-            } else if (data[0] == 0x03) {
+            } else if (data[0] == 0x03 && data_len >= 7) {
                 const int roomF = data[6] != 0 ? cn105CelsiusToFahrenheit((static_cast<float>(data[6]) - 128.0f) / 2.0f)
-                                                : cn105CelsiusToFahrenheit(static_cast<float>(lookupInt(ROOM_TEMP_MAP, ROOM_TEMP, 32, data[3], 24)));
+                                                : cn105CelsiusToFahrenheit(static_cast<float>(roomTempFromByte(data[3])));
                 std::snprintf(decoded->summary, sizeof(decoded->summary), "ROOM temperature=%dF", roomF);
-            } else if (data[0] == 0x06) {
+            } else if (data[0] == 0x06 && data_len >= 7) {
                 std::snprintf(decoded->summary,
                               sizeof(decoded->summary),
                               "STATUS compressor=%uHz operating=%s input=%uW",
@@ -449,9 +446,14 @@ bool decodePacket(const uint8_t* bytes, size_t len, DecodedPacket* decoded, char
 }
 
 void initMockState() {
+    if (mock_mutex == nullptr) {
+        mock_mutex = xSemaphoreCreateMutex();
+    }
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     mock_state = MockState{};
     mock_state.lastPacketHex = last_packet_hex;
     mock_state.lastError = last_error;
+    xSemaphoreGive(mock_mutex);
     ESP_LOGI(TAG,
              "CN105 mock initialized: power=%s mode=%s target=%dF room=%dF transport=mock",
              mock_state.power,
@@ -461,23 +463,31 @@ void initMockState() {
 }
 
 MockState getMockState() {
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     mock_state.lastPacketHex = last_packet_hex;
     mock_state.lastError = last_error;
-    return mock_state;
+    MockState copy = mock_state;
+    xSemaphoreGive(mock_mutex);
+    return copy;
 }
 
 bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t error_len) {
     DecodedPacket decoded{};
     if (!decodePacket(bytes, len, &decoded, error, error_len)) {
+        xSemaphoreTake(mock_mutex, portMAX_DELAY);
         rememberError(error);
+        xSemaphoreGive(mock_mutex);
         return false;
     }
     if (decoded.command != 0x41) {
         setError(error, error_len, "mock apply expects a SET packet");
+        xSemaphoreTake(mock_mutex, portMAX_DELAY);
         rememberError(error);
+        xSemaphoreGive(mock_mutex);
         return false;
     }
 
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     if ((bytes[6] & CONTROL_PACKET_1[0]) != 0) {
         mock_state.power = lookupString(POWER_MAP, POWER, 2, bytes[8]);
     }
@@ -502,7 +512,22 @@ bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t 
     mock_state.inputPowerW = mock_state.operating ? 650 : 0;
     rememberPacket(bytes, len);
     rememberError("");
+    mock_dirty = true;
+    xSemaphoreGive(mock_mutex);
     return true;
+}
+
+bool isMockDirty() {
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    bool dirty = mock_dirty;
+    xSemaphoreGive(mock_mutex);
+    return dirty;
+}
+
+void clearMockDirty() {
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    mock_dirty = false;
+    xSemaphoreGive(mock_mutex);
 }
 
 bool runSelfTest(char* error, size_t error_len) {
@@ -525,22 +550,29 @@ bool runSelfTest(char* error, size_t error_len) {
         return false;
     }
 
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     MockState before = mock_state;
     char previous_packet_hex[sizeof(last_packet_hex)] = {};
     char previous_error[sizeof(last_error)] = {};
     std::snprintf(previous_packet_hex, sizeof(previous_packet_hex), "%s", last_packet_hex);
     std::snprintf(previous_error, sizeof(previous_error), "%s", last_error);
+    xSemaphoreGive(mock_mutex);
     if (!applySetPacketToMock(packet.bytes, packet.length, error, error_len)) {
+        xSemaphoreTake(mock_mutex, portMAX_DELAY);
         mock_state = before;
         std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
         std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
+        xSemaphoreGive(mock_mutex);
         return false;
     }
 
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     const int roundTripF = mock_state.targetTemperatureF;
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     mock_state = before;
     std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
     std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
+    xSemaphoreGive(mock_mutex);
     if (roundTripF != 77) {
         setError(error, error_len, "77F SET roundtrip failed");
         return false;

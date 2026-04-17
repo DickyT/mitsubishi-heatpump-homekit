@@ -74,7 +74,10 @@ extern "C" void app_main(void) {
     uint32_t heartbeat = 0;
     while (true) {
         platform_wifi::maintain();
-        homekit_bridge::syncFromMock();
+        if (cn105_core::isMockDirty()) {
+            homekit_bridge::syncFromMock();
+            cn105_core::clearMockDirty();
+        }
         ESP_LOGI(TAG, "Platform heartbeat #%lu - services are alive",
                  static_cast<unsigned long>(heartbeat));
         platform_wifi::logStatus("heartbeat");

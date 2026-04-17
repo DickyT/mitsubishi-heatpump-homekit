@@ -79,7 +79,9 @@ async function refresh(){
   show('当前状态',j.cn105.mock_state);
 }
 async function build(apply){
-  const r=await fetch('/api/cn105/mock/build-set?'+params(apply));
+  const q=params(false);
+  const opts=apply?{method:'POST'}:{};
+  const r=await fetch('/api/cn105/mock/build-set?'+q,opts);
   const j=await r.json();
   if(j.ok)await statusOnly();
   show(apply?'已发送到 Mock':'已生成 CN105 SET payload',j);

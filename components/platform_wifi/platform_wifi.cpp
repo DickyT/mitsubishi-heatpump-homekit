@@ -22,6 +22,8 @@ const char* TAG = "platform_wifi";
 bool initialized = false;
 bool sta_connected = false;
 bool sta_mode_active = false;
+int reconnect_attempts = 0;
+constexpr int kMaxFastReconnects = 3;
 int64_t last_event_us = 0;
 int64_t last_reconnect_us = 0;
 char current_ip[16] = "0.0.0.0";
@@ -108,7 +110,8 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
                 setLastEvent("STA_DISCONNECTED");
                 sta_connected = false;
                 std::strncpy(current_ip, "0.0.0.0", sizeof(current_ip));
-                if (sta_mode_active) {
+                if (sta_mode_active && reconnect_attempts < kMaxFastReconnects) {
+                    reconnect_attempts++;
                     esp_wifi_connect();
                 }
                 break;
@@ -134,6 +137,7 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
         auto* event = static_cast<ip_event_got_ip_t*>(event_data);
         snprintf(current_ip, sizeof(current_ip), IPSTR, IP2STR(&event->ip_info.ip));
         sta_connected = true;
+        reconnect_attempts = 0;
         setLastEvent("STA_GOT_IP");
         ESP_LOGI(TAG, "Connected to %s ip=%s", app_config::kWifiSsid, current_ip);
     }
@@ -256,6 +260,7 @@ void maintain() {
     }
 
     last_reconnect_us = now_us;
+    reconnect_attempts = 0;
     ESP_LOGW(TAG, "Reconnecting WiFi SSID: %s", app_config::kWifiSsid);
     esp_wifi_connect();
 }

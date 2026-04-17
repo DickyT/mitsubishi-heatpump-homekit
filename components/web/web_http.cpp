@@ -42,14 +42,47 @@ void urlDecodeInPlace(char* value, size_t value_len) {
 
 namespace web_http {
 
+size_t jsonEscape(const char* src, char* out, size_t out_len) {
+    if (src == nullptr || out == nullptr || out_len == 0) {
+        return 0;
+    }
+    size_t j = 0;
+    for (size_t i = 0; src[i] != '\0' && j + 1 < out_len; ++i) {
+        const char c = src[i];
+        if (c == '"' || c == '\\') {
+            if (j + 2 >= out_len) break;
+            out[j++] = '\\';
+            out[j++] = c;
+        } else if (c == '\n') {
+            if (j + 2 >= out_len) break;
+            out[j++] = '\\';
+            out[j++] = 'n';
+        } else if (c == '\r') {
+            if (j + 2 >= out_len) break;
+            out[j++] = '\\';
+            out[j++] = 'r';
+        } else if (c == '\t') {
+            if (j + 2 >= out_len) break;
+            out[j++] = '\\';
+            out[j++] = 't';
+        } else {
+            out[j++] = c;
+        }
+    }
+    out[j] = '\0';
+    return j;
+}
+
 esp_err_t sendText(httpd_req_t* req, const char* content_type, const char* body) {
     httpd_resp_set_type(req, content_type);
     return httpd_resp_sendstr(req, body);
 }
 
 esp_err_t sendJsonError(httpd_req_t* req, const char* error) {
+    char escaped[128] = {};
+    jsonEscape(error == nullptr ? "unknown error" : error, escaped, sizeof(escaped));
     char body[192] = {};
-    std::snprintf(body, sizeof(body), "{\"ok\":false,\"error\":\"%s\"}", error == nullptr ? "unknown error" : error);
+    std::snprintf(body, sizeof(body), "{\"ok\":false,\"error\":\"%s\"}", escaped);
     httpd_resp_set_status(req, "400 Bad Request");
     return sendText(req, "application/json", body);
 }

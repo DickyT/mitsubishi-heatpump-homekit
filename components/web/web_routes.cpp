@@ -21,6 +21,8 @@ uint64_t uptimeMs() {
 }
 
 void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t out_len) {
+    char esc_error[128] = {};
+    web_http::jsonEscape(state.lastError, esc_error, sizeof(esc_error));
     std::snprintf(out,
                   out_len,
                   "\"mock_state\":{"
@@ -52,10 +54,12 @@ void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t ou
                   state.inputPowerW,
                   static_cast<double>(state.energyKwh),
                   state.lastPacketHex,
-                  state.lastError);
+                  esc_error);
 }
 
 void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t out_len) {
+    char esc_error[128] = {};
+    web_http::jsonEscape(status.lastError, esc_error, sizeof(esc_error));
     std::snprintf(out,
                   out_len,
                   "\"homekit\":{"
@@ -77,7 +81,7 @@ void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t ou
                   status.setupId,
                   status.setupPayload,
                   status.lastEvent,
-                  status.lastError);
+                  esc_error);
 }
 
 esp_err_t rootHandler(httpd_req_t* req) {
@@ -204,12 +208,12 @@ esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
     web_http::readQuery(req, query, sizeof(query));
 
     cn105_core::SetCommand command{};
-    char value[48] = {};
+    char power[16] = {};
     bool any = false;
 
-    if (web_http::queryValue(query, "power", value, sizeof(value))) {
+    if (web_http::queryValue(query, "power", power, sizeof(power))) {
         command.hasPower = true;
-        command.power = value;
+        command.power = power;
         any = true;
     }
 
@@ -275,12 +279,10 @@ esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
     }
 
     char apply_value[8] = {};
-    const bool apply = web_http::queryValue(query, "apply", apply_value, sizeof(apply_value)) && std::strcmp(apply_value, "1") == 0;
+    const bool apply = req->method == HTTP_POST ||
+        (web_http::queryValue(query, "apply", apply_value, sizeof(apply_value)) && std::strcmp(apply_value, "1") == 0);
     if (apply && !cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
         return web_http::sendJsonError(req, error);
-    }
-    if (apply) {
-        homekit_bridge::syncFromMock();
     }
 
     char packet_hex[cn105_core::kMaxHexLen] = {};
@@ -348,6 +350,7 @@ const web_http::Route ROUTES[] = {
     { "/api/status", HTTP_GET, statusHandler },
     { "/api/cn105/mock/status", HTTP_GET, cn105MockStatusHandler },
     { "/api/cn105/mock/build-set", HTTP_GET, cn105BuildSetHandler },
+    { "/api/cn105/mock/build-set", HTTP_POST, cn105BuildSetHandler },
     { "/api/cn105/decode", HTTP_GET, cn105DecodeHandler },
 };
 

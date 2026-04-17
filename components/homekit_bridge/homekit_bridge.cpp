@@ -11,6 +11,7 @@ extern "C" {
 #include "hap_apple_servs.h"
 }
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,7 +32,7 @@ constexpr uint8_t kTargetCool = 2;
 constexpr uint8_t kSwingDisabled = 0;
 constexpr uint8_t kSwingEnabled = 1;
 constexpr uint8_t kDisplayFahrenheit = 1;
-constexpr float kMinTargetCelsius = 16.0f;
+constexpr float kMinTargetCelsius = 10.0f;
 constexpr float kMaxTargetCelsius = 31.0f;
 constexpr float kTargetStepCelsius = 0.5f;
 
@@ -56,7 +57,7 @@ char* hapString(const char* value) {
 }
 
 bool equals(const char* left, const char* right) {
-    return std::strcmp(left, right) == 0;
+    return left != nullptr && right != nullptr && std::strcmp(left, right) == 0;
 }
 
 float fahrenheitToCelsius(int value_f) {
@@ -64,13 +65,12 @@ float fahrenheitToCelsius(int value_f) {
 }
 
 int celsiusToRoundedFahrenheit(float value_c) {
-    const float value_f = (value_c * 9.0f / 5.0f) + 32.0f;
-    return static_cast<int>(value_f + 0.5f);
+    return static_cast<int>(std::lround((value_c * 9.0f / 5.0f) + 32.0f));
 }
 
 int clampFahrenheit(int value_f) {
-    if (value_f < 61) {
-        return 61;
+    if (value_f < 50) {
+        return 50;
     }
     if (value_f > 88) {
         return 88;

@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -12,6 +13,8 @@ const char* TAG = "platform_log";
 
 vprintf_like_t previous_vprintf = nullptr;
 FILE* log_file = nullptr;
+int64_t last_flush_us = 0;
+constexpr int64_t kFlushIntervalUs = 30 * 1000 * 1000;
 
 int teeVprintf(const char* format, va_list args) {
     va_list console_args;
@@ -23,8 +26,13 @@ int teeVprintf(const char* format, va_list args) {
         va_list file_args;
         va_copy(file_args, args);
         vfprintf(log_file, format, file_args);
-        fflush(log_file);
         va_end(file_args);
+
+        const int64_t now = esp_timer_get_time();
+        if (now - last_flush_us >= kFlushIntervalUs) {
+            fflush(log_file);
+            last_flush_us = now;
+        }
     }
 
     return written;
