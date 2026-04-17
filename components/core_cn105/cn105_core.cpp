@@ -1,8 +1,7 @@
 #include "cn105_core.h"
 
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "platform_lock.h"
 
 #include <cmath>
 #include <cstdio>
@@ -75,7 +74,7 @@ int roomTempFromByte(uint8_t value) {
 cn105_core::MockState mock_state;
 char last_packet_hex[cn105_core::kMaxHexLen] = "";
 char last_error[96] = "";
-SemaphoreHandle_t mock_mutex = nullptr;
+platform_lock::RecursiveMutex state_lock;
 bool mock_dirty = false;
 
 void setError(char* error, size_t error_len, const char* message) {
@@ -476,14 +475,12 @@ bool decodePacket(const uint8_t* bytes, size_t len, DecodedPacket* decoded, char
 }
 
 void initMockState() {
-    if (mock_mutex == nullptr) {
-        mock_mutex = xSemaphoreCreateMutex();
+    {
+        platform_lock::ScopedLock lock(state_lock);
+        mock_state = MockState{};
+        mock_state.lastPacketHex = last_packet_hex;
+        mock_state.lastError = last_error;
     }
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
-    mock_state = MockState{};
-    mock_state.lastPacketHex = last_packet_hex;
-    mock_state.lastError = last_error;
-    xSemaphoreGive(mock_mutex);
     ESP_LOGI(TAG,
              "CN105 mock initialized: power=%s mode=%s target=%dF room=%dF transport=mock",
              mock_state.power,
@@ -493,31 +490,28 @@ void initMockState() {
 }
 
 MockState getMockState() {
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    platform_lock::ScopedLock lock(state_lock);
     mock_state.lastPacketHex = last_packet_hex;
     mock_state.lastError = last_error;
     MockState copy = mock_state;
-    xSemaphoreGive(mock_mutex);
     return copy;
 }
 
 bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t error_len) {
     DecodedPacket decoded{};
     if (!decodePacket(bytes, len, &decoded, error, error_len)) {
-        xSemaphoreTake(mock_mutex, portMAX_DELAY);
+        platform_lock::ScopedLock lock(state_lock);
         rememberError(error);
-        xSemaphoreGive(mock_mutex);
         return false;
     }
     if (decoded.command != 0x41) {
         setError(error, error_len, "mock apply expects a SET packet");
-        xSemaphoreTake(mock_mutex, portMAX_DELAY);
+        platform_lock::ScopedLock lock(state_lock);
         rememberError(error);
-        xSemaphoreGive(mock_mutex);
         return false;
     }
 
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    platform_lock::ScopedLock lock(state_lock);
     if ((bytes[6] & CONTROL_PACKET_1[0]) != 0) {
         mock_state.power = lookupString(POWER_MAP, POWER, 2, bytes[8]);
     }
@@ -543,21 +537,18 @@ bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t 
     rememberPacket(bytes, len);
     rememberError("");
     mock_dirty = true;
-    xSemaphoreGive(mock_mutex);
     return true;
 }
 
 bool isMockDirty() {
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    platform_lock::ScopedLock lock(state_lock);
     bool dirty = mock_dirty;
-    xSemaphoreGive(mock_mutex);
     return dirty;
 }
 
 void clearMockDirty() {
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    platform_lock::ScopedLock lock(state_lock);
     mock_dirty = false;
-    xSemaphoreGive(mock_mutex);
 }
 
 bool applyInfoResponseToState(const uint8_t* bytes, size_t len) {
@@ -570,7 +561,7 @@ bool applyInfoResponseToState(const uint8_t* bytes, size_t len) {
     }
     const uint8_t* data = &bytes[5];
 
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    platform_lock::ScopedLock lock(state_lock);
     if (data[0] == 0x02 && data_len >= 12) {
         mock_state.power = lookupString(POWER_MAP, POWER, 2, data[3]);
         uint8_t mode_byte = data[4] > 0x08 ? data[4] - 0x08 : data[4];
@@ -596,15 +587,13 @@ bool applyInfoResponseToState(const uint8_t* bytes, size_t len) {
         mock_dirty = true;
     }
     rememberPacket(bytes, len);
-    xSemaphoreGive(mock_mutex);
     return true;
 }
 
 void setConnected(bool connected) {
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    platform_lock::ScopedLock lock(state_lock);
     mock_state.connected = connected;
     mock_dirty = true;
-    xSemaphoreGive(mock_mutex);
 }
 
 bool runSelfTest(char* error, size_t error_len) {
@@ -627,28 +616,31 @@ bool runSelfTest(char* error, size_t error_len) {
         return false;
     }
 
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
-    MockState before = mock_state;
+    MockState before = {};
     char previous_packet_hex[sizeof(last_packet_hex)] = {};
     char previous_error[sizeof(last_error)] = {};
-    std::snprintf(previous_packet_hex, sizeof(previous_packet_hex), "%s", last_packet_hex);
-    std::snprintf(previous_error, sizeof(previous_error), "%s", last_error);
-    xSemaphoreGive(mock_mutex);
+    {
+        platform_lock::ScopedLock lock(state_lock);
+        before = mock_state;
+        std::snprintf(previous_packet_hex, sizeof(previous_packet_hex), "%s", last_packet_hex);
+        std::snprintf(previous_error, sizeof(previous_error), "%s", last_error);
+    }
     if (!applySetPacketToMock(packet.bytes, packet.length, error, error_len)) {
-        xSemaphoreTake(mock_mutex, portMAX_DELAY);
+        platform_lock::ScopedLock lock(state_lock);
         mock_state = before;
         std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
         std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
-        xSemaphoreGive(mock_mutex);
         return false;
     }
 
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
-    const int roundTripF = mock_state.targetTemperatureF;
-    mock_state = before;
-    std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
-    std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
-    xSemaphoreGive(mock_mutex);
+    int roundTripF = 0;
+    {
+        platform_lock::ScopedLock lock(state_lock);
+        roundTripF = mock_state.targetTemperatureF;
+        mock_state = before;
+        std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
+        std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
+    }
     if (roundTripF != 77) {
         setError(error, error_len, "77F SET roundtrip failed");
         return false;

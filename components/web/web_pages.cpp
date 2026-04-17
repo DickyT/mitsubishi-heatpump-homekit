@@ -30,16 +30,26 @@ const char* kHeadEnd = "</style></head><body>";
 const char* kScriptOpen = "<script>";
 const char* kHtmlEnd = "</script></body></html>";
 
+size_t embeddedLen(const char* start, const char* end) {
+    size_t len = static_cast<size_t>(end - start);
+    if (len > 0 && start[len - 1] == '\0') {
+        len--;
+    }
+    return len;
+}
+
 esp_err_t sendPage(httpd_req_t* req, const char* body_start, const char* body_end,
                    const char* js_start, const char* js_end) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
     httpd_resp_send_chunk(req, kHtmlHead, -1);
-    httpd_resp_send_chunk(req, style_css_start, style_css_end - style_css_start);
+    httpd_resp_send_chunk(req, style_css_start, embeddedLen(style_css_start, style_css_end));
     httpd_resp_send_chunk(req, kHeadEnd, -1);
-    httpd_resp_send_chunk(req, tabs_html_start, tabs_html_end - tabs_html_start);
-    httpd_resp_send_chunk(req, body_start, body_end - body_start);
+    httpd_resp_send_chunk(req, tabs_html_start, embeddedLen(tabs_html_start, tabs_html_end));
+    httpd_resp_send_chunk(req, body_start, embeddedLen(body_start, body_end));
     httpd_resp_send_chunk(req, kScriptOpen, -1);
-    httpd_resp_send_chunk(req, js_start, js_end - js_start);
+    httpd_resp_send_chunk(req, js_start, embeddedLen(js_start, js_end));
     httpd_resp_send_chunk(req, kHtmlEnd, -1);
     httpd_resp_send_chunk(req, nullptr, 0);
     return ESP_OK;
