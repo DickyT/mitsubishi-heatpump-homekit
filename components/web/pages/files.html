@@ -1,0 +1,29 @@
+<main>
+<h1>文件管理</h1>
+<div class="subtitle">查看、下载、上传和删除 SPIFFS 文件；文件夹用 .keep 占位模拟。</div>
+<div class="card">
+<h3>当前目录</h3>
+<input id="dir" value="/">
+<div class="btns"><button class="btn-secondary" onclick="loadFiles()">刷新</button><button class="btn-secondary" onclick="upDir()">上一级</button></div>
+<pre id="fs-info">加载中...</pre>
+</div>
+<div class="card">
+<h3>文件</h3>
+<div id="file-list">加载中...</div>
+</div>
+<div class="card">
+<h3>新建</h3>
+<div class="row">
+<div><label>文件路径</label><input id="new-file" placeholder="/notes.txt"></div>
+<div><label>文件夹路径</label><input id="new-dir" placeholder="/logs-archive"></div>
+</div>
+<div class="btns"><button class="btn-secondary" onclick="createFile()">新建空文件</button><button class="btn-secondary" onclick="createDir()">新建文件夹</button></div>
+</div>
+<div class="card">
+<h3>上传</h3>
+<label>上传到当前目录</label>
+<input id="upload-file" type="file">
+<div class="btns"><button class="btn-primary" onclick="uploadFile()">上传</button></div>
+<pre id="file-out">等待操作...</pre>
+</div>
+</main>

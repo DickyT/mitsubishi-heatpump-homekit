@@ -15,20 +15,19 @@ Completed baseline:
 - Componentized platform services are in place: logging, SPIFFS, CN105 UART, and STA-only Wi-Fi
 - CN105 UART is initialized as `UART1 RX=GPIO26 TX=GPIO32 2400 8E1`
 - SPIFFS is mounted on a custom 4MB flash partition table
-- ESP-IDF logs are mirrored to `/spiffs/latest.log` after filesystem mount
+- ESP-IDF logs are mirrored to a per-boot SPIFFS log file after filesystem mount
 - Wi-Fi power save is disabled; Wi-Fi failure stays in STA/reconnect mode and does not start a fallback AP
 - ESP-IDF WebUI is available on port `8080`; HomeKit/HAP owns port `80`
 - `GET /`, `GET /api/health`, and `GET /api/status` are available for platform verification
 - CN105 offline protocol core is available with SET payload builder, packet decode, and mock state
-- WebUI feature layer is available: `/` is the virtual remote, `/debug` is the raw decode/API console
+- WebUI feature layer is available: `/` is the virtual remote, `/debug` is the raw decode/API console, `/logs` is log viewing/live tail, and `/files` is the SPIFFS file manager
 - HomeKit SDK bridge is integrated over the same mock CN105 state; hardware/Home app validation is the next checkpoint
 - Project-facing temperature APIs use Fahrenheit; the protocol core converts to CN105 Celsius payload bytes internally
 - The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
 
 Not restored yet:
 
-- real CN105 transport
-- logs/files maintenance pages
+- real CN105 transport validation against physical hardware
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
@@ -42,7 +41,7 @@ The current baseline is considered healthy when:
 - it flashes successfully
 - serial output shows the custom 4MB partition table
 - serial output shows SPIFFS mounted
-- serial output shows persistent logging enabled at `/spiffs/latest.log`
+- serial output shows persistent logging enabled at a per-boot `/spiffs/*-log.txt` file
 - serial output shows CN105 UART initialized on `rx=26 tx=32`
 - serial output shows STA Wi-Fi connected, or STA reconnect attempts if Wi-Fi is unavailable
 - heartbeat logs include Wi-Fi mode, IP, RSSI, MAC, and last event
@@ -52,6 +51,8 @@ The current baseline is considered healthy when:
 - CN105 offline self-test logs `77F SET roundtrip`
 - `GET http://<esp-ip>:8080/api/cn105/mock/build-set?...temperature_f=77...&apply=1` builds and applies a mock SET packet that reads back as `77F`
 - `http://<esp-ip>:8080/debug` loads and raw decode returns JSON
+- `http://<esp-ip>:8080/logs` shows SPIFFS log files and live current log output
+- `http://<esp-ip>:8080/files` can list, download, upload, create, and delete SPIFFS files
 - serial output shows HomeKit started with setup code and setup payload
 - Apple Home can pair, then WebUI and HomeKit show the same mock power/mode/temperature state after refresh
 
@@ -60,8 +61,8 @@ The current baseline is considered healthy when:
 - [`CMakeLists.txt`](./CMakeLists.txt): ESP-IDF project root
 - [`main/app_main.cpp`](./main/app_main.cpp): app bootstrap entrypoint
 - [`components/app_config`](./components/app_config): centralized compile-time config
-- [`components/platform_fs`](./components/platform_fs): SPIFFS mount and filesystem stats
-- [`components/platform_log`](./components/platform_log): ESP-IDF log setup and persistent log mirroring
+- [`components/platform_fs`](./components/platform_fs): SPIFFS mount, safe path helpers, and file manager operations
+- [`components/platform_log`](./components/platform_log): ESP-IDF log setup, persistent log mirroring, log pruning, and live log reads
 - [`components/platform_uart`](./components/platform_uart): CN105 UART setup
 - [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
 - [`components/web`](./components/web): minimal ESP-IDF HTTP/WebUI foundation
@@ -155,7 +156,7 @@ Expected serial output:
 
 - custom partition table with `factory` and `spiffs`
 - `SPIFFS mounted`
-- `Persistent log enabled: /spiffs/latest.log`
+- `Persistent log enabled (async): /boot-...-log.txt` or a timestamped `/YYYY-MM-DD-HH-MM-SS-log.txt`
 - `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
 - `WiFi power save disabled`
 - `CN105 offline self-test passed: 77F SET roundtrip`

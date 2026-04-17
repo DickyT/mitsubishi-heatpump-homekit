@@ -13,6 +13,7 @@
 - WebUI 已恢复，当前端口为 `8080`；HomeKit/HAP 使用默认端口 `80`。
 - CN105 offline core 已恢复，包含 SET payload builder、decode、mock state 和 Fahrenheit roundtrip 验证。
 - WebUI feature layer 已恢复：`/` 为虚拟遥控器，`/debug` 为 raw decode/API 调试入口，当前仍只操作 mock state。
+- `/logs` 和 `/files` 维护页面已恢复，支持日志查看/live tail 和 SPIFFS 文件管理。
 - `esp-homekit-sdk` 已作为 submodule 接入，`components/homekit_bridge` 已绑定 mock CN105 state。
 - 本地 build wrapper 已支持 `./build.py --quiet-first build`。
 - 目标已从 Matter 改为 `ESP-IDF + Espressif esp-homekit-sdk`。
@@ -85,7 +86,8 @@
 
 - 首页变成当前状态 + 虚拟遥控器。
 - `/debug` 恢复 ping、serial message、raw decode、mock decode。
-- `/logs` 和 `/files` 暂缓到后续维护 milestone，避免阻塞 HomeKit over Mock。
+- `/logs` 恢复日志列表、下载和 live 当前日志。
+- `/files` 恢复 SPIFFS 文件列表、下载、上传、删除、新建空文件和伪目录。
 - WebUI 文案中文；避免重新引入 React/build pipeline。
 
 验收：

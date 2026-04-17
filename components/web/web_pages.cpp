@@ -14,6 +14,14 @@ extern const char debug_html_start[] asm("_binary_debug_html_start");
 extern const char debug_html_end[]   asm("_binary_debug_html_end");
 extern const char debug_js_start[]   asm("_binary_debug_js_start");
 extern const char debug_js_end[]     asm("_binary_debug_js_end");
+extern const char logs_html_start[] asm("_binary_logs_html_start");
+extern const char logs_html_end[]   asm("_binary_logs_html_end");
+extern const char logs_js_start[]   asm("_binary_logs_js_start");
+extern const char logs_js_end[]     asm("_binary_logs_js_end");
+extern const char files_html_start[] asm("_binary_files_html_start");
+extern const char files_html_end[]   asm("_binary_files_html_end");
+extern const char files_js_start[]   asm("_binary_files_js_start");
+extern const char files_js_end[]     asm("_binary_files_js_end");
 extern const char admin_html_start[] asm("_binary_admin_html_start");
 extern const char admin_html_end[]   asm("_binary_admin_html_end");
 extern const char admin_js_start[]   asm("_binary_admin_js_start");
@@ -65,6 +73,14 @@ esp_err_t sendRoot(httpd_req_t* req) {
 
 esp_err_t sendDebug(httpd_req_t* req) {
     return sendPage(req, debug_html_start, debug_html_end, debug_js_start, debug_js_end);
+}
+
+esp_err_t sendLogs(httpd_req_t* req) {
+    return sendPage(req, logs_html_start, logs_html_end, logs_js_start, logs_js_end);
+}
+
+esp_err_t sendFiles(httpd_req_t* req) {
+    return sendPage(req, files_html_start, files_html_end, files_js_start, files_js_end);
 }
 
 esp_err_t sendAdmin(httpd_req_t* req) {

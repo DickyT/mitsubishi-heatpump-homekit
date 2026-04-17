@@ -26,7 +26,7 @@ inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
 inline constexpr uint16_t kWebServerPort = 8080;
 inline constexpr uint32_t kWebServerStackBytes = 12288;
 inline constexpr uint8_t kWebServerMaxOpenSockets = 3;
-inline constexpr uint8_t kWebServerMaxUriHandlers = 16;
+inline constexpr uint8_t kWebServerMaxUriHandlers = 32;
 
 inline constexpr bool kHomeKitEnabled = true;
 inline constexpr char kHomeKitAccessoryName[] = "Mitsubishi AC";
@@ -40,8 +40,16 @@ inline constexpr char kHomeKitSetupId[] = "DKT1";
 
 inline constexpr char kSpiffsBasePath[] = "/spiffs";
 inline constexpr char kSpiffsPartitionLabel[] = "spiffs";
-inline constexpr int kSpiffsMaxOpenFiles = 5;
-inline constexpr char kPersistentLogPath[] = "/spiffs/latest.log";
+inline constexpr int kSpiffsMaxOpenFiles = 8;
+
+inline constexpr bool kPersistentLogEnabled = true;
+inline constexpr size_t kPersistentLogMaxTotalBytes = 192 * 1024;
+inline constexpr size_t kPersistentLogBufferBytes = 4096;
+inline constexpr size_t kPersistentLogLineBytes = 256;
+inline constexpr size_t kPersistentLogReadChunkBytes = 1024;
+inline constexpr uint32_t kPersistentLogFlushIntervalMs = 30000;
+inline constexpr size_t kPersistentLogPruneIntervalBytes = 4096;
+inline constexpr char kPersistentLogTimezone[] = "PST8PDT,M3.2.0,M11.1.0";
 
 inline constexpr char kWifiSsid[] = APP_WIFI_SSID;
 inline constexpr char kWifiPassword[] = APP_WIFI_PASSWORD;

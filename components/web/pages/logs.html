@@ -1,0 +1,24 @@
+<main>
+<h1>日志</h1>
+<div class="subtitle">每次开机会创建一个新的 SPIFFS 日志文件；空间不足时会先删旧日志，最后清空当前日志继续写。</div>
+<div class="card">
+<h3>当前日志</h3>
+<div class="kvrow"><span class="kk">状态</span><span class="vv" id="log-active">--</span></div>
+<div class="kvrow"><span class="kk">文件</span><span class="vv" id="log-current">--</span></div>
+<div class="kvrow"><span class="kk">大小</span><span class="vv" id="log-size">--</span></div>
+<div class="btns"><button class="btn-primary" onclick="openLive()">Live 当前日志</button><button class="btn-secondary" onclick="loadLogs()">刷新</button></div>
+</div>
+<div class="card">
+<h3>日志文件</h3>
+<div id="log-list">加载中...</div>
+</div>
+<div class="card">
+<h3>内容预览</h3>
+<pre id="log-body">选择一个日志文件查看。</pre>
+</div>
+<div class="card" id="live-card" style="display:none">
+<h3>Live 当前日志</h3>
+<div class="btns"><button class="btn-secondary" onclick="closeLive()">停止</button></div>
+<pre id="live-body">等待日志...</pre>
+</div>
+</main>

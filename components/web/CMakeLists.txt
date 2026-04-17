@@ -3,12 +3,16 @@ idf_component_register(SRCS "web_http.cpp"
                             "web_routes.cpp"
                             "web_server.cpp"
                        INCLUDE_DIRS "include"
-                       REQUIRES app_config cn105_transport core_cn105 esp_http_server esp_timer homekit_bridge platform_fs platform_uart platform_wifi log
+                       REQUIRES app_config cn105_transport core_cn105 esp_http_server esp_timer homekit_bridge platform_fs platform_log platform_maintenance platform_uart platform_wifi log
                        EMBED_TXTFILES "pages/style.css"
                                       "pages/tabs.html"
                                       "pages/root.html"
                                       "pages/root.js"
                                       "pages/debug.html"
                                       "pages/debug.js"
+                                      "pages/logs.html"
+                                      "pages/logs.js"
+                                      "pages/files.html"
+                                      "pages/files.js"
                                       "pages/admin.html"
                                       "pages/admin.js")

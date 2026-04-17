@@ -20,7 +20,20 @@
 </div>
 <div class="card">
 <h3>维护</h3>
-<div class="btns"><button class="btn-danger" onclick="reboot()">重启设备</button></div>
+<div class="subtitle">这些操作用于重新配对或清理本地维护数据。重置 HomeKit 会由 HomeKit SDK 自动重启设备。</div>
+<div class="btns">
+<button class="btn-danger" onclick="maintenance('/api/maintenance/reset-homekit','重置 HomeKit','确定重置 HomeKit 吗？这会清除配对和 HomeKit SDK 状态，设备随后会重启。')">重置 HomeKit</button>
+<button class="btn-secondary" onclick="maintenance('/api/maintenance/clear-logs','清空日志','确定清空所有日志吗？当前日志会被清空后继续写入。')">清空日志</button>
+<button class="btn-secondary" onclick="reboot()">重启设备</button>
+</div>
+</div>
+<div class="card">
+<h3>危险区域</h3>
+<div class="subtitle">下面操作不可恢复。清空全部 NVS 会擦掉 Wi-Fi SDK/HomeKit/系统运行时数据并重启。</div>
+<div class="btns">
+<button class="btn-danger" onclick="maintenance('/api/maintenance/clear-spiffs','清空全部 SPIFFS','确定清空整个 SPIFFS 吗？日志、上传文件和文件夹占位都会被删除。')">清空全部 SPIFFS</button>
+<button class="btn-danger" onclick="maintenance('/api/maintenance/clear-all-nvs','清空全部 NVS','确定清空整个 NVS 分区吗？这会删除所有 NVS 数据并重启。')">清空全部 NVS</button>
+</div>
 <div id="msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
 </div>
 </main>

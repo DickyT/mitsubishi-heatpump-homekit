@@ -1,3 +1,3 @@
 idf_component_register(SRCS "platform_log.cpp"
                        INCLUDE_DIRS "include"
-                       REQUIRES app_config freertos log)
+                       REQUIRES app_config esp_timer freertos log platform_fs platform_lock)
