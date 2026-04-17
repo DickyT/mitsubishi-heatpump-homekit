@@ -1,0 +1,25 @@
+#pragma once
+
+#include "cn105_core.h"
+#include "esp_err.h"
+
+namespace cn105_transport {
+
+struct Status {
+    bool taskRunning = false;
+    bool connected = false;
+    uint32_t connectAttempts = 0;
+    uint32_t pollCycles = 0;
+    uint32_t rxPackets = 0;
+    uint32_t rxErrors = 0;
+    uint32_t txPackets = 0;
+    uint32_t setsPending = 0;
+    char phase[24] = "idle";
+    char lastError[96] = "";
+};
+
+esp_err_t start();
+Status getStatus();
+bool queueSetCommand(const cn105_core::SetCommand& command);
+
+}  // namespace cn105_transport

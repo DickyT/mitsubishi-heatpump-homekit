@@ -72,6 +72,8 @@ bool decodePacket(const uint8_t* bytes, size_t len, DecodedPacket* decoded, char
 void initMockState();
 MockState getMockState();
 bool applySetPacketToMock(const uint8_t* bytes, size_t len, char* error, size_t error_len);
+bool applyInfoResponseToState(const uint8_t* bytes, size_t len);
+void setConnected(bool connected);
 bool runSelfTest(char* error, size_t error_len);
 bool isMockDirty();
 void clearMockDirty();

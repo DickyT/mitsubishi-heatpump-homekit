@@ -530,6 +530,53 @@ void clearMockDirty() {
     xSemaphoreGive(mock_mutex);
 }
 
+bool applyInfoResponseToState(const uint8_t* bytes, size_t len) {
+    if (bytes == nullptr || len < 6 || bytes[0] != 0xFC || bytes[1] != 0x62) {
+        return false;
+    }
+    const uint8_t data_len = bytes[4];
+    if (len != static_cast<size_t>(data_len) + 6) {
+        return false;
+    }
+    const uint8_t* data = &bytes[5];
+
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    if (data[0] == 0x02 && data_len >= 12) {
+        mock_state.power = lookupString(POWER_MAP, POWER, 2, data[3]);
+        uint8_t mode_byte = data[4] > 0x08 ? data[4] - 0x08 : data[4];
+        mock_state.mode = lookupString(MODE_MAP, MODE, 5, mode_byte);
+        mock_state.targetTemperatureF = decodeTemperatureF(data[5], data[11]);
+        mock_state.fan = lookupString(FAN_MAP, FAN, 6, data[6]);
+        mock_state.vane = lookupString(VANE_MAP, VANE, 7, data[7]);
+        if (data_len >= 11) {
+            mock_state.wideVane = lookupString(WIDEVANE_MAP, WIDEVANE, 8, data[10] & 0x0F);
+        }
+        mock_dirty = true;
+    } else if (data[0] == 0x03 && data_len >= 7) {
+        if (data[6] != 0) {
+            mock_state.roomTemperatureF = cn105CelsiusToFahrenheit((static_cast<float>(data[6]) - 128.0f) / 2.0f);
+        } else {
+            mock_state.roomTemperatureF = cn105CelsiusToFahrenheit(static_cast<float>(roomTempFromByte(data[3])));
+        }
+        mock_dirty = true;
+    } else if (data[0] == 0x06 && data_len >= 7) {
+        mock_state.compressorFrequencyHz = data[3];
+        mock_state.operating = data[4] != 0;
+        mock_state.inputPowerW = (data[5] << 8) | data[6];
+        mock_dirty = true;
+    }
+    rememberPacket(bytes, len);
+    xSemaphoreGive(mock_mutex);
+    return true;
+}
+
+void setConnected(bool connected) {
+    xSemaphoreTake(mock_mutex, portMAX_DELAY);
+    mock_state.connected = connected;
+    mock_dirty = true;
+    xSemaphoreGive(mock_mutex);
+}
+
 bool runSelfTest(char* error, size_t error_len) {
     SetCommand command{};
     command.hasPower = true;

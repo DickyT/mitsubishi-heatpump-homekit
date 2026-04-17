@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "cn105_core.h"
+#include "cn105_transport.h"
 #include "cn105_uart.h"
 #include "esp_chip_info.h"
 #include "esp_err.h"
@@ -54,6 +55,17 @@ extern "C" void app_main(void) {
     char cn105_self_test_error[96] = {};
     if (!cn105_core::runSelfTest(cn105_self_test_error, sizeof(cn105_self_test_error))) {
         ESP_LOGW(TAG, "CN105 offline self-test failed: %s", cn105_self_test_error);
+    }
+
+    if (app_config::kCn105UseRealTransport) {
+        const esp_err_t transport_err = cn105_transport::start();
+        if (transport_err != ESP_OK) {
+            ESP_LOGE(TAG, "CN105 transport start failed: %s", esp_err_to_name(transport_err));
+        } else {
+            ESP_LOGI(TAG, "CN105 real transport started");
+        }
+    } else {
+        ESP_LOGI(TAG, "CN105 transport: mock mode");
     }
 
     const esp_err_t wifi_err = platform_wifi::init();

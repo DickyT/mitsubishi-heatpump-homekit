@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "cn105_core.h"
+#include "cn105_transport.h"
 #include "cn105_uart.h"
 #include "esp_timer.h"
 #include "homekit_bridge.h"
@@ -136,6 +137,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
     const cn105_uart::Status cn105 = cn105_uart::getStatus();
     const cn105_core::MockState mock = cn105_core::getMockState();
     const homekit_bridge::Status homekit = homekit_bridge::getStatus();
+    const cn105_transport::Status transport = cn105_transport::getStatus();
 
     char mock_json[768] = {};
     writeMockStateJson(mock, mock_json, sizeof(mock_json));
@@ -143,11 +145,16 @@ esp_err_t statusHandler(httpd_req_t* req) {
     char homekit_json[512] = {};
     writeHomeKitJson(homekit, homekit_json, sizeof(homekit_json));
 
-    constexpr size_t kStatusBodyLen = 4096;
+    char esc_transport_err[128] = {};
+    web_http::jsonEscape(transport.lastError, esc_transport_err, sizeof(esc_transport_err));
+
+    constexpr size_t kStatusBodyLen = 5120;
     char* body = static_cast<char*>(std::calloc(kStatusBodyLen, sizeof(char)));
     if (body == nullptr) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
     }
+
+    const char* transport_mode = app_config::kCn105UseRealTransport ? "real" : "mock";
 
     std::snprintf(body,
                   kStatusBodyLen,
@@ -159,7 +166,9 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
                   "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
-                  "\"cn105\":{\"uart_initialized\":%s,\"uart\":%d,\"rx_pin\":%d,\"tx_pin\":%d,\"baud\":%d,\"format\":\"%s\",\"transport\":\"mock\",%s}"
+                  "\"cn105\":{\"uart_initialized\":%s,\"uart\":%d,\"rx_pin\":%d,\"tx_pin\":%d,\"baud\":%d,\"format\":\"%s\",\"transport\":\"%s\","
+                  "\"transport_status\":{\"running\":%s,\"connected\":%s,\"phase\":\"%s\",\"connect_attempts\":%lu,\"poll_cycles\":%lu,\"rx_packets\":%lu,\"rx_errors\":%lu,\"tx_packets\":%lu,\"sets_pending\":%lu,\"last_error\":\"%s\"},"
+                  "%s}"
                   "}",
                   app_config::kDeviceName,
                   app_config::kPhaseName,
@@ -185,6 +194,17 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   cn105.txPin,
                   cn105.baudRate,
                   cn105.format,
+                  transport_mode,
+                  transport.taskRunning ? "true" : "false",
+                  transport.connected ? "true" : "false",
+                  transport.phase,
+                  static_cast<unsigned long>(transport.connectAttempts),
+                  static_cast<unsigned long>(transport.pollCycles),
+                  static_cast<unsigned long>(transport.rxPackets),
+                  static_cast<unsigned long>(transport.rxErrors),
+                  static_cast<unsigned long>(transport.txPackets),
+                  static_cast<unsigned long>(transport.setsPending),
+                  esc_transport_err,
                   mock_json);
 
     const esp_err_t err = web_http::sendText(req, "application/json", body);

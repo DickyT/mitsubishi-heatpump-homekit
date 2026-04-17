@@ -58,4 +58,11 @@ inline constexpr uart_stop_bits_t kCn105StopBits = UART_STOP_BITS_1;
 inline constexpr int kCn105RxBufferBytes = 256;
 inline constexpr int kCn105TxBufferBytes = 256;
 
+inline constexpr bool kCn105UseRealTransport = false;
+inline constexpr uint32_t kCn105ConnectRetryMs = 10000;
+inline constexpr uint32_t kCn105PollIntervalMs = 2000;
+inline constexpr uint32_t kCn105ResponseTimeoutMs = 1000;
+inline constexpr uint32_t kCn105RxByteTimeoutMs = 120;
+inline constexpr size_t kCn105TransportStackBytes = 4096;
+
 }  // namespace app_config
