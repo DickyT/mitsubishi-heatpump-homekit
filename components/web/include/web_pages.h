@@ -1,11 +1,11 @@
 #pragma once
 
-#include <cstddef>
+#include "esp_http_server.h"
 
 namespace web_pages {
 
-bool renderRoot(char* out, size_t out_len);
-bool renderDebug(char* out, size_t out_len);
-bool renderAdmin(char* out, size_t out_len);
+esp_err_t sendRoot(httpd_req_t* req);
+esp_err_t sendDebug(httpd_req_t* req);
+esp_err_t sendAdmin(httpd_req_t* req);
 
 }  // namespace web_pages

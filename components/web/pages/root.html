@@ -1,0 +1,29 @@
+<main>
+<h1>三菱空调</h1>
+<div class="subtitle">远程控制面板</div>
+<div class="stats" style="margin-bottom:14px">
+<div class="stat"><div class="k">电源</div><div class="v" id="s-power">--</div></div>
+<div class="stat"><div class="k">模式</div><div class="v" id="s-mode">--</div></div>
+<div class="stat"><div class="k">设定温度</div><div class="v" id="s-temp">--</div></div>
+<div class="stat"><div class="k">室温</div><div class="v" id="s-room">--</div></div>
+<div class="stat"><div class="k">风速</div><div class="v" id="s-fan">--</div></div>
+<div class="stat"><div class="k">WiFi</div><div class="v" id="s-wifi">--</div></div>
+<div class="stat"><div class="k">Transport</div><div class="v" id="s-transport">--</div></div>
+<div class="stat"><div class="k">HomeKit</div><div class="v" id="s-hk">--</div></div>
+</div>
+<div class="card">
+<h3>遥控器</h3>
+<div class="row">
+<div><label>电源</label><select id="power"><option>OFF</option><option>ON</option></select></div>
+<div><label>模式</label><select id="mode"><option>COOL</option><option>HEAT</option><option>DRY</option><option>FAN</option><option>AUTO</option></select></div>
+</div>
+<div class="row3">
+<div><label>温度 °F</label><input id="temp" type="number" min="50" max="88" step="1" value="77"></div>
+<div><label>风速</label><select id="fan"><option>AUTO</option><option>QUIET</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+<div><label>风向</label><select id="vane"><option>AUTO</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>SWING</option></select></div>
+</div>
+<div><label>左右风向</label><select id="wide"><option value="|">中间</option><option value="&lt;&lt;">最左</option><option value="&lt;">左</option><option value="&gt;">右</option><option value="&gt;&gt;">最右</option><option value="&lt;&gt;">分散</option><option>SWING</option></select></div>
+<div class="btns"><button class="btn-send" onclick="send()">发送</button><button class="btn-secondary" onclick="refresh()">刷新</button></div>
+</div>
+<pre id="out">加载中...</pre>
+</main>

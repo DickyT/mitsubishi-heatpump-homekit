@@ -1,0 +1,26 @@
+<main>
+<h1>系统管理</h1>
+<div class="subtitle">设备信息与维护</div>
+<div class="card">
+<h3>设备信息</h3>
+<div class="kvrow"><span class="kk">名称</span><span class="vv" id="i-device">--</span></div>
+<div class="kvrow"><span class="kk">阶段</span><span class="vv" id="i-phase">--</span></div>
+<div class="kvrow"><span class="kk">运行时间</span><span class="vv" id="i-uptime">--</span></div>
+<div class="kvrow"><span class="kk">WiFi</span><span class="vv" id="i-wifi">--</span></div>
+<div class="kvrow"><span class="kk">MAC</span><span class="vv" id="i-mac">--</span></div>
+<div class="kvrow"><span class="kk">存储</span><span class="vv" id="i-fs">--</span></div>
+<div class="kvrow"><span class="kk">传输模式</span><span class="vv" id="i-transport">--</span></div>
+</div>
+<div class="card">
+<h3>HomeKit</h3>
+<div class="kvrow"><span class="kk">状态</span><span class="vv" id="i-hk-status">--</span></div>
+<div class="kvrow"><span class="kk">已配对</span><span class="vv" id="i-hk-paired">--</span></div>
+<div class="kvrow"><span class="kk">配对码</span><span class="vv" id="i-hk-code">--</span></div>
+<div class="kvrow"><span class="kk">Setup Payload</span><span class="vv" id="i-hk-payload">--</span></div>
+</div>
+<div class="card">
+<h3>维护</h3>
+<div class="btns"><button class="btn-danger" onclick="reboot()">重启设备</button></div>
+<div id="msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
+</div>
+</main>
