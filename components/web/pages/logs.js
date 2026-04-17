@@ -9,6 +9,7 @@ async function loadLogs(){
     setText('log-active',j.active?'写入中':'未启用');
     setText('log-current',j.current||'-');
     setText('log-size',(j.current_bytes||0)+' bytes');
+    setText('log-level',j.level||'-');
     const list=$('log-list');list.innerHTML='';
     if(!j.logs||!j.logs.length){list.textContent='没有日志文件。';return;}
     j.logs.forEach(log=>{

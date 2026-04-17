@@ -16,10 +16,12 @@
 <div class="kvrow"><span class="kk">状态</span><span class="vv" id="i-hk-status">--</span></div>
 <div class="kvrow"><span class="kk">已配对</span><span class="vv" id="i-hk-paired">--</span></div>
 <div class="kvrow"><span class="kk">配对码</span><span class="vv" id="i-hk-code">--</span></div>
-<div class="kvrow"><span class="kk">Setup Payload</span><span class="vv" id="i-hk-payload">--</span></div>
+<div class="kvrow"><span class="kk">配对信息</span><span class="vv"><button id="hk-modal-btn" class="btn-secondary btn-compact" type="button">点击查看</button></span></div>
 </div>
 <div class="card">
 <h3>维护</h3>
+<div class="kvrow"><span class="kk">当前日志</span><span class="vv" id="i-log-current">--</span></div>
+<div class="kvrow"><span class="kk">日志等级</span><span class="vv" id="i-log-level">--</span></div>
 <div class="subtitle">这些操作用于重新配对或清理本地维护数据。重置 HomeKit 会由 HomeKit SDK 自动重启设备。</div>
 <div class="btns">
 <button class="btn-danger" onclick="maintenance('/api/maintenance/reset-homekit','重置 HomeKit','确定重置 HomeKit 吗？这会清除配对和 HomeKit SDK 状态，设备随后会重启。')">重置 HomeKit</button>
@@ -37,3 +39,30 @@
 <div id="msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
 </div>
 </main>
+<div id="hk-modal" class="modal" aria-hidden="true">
+<div class="modal-backdrop" data-close-modal="hk-modal"></div>
+<div class="modal-panel">
+<div class="modal-header">
+<div>
+<h2>HomeKit 配对</h2>
+<div class="subtitle modal-subtitle">打开 iPhone 的“家庭”App 添加配件，扫描二维码或手动输入配对码。</div>
+</div>
+<button id="hk-modal-close" class="btn-secondary btn-compact" type="button">关闭</button>
+</div>
+<div class="modal-grid">
+<div class="modal-card">
+<div class="section-label">配对信息</div>
+<div class="pairing-code" id="hk-modal-code">--</div>
+<div class="pairing-hint">设备名: <span id="hk-modal-device">--</span></div>
+<div class="pairing-hint">配对状态: <span id="hk-modal-paired">--</span></div>
+</div>
+<div class="modal-card">
+<div class="section-label">配对二维码</div>
+<div id="hk-qr" class="qr-box">二维码加载中...</div>
+<div class="pairing-hint">Setup Payload: <code id="hk-modal-payload">--</code></div>
+<div class="pairing-hint">如果二维码没显示，可以直接在 Home App 手动输入上面的配对码。</div>
+</div>
+</div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>

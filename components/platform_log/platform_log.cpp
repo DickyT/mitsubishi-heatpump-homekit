@@ -388,6 +388,7 @@ Status getStatus() {
     copyString(status.currentPath, sizeof(status.currentPath), current_path);
     status.currentBytes = current_bytes;
     status.droppedLines = dropped_lines;
+    copyString(status.levelName, sizeof(status.levelName), logLevelName(app_config::kDefaultLogLevel));
     return status;
 }
 

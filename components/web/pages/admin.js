@@ -1,8 +1,50 @@
 const $=id=>document.getElementById(id);
 document.getElementById('t5').classList.add('active');
+let homekitStatus=null;
+
+function renderHomeKitQr(payload){
+  const target=$('hk-qr');
+  if(!target)return;
+  if(!payload||payload==='-'){
+    target.textContent='当前没有可用的 Setup Payload。';
+    return;
+  }
+  if(!window.QRCode){
+    target.textContent='二维码库加载失败，请直接使用配对码。';
+    return;
+  }
+  target.textContent='';
+  target.innerHTML='';
+  new QRCode(target,{
+    text:payload,
+    width:220,
+    height:220,
+    colorDark:'#09101d',
+    colorLight:'#f7fbff',
+    correctLevel:QRCode.CorrectLevel.M
+  });
+}
+
+function openHomeKitModal(){
+  if(!homekitStatus)return;
+  $('hk-modal-code').textContent=homekitStatus.setup_code||'--';
+  $('hk-modal-device').textContent=homekitStatus.accessory_name||'--';
+  $('hk-modal-paired').textContent=(homekitStatus.paired_controllers||0)+' 个控制器';
+  $('hk-modal-payload').textContent=homekitStatus.setup_payload||'--';
+  $('hk-modal').classList.add('open');
+  $('hk-modal').setAttribute('aria-hidden','false');
+  renderHomeKitQr(homekitStatus.setup_payload||'');
+}
+
+function closeHomeKitModal(){
+  $('hk-modal').classList.remove('open');
+  $('hk-modal').setAttribute('aria-hidden','true');
+}
+
 async function loadInfo(){
   try{
     const r=await fetch('/api/status');const j=await r.json();
+    homekitStatus=j.homekit||null;
     $('i-device').textContent=j.device;
     $('i-phase').textContent=j.phase;
     $('i-uptime').textContent=Math.floor(j.uptime_ms/1000)+'s';
@@ -12,7 +54,8 @@ async function loadInfo(){
     $('i-hk-status').textContent=j.homekit.started?'\u5df2\u542f\u52a8':'\u672a\u542f\u52a8';
     $('i-hk-paired').textContent=j.homekit.paired_controllers;
     $('i-hk-code').textContent=j.homekit.setup_code;
-    $('i-hk-payload').textContent=j.homekit.setup_payload||'-';
+    $('i-log-current').textContent=j.log.current||'-';
+    $('i-log-level').textContent=j.log.level||'-';
     $('i-transport').textContent=j.cn105.transport;
   }catch(e){$('msg').textContent='\u52a0\u8f7d\u5931\u8d25: '+e;}
 }
@@ -30,4 +73,12 @@ async function maintenance(url,label,prompt){
     setTimeout(loadInfo,800);
   }catch(e){$('msg').textContent=label+'\u8bf7\u6c42\u5931\u8d25: '+e;}
 }
+
+$('hk-modal-btn').addEventListener('click',openHomeKitModal);
+$('hk-modal-close').addEventListener('click',closeHomeKitModal);
+document.querySelectorAll('[data-close-modal="hk-modal"]').forEach(el=>el.addEventListener('click',closeHomeKitModal));
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&$('hk-modal').classList.contains('open'))closeHomeKitModal();
+});
+
 loadInfo();

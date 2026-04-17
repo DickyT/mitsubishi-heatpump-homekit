@@ -195,7 +195,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
                   "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
-                  "\"log\":{\"active\":%s,\"current\":\"%s\",\"current_bytes\":%u,\"dropped_lines\":%u},"
+                  "\"log\":{\"active\":%s,\"current\":\"%s\",\"current_bytes\":%u,\"dropped_lines\":%u,\"level\":\"%s\"},"
                   "\"cn105\":{\"uart_initialized\":%s,\"uart\":%d,\"rx_pin\":%d,\"tx_pin\":%d,\"baud\":%d,\"format\":\"%s\",\"transport\":\"%s\","
                   "\"transport_status\":{\"running\":%s,\"connected\":%s,\"phase\":\"%s\",\"connect_attempts\":%lu,\"poll_cycles\":%lu,\"rx_packets\":%lu,\"rx_errors\":%lu,\"tx_packets\":%lu,\"sets_pending\":%lu,\"last_error\":\"%s\"},"
                   "%s}"
@@ -222,6 +222,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   esc_log_path,
                   static_cast<unsigned>(log.currentBytes),
                   static_cast<unsigned>(log.droppedLines),
+                  log.levelName,
                   cn105.initialized ? "true" : "false",
                   cn105.uart,
                   cn105.rxPin,
@@ -415,6 +416,9 @@ esp_err_t logsListHandler(httpd_req_t* req) {
     body += platform_fs::jsonEscape(status.currentPath);
     body += "\",\"current_bytes\":";
     body += std::to_string(status.currentBytes);
+    body += ",\"level\":\"";
+    body += platform_fs::jsonEscape(status.levelName);
+    body += "\"";
     body += ",\"dropped_lines\":";
     body += std::to_string(status.droppedLines);
     body += ",\"logs\":";

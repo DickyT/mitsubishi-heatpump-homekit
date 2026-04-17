@@ -11,6 +11,7 @@ struct Status {
     char currentPath[128] = "";
     size_t currentBytes = 0;
     size_t droppedLines = 0;
+    char levelName[16] = "";
 };
 
 void init();
