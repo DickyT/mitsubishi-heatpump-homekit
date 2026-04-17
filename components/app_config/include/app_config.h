@@ -26,6 +26,7 @@ inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
 inline constexpr uint16_t kWebServerPort = 8080;
 inline constexpr uint32_t kWebServerStackBytes = 12288;
 inline constexpr uint8_t kWebServerMaxOpenSockets = 3;
+inline constexpr uint8_t kWebServerMaxUriHandlers = 16;
 
 inline constexpr bool kHomeKitEnabled = true;
 inline constexpr char kHomeKitAccessoryName[] = "Mitsubishi AC";

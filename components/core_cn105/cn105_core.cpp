@@ -645,7 +645,6 @@ bool runSelfTest(char* error, size_t error_len) {
 
     xSemaphoreTake(mock_mutex, portMAX_DELAY);
     const int roundTripF = mock_state.targetTemperatureF;
-    xSemaphoreTake(mock_mutex, portMAX_DELAY);
     mock_state = before;
     std::snprintf(last_packet_hex, sizeof(last_packet_hex), "%s", previous_packet_hex);
     std::snprintf(last_error, sizeof(last_error), "%s", previous_error);
