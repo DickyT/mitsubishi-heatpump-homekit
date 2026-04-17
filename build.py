@@ -154,6 +154,60 @@ def flash(args: argparse.Namespace) -> int:
     return run_idf(idf_args, quiet_first=args.quiet_first)
 
 
+def flash_esptool(args: argparse.Namespace) -> int:
+    port = args.port
+    if not port:
+        ports = detect_serial_ports()
+        if len(ports) == 1:
+            port = ports[0]
+            print(f"Detected ESP32 serial port: {port}")
+        elif len(ports) > 1:
+            print("Multiple ESP32-like serial ports found:", file=sys.stderr)
+            for candidate in ports:
+                print(f"  {candidate}", file=sys.stderr)
+            print("Please rerun with --port /dev/cu.xxxxx", file=sys.stderr)
+            return 2
+        else:
+            print("No ESP32-like serial port found.", file=sys.stderr)
+            return 2
+
+    build_dir = PROJECT_ROOT / "build"
+    flash_args = build_dir / "flasher_args.json"
+    if not flash_args.exists():
+        fail(f"No build found at {flash_args}. Run a build first (e.g. via Docker).")
+
+    import json
+    with open(flash_args) as f:
+        args_data = json.load(f)
+
+    parts = []
+    for addr, path in args_data.get("flash_files", {}).items():
+        bin_path = build_dir / path
+        if not bin_path.exists():
+            fail(f"Binary not found: {bin_path}")
+        parts.extend([addr, str(bin_path)])
+
+    esptool = "esptool"
+    for candidate in ["esptool", "esptool.py"]:
+        import shutil
+        if shutil.which(candidate):
+            esptool = candidate
+            break
+
+    cmd = [
+        esptool, "--chip", "esp32",
+        "-p", port, "-b", str(args.baud),
+        "--before", "default-reset", "--after", "hard-reset",
+        "write-flash",
+        "--flash-mode", args_data.get("flash_settings", {}).get("flash_mode", "dio"),
+        "--flash-size", args_data.get("flash_settings", {}).get("flash_size", "4MB"),
+        "--flash-freq", args_data.get("flash_settings", {}).get("flash_freq", "40m"),
+        *parts,
+    ]
+    print(f"Flashing: {' '.join(cmd)}", flush=True)
+    return subprocess.call(cmd)
+
+
 def serial_log(args: argparse.Namespace) -> int:
     port = args.port
     if not port:
@@ -204,9 +258,13 @@ def serial_log(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    ensure_idf_python()
-
     argv = sys.argv[1:]
+
+    if len(argv) > 0 and argv[0] in ("flash-esptool", "serial-log"):
+        pass
+    else:
+        ensure_idf_python()
+
     quiet_first = False
     if "--quiet-first" in argv:
         quiet_first = True
@@ -214,6 +272,13 @@ def main() -> int:
     if "-q" in argv:
         quiet_first = True
         argv = [arg for arg in argv if arg != "-q"]
+
+    if len(argv) > 0 and argv[0] == "flash-esptool":
+        parser = argparse.ArgumentParser(description="Flash using esptool directly (no ESP-IDF toolchain required).")
+        parser.add_argument("-p", "--port", help="Serial port, for example /dev/cu.usbserial-xxxx")
+        parser.add_argument("-b", "--baud", default=DEFAULT_FLASH_BAUD, type=int, help="Flash baud rate")
+        parsed = parser.parse_args(argv[1:])
+        return flash_esptool(parsed)
 
     if len(argv) > 0 and argv[0] == "flash-auto":
         parser = argparse.ArgumentParser(description="Auto-detect ESP32 serial port and flash this project.")
