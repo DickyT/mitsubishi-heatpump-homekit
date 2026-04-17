@@ -19,58 +19,44 @@ namespace {
 
 const char* TAG = "homekit_bridge";
 
-constexpr uint8_t kCurrentOff = 0;
-constexpr uint8_t kCurrentHeat = 1;
-constexpr uint8_t kCurrentCool = 2;
-constexpr uint8_t kTargetOff = 0;
+constexpr uint8_t kInactive = 0;
+constexpr uint8_t kActive = 1;
+constexpr uint8_t kCurrentInactive = 0;
+constexpr uint8_t kCurrentIdle = 1;
+constexpr uint8_t kCurrentHeating = 2;
+constexpr uint8_t kCurrentCooling = 3;
+constexpr uint8_t kTargetAuto = 0;
 constexpr uint8_t kTargetHeat = 1;
 constexpr uint8_t kTargetCool = 2;
-constexpr uint8_t kTargetAuto = 3;
+constexpr uint8_t kSwingDisabled = 0;
+constexpr uint8_t kSwingEnabled = 1;
 constexpr uint8_t kDisplayFahrenheit = 1;
 constexpr float kMinTargetCelsius = 16.0f;
 constexpr float kMaxTargetCelsius = 31.0f;
 constexpr float kTargetStepCelsius = 0.5f;
-constexpr uint8_t kInactive = 0;
-constexpr uint8_t kActive = 1;
-constexpr uint8_t kFanStateInactive = 0;
-constexpr uint8_t kFanStateBlowing = 2;
-constexpr uint8_t kTargetFanManual = 0;
-constexpr uint8_t kTargetFanAuto = 1;
-constexpr uint8_t kSwingDisabled = 0;
-constexpr uint8_t kSwingEnabled = 1;
-constexpr uint8_t kSlatFixed = 0;
-constexpr uint8_t kSlatSwinging = 2;
-constexpr uint8_t kSlatTypeHorizontal = 0;
-constexpr uint8_t kSlatTypeVertical = 1;
 
 bool started = false;
 hap_acc_t* accessory = nullptr;
-hap_serv_t* thermostat = nullptr;
-hap_serv_t* fan = nullptr;
-hap_serv_t* vertical_vane_slat = nullptr;
-hap_serv_t* wide_vane_slat = nullptr;
+hap_serv_t* heater_cooler = nullptr;
+hap_char_t* active_char = nullptr;
+hap_char_t* current_temp_char = nullptr;
 hap_char_t* current_state_char = nullptr;
 hap_char_t* target_state_char = nullptr;
-hap_char_t* current_temp_char = nullptr;
-hap_char_t* target_temp_char = nullptr;
+hap_char_t* cooling_threshold_char = nullptr;
+hap_char_t* heating_threshold_char = nullptr;
+hap_char_t* rotation_speed_char = nullptr;
+hap_char_t* swing_mode_char = nullptr;
 hap_char_t* temp_units_char = nullptr;
-hap_char_t* fan_active_char = nullptr;
-hap_char_t* fan_speed_char = nullptr;
-hap_char_t* fan_current_state_char = nullptr;
-hap_char_t* fan_target_state_char = nullptr;
-hap_char_t* fan_swing_char = nullptr;
-hap_char_t* vertical_slat_state_char = nullptr;
-hap_char_t* vertical_current_tilt_char = nullptr;
-hap_char_t* vertical_target_tilt_char = nullptr;
-hap_char_t* wide_slat_state_char = nullptr;
-hap_char_t* wide_current_tilt_char = nullptr;
-hap_char_t* wide_target_tilt_char = nullptr;
 char setup_payload[128] = "";
 char last_event[40] = "not-started";
 char last_error[96] = "";
 
 char* hapString(const char* value) {
     return const_cast<char*>(value);
+}
+
+bool equals(const char* left, const char* right) {
+    return std::strcmp(left, right) == 0;
 }
 
 float fahrenheitToCelsius(int value_f) {
@@ -92,14 +78,11 @@ int clampFahrenheit(int value_f) {
     return value_f;
 }
 
-bool equals(const char* left, const char* right) {
-    return std::strcmp(left, right) == 0;
+uint8_t activeFromMock(const cn105_core::MockState& state) {
+    return equals(state.power, "ON") ? kActive : kInactive;
 }
 
 uint8_t targetStateFromMock(const cn105_core::MockState& state) {
-    if (equals(state.power, "OFF")) {
-        return kTargetOff;
-    }
     if (equals(state.mode, "HEAT")) {
         return kTargetHeat;
     }
@@ -110,73 +93,71 @@ uint8_t targetStateFromMock(const cn105_core::MockState& state) {
 }
 
 uint8_t currentStateFromMock(const cn105_core::MockState& state) {
-    if (equals(state.power, "OFF") || !state.operating) {
-        return kCurrentOff;
+    if (equals(state.power, "OFF")) {
+        return kCurrentInactive;
+    }
+    if (!state.operating) {
+        return kCurrentIdle;
     }
     if (equals(state.mode, "HEAT")) {
-        return kCurrentHeat;
+        return kCurrentHeating;
     }
-    if (equals(state.mode, "COOL")) {
-        return kCurrentCool;
+    if (equals(state.mode, "COOL") || equals(state.mode, "DRY")) {
+        return kCurrentCooling;
     }
-    return kCurrentOff;
+    if (equals(state.mode, "AUTO")) {
+        return state.roomTemperatureF < state.targetTemperatureF ? kCurrentHeating : kCurrentCooling;
+    }
+    return kCurrentIdle;
 }
 
-const char* modeFromHomeKitTarget(uint8_t target_state) {
+const char* modeFromTargetState(uint8_t target_state) {
     switch (target_state) {
         case kTargetHeat:
             return "HEAT";
         case kTargetCool:
             return "COOL";
-        case kTargetAuto:
-            return "AUTO";
         default:
-            return nullptr;
+            return "AUTO";
     }
 }
 
-uint8_t activeFromMock(const cn105_core::MockState& state) {
-    return equals(state.power, "ON") ? kActive : kInactive;
+float fanToPercent(const char* fan) {
+    if (fan == nullptr) {
+        return 0.0f;
+    }
+    if (equals(fan, "QUIET")) {
+        return 14.0f;
+    }
+    if (equals(fan, "1")) {
+        return 28.0f;
+    }
+    if (equals(fan, "2")) {
+        return 42.0f;
+    }
+    if (equals(fan, "3")) {
+        return 71.0f;
+    }
+    if (equals(fan, "4")) {
+        return 100.0f;
+    }
+    return 0.0f;
 }
 
-uint8_t currentFanStateFromMock(const cn105_core::MockState& state) {
-    return equals(state.power, "ON") ? kFanStateBlowing : kFanStateInactive;
-}
-
-uint8_t targetFanStateFromMock(const cn105_core::MockState& state) {
-    return equals(state.fan, "AUTO") ? kTargetFanAuto : kTargetFanManual;
-}
-
-float fanSpeedFromMock(const cn105_core::MockState& state) {
-    if (equals(state.fan, "QUIET")) {
-        return 15.0f;
+const char* percentToFan(float percent) {
+    if (percent <= 0.0f) {
+        return "AUTO";
     }
-    if (equals(state.fan, "1")) {
-        return 25.0f;
-    }
-    if (equals(state.fan, "2")) {
-        return 45.0f;
-    }
-    if (equals(state.fan, "3")) {
-        return 65.0f;
-    }
-    if (equals(state.fan, "4")) {
-        return 85.0f;
-    }
-    return 50.0f;
-}
-
-const char* fanFromSpeed(float speed) {
-    if (speed <= 20.0f) {
+    if (percent <= 20.0f) {
         return "QUIET";
     }
-    if (speed <= 35.0f) {
+    if (percent <= 35.0f) {
         return "1";
     }
-    if (speed <= 55.0f) {
+    if (percent <= 55.0f) {
         return "2";
     }
-    if (speed <= 75.0f) {
+    if (percent <= 80.0f) {
         return "3";
     }
     return "4";
@@ -184,74 +165,6 @@ const char* fanFromSpeed(float speed) {
 
 uint8_t swingFromMock(const cn105_core::MockState& state) {
     return equals(state.vane, "SWING") || equals(state.wideVane, "SWING") ? kSwingEnabled : kSwingDisabled;
-}
-
-uint8_t slatStateFromValue(const char* value) {
-    return equals(value, "SWING") ? kSlatSwinging : kSlatFixed;
-}
-
-int verticalTiltFromVane(const char* vane) {
-    if (equals(vane, "1")) {
-        return -60;
-    }
-    if (equals(vane, "2")) {
-        return -30;
-    }
-    if (equals(vane, "4")) {
-        return 30;
-    }
-    if (equals(vane, "5")) {
-        return 60;
-    }
-    return 0;
-}
-
-int horizontalTiltFromWideVane(const char* wide_vane) {
-    if (equals(wide_vane, "<<")) {
-        return -60;
-    }
-    if (equals(wide_vane, "<")) {
-        return -30;
-    }
-    if (equals(wide_vane, ">")) {
-        return 30;
-    }
-    if (equals(wide_vane, ">>")) {
-        return 60;
-    }
-    return 0;
-}
-
-const char* vaneFromVerticalTilt(int angle) {
-    if (angle <= -45) {
-        return "1";
-    }
-    if (angle <= -15) {
-        return "2";
-    }
-    if (angle <= 15) {
-        return "3";
-    }
-    if (angle <= 45) {
-        return "4";
-    }
-    return "5";
-}
-
-const char* wideVaneFromHorizontalTilt(int angle) {
-    if (angle <= -45) {
-        return "<<";
-    }
-    if (angle <= -15) {
-        return "<";
-    }
-    if (angle <= 15) {
-        return "|";
-    }
-    if (angle <= 45) {
-        return ">";
-    }
-    return ">>";
 }
 
 void setLastEvent(const char* value) {
@@ -279,15 +192,6 @@ void updateCharFloat(hap_char_t* character, float value) {
     }
     hap_val_t hap_value = {};
     hap_value.f = value;
-    hap_char_update_val(character, &hap_value);
-}
-
-void updateCharInt(hap_char_t* character, int value) {
-    if (character == nullptr) {
-        return;
-    }
-    hap_val_t hap_value = {};
-    hap_value.i = value;
     hap_char_update_val(character, &hap_value);
 }
 
@@ -353,25 +257,39 @@ void hapEventHandler(void*, esp_event_base_t, int32_t event_id, void*) {
     }
 }
 
-int thermostatWrite(hap_write_data_t write_data[], int count, void*, void*) {
+int heaterCoolerWrite(hap_write_data_t write_data[], int count, void*, void*) {
     cn105_core::SetCommand command{};
     bool should_apply = false;
 
     for (int i = 0; i < count; ++i) {
-        if (write_data[i].hc == target_state_char) {
-            const uint8_t target_state = static_cast<uint8_t>(write_data[i].val.u);
+        if (write_data[i].hc == active_char) {
             command.hasPower = true;
-            command.power = target_state == kTargetOff ? "OFF" : "ON";
-
-            const char* mode = modeFromHomeKitTarget(target_state);
-            if (mode != nullptr) {
-                command.hasMode = true;
-                command.mode = mode;
-            }
+            command.power = write_data[i].val.u == kActive ? "ON" : "OFF";
             should_apply = true;
-        } else if (write_data[i].hc == target_temp_char) {
+        } else if (write_data[i].hc == target_state_char) {
+            command.hasPower = true;
+            command.power = "ON";
+            command.hasMode = true;
+            command.mode = modeFromTargetState(static_cast<uint8_t>(write_data[i].val.u));
+            should_apply = true;
+        } else if (write_data[i].hc == cooling_threshold_char || write_data[i].hc == heating_threshold_char) {
             command.hasTemperatureF = true;
             command.temperatureF = clampFahrenheit(celsiusToRoundedFahrenheit(write_data[i].val.f));
+            should_apply = true;
+        } else if (write_data[i].hc == rotation_speed_char) {
+            command.hasFan = true;
+            command.fan = percentToFan(write_data[i].val.f);
+            should_apply = true;
+        } else if (write_data[i].hc == swing_mode_char) {
+            command.hasVane = true;
+            command.hasWideVane = true;
+            if (write_data[i].val.u == kSwingEnabled) {
+                command.vane = "SWING";
+                command.wideVane = "SWING";
+            } else {
+                command.vane = "AUTO";
+                command.wideVane = "|";
+            }
             should_apply = true;
         } else if (write_data[i].hc == temp_units_char) {
             updateCharUInt8(temp_units_char, kDisplayFahrenheit);
@@ -392,228 +310,54 @@ int thermostatWrite(hap_write_data_t write_data[], int count, void*, void*) {
     }
 
     homekit_bridge::syncFromMock();
-    setLastEvent("write-applied");
+    setLastEvent("heater-cooler-write");
     return HAP_SUCCESS;
 }
 
-int fanWrite(hap_write_data_t write_data[], int count, void*, void*) {
-    cn105_core::SetCommand command{};
-    bool should_apply = false;
-
-    for (int i = 0; i < count; ++i) {
-        if (write_data[i].hc == fan_active_char) {
-            command.hasPower = true;
-            command.power = write_data[i].val.u == kActive ? "ON" : "OFF";
-            should_apply = true;
-        } else if (write_data[i].hc == fan_speed_char) {
-            command.hasFan = true;
-            command.fan = fanFromSpeed(write_data[i].val.f);
-            should_apply = true;
-        } else if (write_data[i].hc == fan_target_state_char) {
-            if (write_data[i].val.u == kTargetFanAuto) {
-                command.hasFan = true;
-                command.fan = "AUTO";
-                should_apply = true;
-            }
-        } else if (write_data[i].hc == fan_swing_char) {
-            command.hasVane = true;
-            command.hasWideVane = true;
-            if (write_data[i].val.u == kSwingEnabled) {
-                command.vane = "SWING";
-                command.wideVane = "SWING";
-            } else {
-                command.vane = "AUTO";
-                command.wideVane = "|";
-            }
-            should_apply = true;
-        }
-
-        if (write_data[i].status != nullptr) {
-            *(write_data[i].status) = HAP_STATUS_SUCCESS;
-        }
-    }
-
-    if (should_apply && !applyToMock(command)) {
-        for (int i = 0; i < count; ++i) {
-            if (write_data[i].status != nullptr) {
-                *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
-            }
-        }
-        return HAP_FAIL;
-    }
-
-    homekit_bridge::syncFromMock();
-    setLastEvent("fan-write-applied");
-    return HAP_SUCCESS;
-}
-
-int slatWrite(hap_write_data_t write_data[], int count, void*, void*) {
-    cn105_core::SetCommand command{};
-    bool should_apply = false;
-
-    for (int i = 0; i < count; ++i) {
-        if (write_data[i].hc == vertical_target_tilt_char) {
-            command.hasVane = true;
-            command.vane = vaneFromVerticalTilt(write_data[i].val.i);
-            should_apply = true;
-        } else if (write_data[i].hc == wide_target_tilt_char) {
-            command.hasWideVane = true;
-            command.wideVane = wideVaneFromHorizontalTilt(write_data[i].val.i);
-            should_apply = true;
-        }
-
-        if (write_data[i].status != nullptr) {
-            *(write_data[i].status) = HAP_STATUS_SUCCESS;
-        }
-    }
-
-    if (should_apply && !applyToMock(command)) {
-        for (int i = 0; i < count; ++i) {
-            if (write_data[i].status != nullptr) {
-                *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
-            }
-        }
-        return HAP_FAIL;
-    }
-
-    homekit_bridge::syncFromMock();
-    setLastEvent("slat-write-applied");
-    return HAP_SUCCESS;
-}
-
-esp_err_t addThermostatService(hap_acc_t* target_accessory) {
+esp_err_t addHeaterCoolerService(hap_acc_t* target_accessory) {
     const cn105_core::MockState state = cn105_core::getMockState();
-    thermostat = hap_serv_thermostat_create(currentStateFromMock(state),
-                                            targetStateFromMock(state),
-                                            fahrenheitToCelsius(state.roomTemperatureF),
-                                            fahrenheitToCelsius(state.targetTemperatureF),
-                                            kDisplayFahrenheit);
-    if (thermostat == nullptr) {
-        setLastError("failed to create thermostat service");
+    heater_cooler = hap_serv_heater_cooler_create(activeFromMock(state),
+                                                  fahrenheitToCelsius(state.roomTemperatureF),
+                                                  currentStateFromMock(state),
+                                                  targetStateFromMock(state));
+    if (heater_cooler == nullptr) {
+        setLastError("failed to create heater cooler service");
         return ESP_FAIL;
     }
 
-    int ret = hap_serv_add_char(thermostat, hap_char_name_create(hapString(app_config::kHomeKitAccessoryName)));
+    int ret = hap_serv_add_char(heater_cooler, hap_char_name_create(hapString(app_config::kHomeKitAccessoryName)));
+    ret |= hap_serv_add_char(heater_cooler, hap_char_cooling_threshold_temperature_create(fahrenheitToCelsius(state.targetTemperatureF)));
+    ret |= hap_serv_add_char(heater_cooler, hap_char_heating_threshold_temperature_create(fahrenheitToCelsius(state.targetTemperatureF)));
+    ret |= hap_serv_add_char(heater_cooler, hap_char_rotation_speed_create(fanToPercent(state.fan)));
+    ret |= hap_serv_add_char(heater_cooler, hap_char_swing_mode_create(swingFromMock(state)));
+    ret |= hap_serv_add_char(heater_cooler, hap_char_temperature_display_units_create(kDisplayFahrenheit));
     if (ret != HAP_SUCCESS) {
-        setLastError("failed to add thermostat name");
+        setLastError("failed to add heater cooler characteristics");
         return ESP_FAIL;
     }
 
-    hap_serv_set_write_cb(thermostat, thermostatWrite);
-    hap_acc_add_serv(target_accessory, thermostat);
+    hap_serv_set_write_cb(heater_cooler, heaterCoolerWrite);
+    hap_acc_add_serv(target_accessory, heater_cooler);
 
-    current_state_char = hap_serv_get_char_by_uuid(thermostat, HAP_CHAR_UUID_CURRENT_HEATING_COOLING_STATE);
-    target_state_char = hap_serv_get_char_by_uuid(thermostat, HAP_CHAR_UUID_TARGET_HEATING_COOLING_STATE);
-    current_temp_char = hap_serv_get_char_by_uuid(thermostat, HAP_CHAR_UUID_CURRENT_TEMPERATURE);
-    target_temp_char = hap_serv_get_char_by_uuid(thermostat, HAP_CHAR_UUID_TARGET_TEMPERATURE);
-    temp_units_char = hap_serv_get_char_by_uuid(thermostat, HAP_CHAR_UUID_TEMPERATURE_DISPLAY_UNITS);
+    active_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_ACTIVE);
+    current_temp_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_CURRENT_TEMPERATURE);
+    current_state_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_CURRENT_HEATER_COOLER_STATE);
+    target_state_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_TARGET_HEATER_COOLER_STATE);
+    cooling_threshold_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_COOLING_THRESHOLD_TEMPERATURE);
+    heating_threshold_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_HEATING_THRESHOLD_TEMPERATURE);
+    rotation_speed_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_ROTATION_SPEED);
+    swing_mode_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_SWING_MODE);
+    temp_units_char = hap_serv_get_char_by_uuid(heater_cooler, HAP_CHAR_UUID_TEMPERATURE_DISPLAY_UNITS);
 
-    if (current_state_char == nullptr || target_state_char == nullptr || current_temp_char == nullptr ||
-        target_temp_char == nullptr || temp_units_char == nullptr) {
-        setLastError("thermostat characteristic lookup failed");
+    if (active_char == nullptr || current_temp_char == nullptr || current_state_char == nullptr ||
+        target_state_char == nullptr || cooling_threshold_char == nullptr || heating_threshold_char == nullptr ||
+        rotation_speed_char == nullptr || swing_mode_char == nullptr || temp_units_char == nullptr) {
+        setLastError("heater cooler characteristic lookup failed");
         return ESP_FAIL;
     }
 
-    hap_char_float_set_constraints(target_temp_char, kMinTargetCelsius, kMaxTargetCelsius, kTargetStepCelsius);
-    return ESP_OK;
-}
-
-esp_err_t addFanService(hap_acc_t* target_accessory) {
-    const cn105_core::MockState state = cn105_core::getMockState();
-    fan = hap_serv_fan_v2_create(activeFromMock(state));
-    if (fan == nullptr) {
-        setLastError("failed to create fan service");
-        return ESP_FAIL;
-    }
-
-    int ret = hap_serv_add_char(fan, hap_char_name_create(hapString("Mitsubishi AC Fan")));
-    ret |= hap_serv_add_char(fan, hap_char_rotation_speed_create(fanSpeedFromMock(state)));
-    ret |= hap_serv_add_char(fan, hap_char_current_fan_state_create(currentFanStateFromMock(state)));
-    ret |= hap_serv_add_char(fan, hap_char_target_fan_state_create(targetFanStateFromMock(state)));
-    ret |= hap_serv_add_char(fan, hap_char_swing_mode_create(swingFromMock(state)));
-    if (ret != HAP_SUCCESS) {
-        setLastError("failed to add fan characteristics");
-        return ESP_FAIL;
-    }
-
-    hap_serv_set_write_cb(fan, fanWrite);
-    hap_acc_add_serv(target_accessory, fan);
-
-    fan_active_char = hap_serv_get_char_by_uuid(fan, HAP_CHAR_UUID_ACTIVE);
-    fan_speed_char = hap_serv_get_char_by_uuid(fan, HAP_CHAR_UUID_ROTATION_SPEED);
-    fan_current_state_char = hap_serv_get_char_by_uuid(fan, HAP_CHAR_UUID_CURRENT_FAN_STATE);
-    fan_target_state_char = hap_serv_get_char_by_uuid(fan, HAP_CHAR_UUID_TARGET_FAN_STATE);
-    fan_swing_char = hap_serv_get_char_by_uuid(fan, HAP_CHAR_UUID_SWING_MODE);
-
-    if (fan_active_char == nullptr || fan_speed_char == nullptr || fan_current_state_char == nullptr ||
-        fan_target_state_char == nullptr || fan_swing_char == nullptr) {
-        setLastError("fan characteristic lookup failed");
-        return ESP_FAIL;
-    }
-
-    return ESP_OK;
-}
-
-esp_err_t addSlatServices(hap_acc_t* target_accessory) {
-    const cn105_core::MockState state = cn105_core::getMockState();
-
-    vertical_vane_slat = hap_serv_slat_create(slatStateFromValue(state.vane), kSlatTypeVertical);
-    if (vertical_vane_slat == nullptr) {
-        setLastError("failed to create vertical vane slat service");
-        return ESP_FAIL;
-    }
-
-    int ret = hap_serv_add_char(vertical_vane_slat, hap_char_name_create(hapString("Mitsubishi AC Vertical Vane")));
-    ret |= hap_serv_add_char(vertical_vane_slat, hap_char_current_tilt_angle_create(verticalTiltFromVane(state.vane)));
-    ret |= hap_serv_add_char(vertical_vane_slat, hap_char_target_tilt_angle_create(verticalTiltFromVane(state.vane)));
-    if (ret != HAP_SUCCESS) {
-        setLastError("failed to add vertical vane characteristics");
-        return ESP_FAIL;
-    }
-
-    hap_serv_set_write_cb(vertical_vane_slat, slatWrite);
-    hap_acc_add_serv(target_accessory, vertical_vane_slat);
-
-    wide_vane_slat = hap_serv_slat_create(slatStateFromValue(state.wideVane), kSlatTypeHorizontal);
-    if (wide_vane_slat == nullptr) {
-        setLastError("failed to create wide vane slat service");
-        return ESP_FAIL;
-    }
-
-    ret = hap_serv_add_char(wide_vane_slat, hap_char_name_create(hapString("Mitsubishi AC Horizontal Vane")));
-    ret |= hap_serv_add_char(wide_vane_slat, hap_char_current_tilt_angle_create(horizontalTiltFromWideVane(state.wideVane)));
-    ret |= hap_serv_add_char(wide_vane_slat, hap_char_target_tilt_angle_create(horizontalTiltFromWideVane(state.wideVane)));
-    if (ret != HAP_SUCCESS) {
-        setLastError("failed to add wide vane characteristics");
-        return ESP_FAIL;
-    }
-
-    hap_serv_set_write_cb(wide_vane_slat, slatWrite);
-    hap_acc_add_serv(target_accessory, wide_vane_slat);
-
-    vertical_slat_state_char = hap_serv_get_char_by_uuid(vertical_vane_slat, HAP_CHAR_UUID_CURRENT_SLAT_STATE);
-    vertical_current_tilt_char = hap_serv_get_char_by_uuid(vertical_vane_slat, HAP_CHAR_UUID_CURRENT_TILT_ANGLE);
-    vertical_target_tilt_char = hap_serv_get_char_by_uuid(vertical_vane_slat, HAP_CHAR_UUID_TARGET_TILT_ANGLE);
-    wide_slat_state_char = hap_serv_get_char_by_uuid(wide_vane_slat, HAP_CHAR_UUID_CURRENT_SLAT_STATE);
-    wide_current_tilt_char = hap_serv_get_char_by_uuid(wide_vane_slat, HAP_CHAR_UUID_CURRENT_TILT_ANGLE);
-    wide_target_tilt_char = hap_serv_get_char_by_uuid(wide_vane_slat, HAP_CHAR_UUID_TARGET_TILT_ANGLE);
-
-    if (vertical_slat_state_char == nullptr || vertical_current_tilt_char == nullptr ||
-        vertical_target_tilt_char == nullptr || wide_slat_state_char == nullptr || wide_current_tilt_char == nullptr ||
-        wide_target_tilt_char == nullptr) {
-        setLastError("slat characteristic lookup failed");
-        return ESP_FAIL;
-    }
-
-    if (fan != nullptr) {
-        int link_ret = hap_serv_link_serv(fan, vertical_vane_slat);
-        link_ret |= hap_serv_link_serv(fan, wide_vane_slat);
-        if (link_ret != HAP_SUCCESS) {
-            setLastError("failed to link slat services to fan service");
-            return ESP_FAIL;
-        }
-    }
-
+    hap_char_float_set_constraints(cooling_threshold_char, kMinTargetCelsius, kMaxTargetCelsius, kTargetStepCelsius);
+    hap_char_float_set_constraints(heating_threshold_char, kMinTargetCelsius, kMaxTargetCelsius, kTargetStepCelsius);
     return ESP_OK;
 }
 
@@ -647,7 +391,7 @@ esp_err_t start() {
         .fw_rev = hapString(app_config::kHomeKitFirmwareRevision),
         .hw_rev = hapString(app_config::kHomeKitHardwareRevision),
         .pv = hapString("1.1.0"),
-        .cid = HAP_CID_THERMOSTAT,
+        .cid = HAP_CID_AIR_CONDITIONER,
         .identify_routine = identify,
     };
 
@@ -661,15 +405,7 @@ esp_err_t start() {
     hap_acc_add_product_data(accessory, product_data, sizeof(product_data));
     hap_acc_add_wifi_transport_service(accessory, 0);
 
-    esp_err_t err = addThermostatService(accessory);
-    if (err != ESP_OK) {
-        return err;
-    }
-    err = addFanService(accessory);
-    if (err != ESP_OK) {
-        return err;
-    }
-    err = addSlatServices(accessory);
+    const esp_err_t err = addHeaterCoolerService(accessory);
     if (err != ESP_OK) {
         return err;
     }
@@ -684,7 +420,7 @@ esp_err_t start() {
     char* payload = esp_hap_get_setup_payload(hapString(app_config::kHomeKitSetupCode),
                                               hapString(app_config::kHomeKitSetupId),
                                               false,
-                                              HAP_CID_THERMOSTAT);
+                                              HAP_CID_AIR_CONDITIONER);
     if (payload != nullptr) {
         std::strncpy(setup_payload, payload, sizeof(setup_payload) - 1);
         setup_payload[sizeof(setup_payload) - 1] = '\0';
@@ -702,7 +438,7 @@ esp_err_t start() {
     syncFromMock();
     setLastEvent("started");
     ESP_LOGI(TAG,
-             "HomeKit started: name=%s setup_code=%s setup_id=%s payload=%s paired=%d",
+             "HomeKit started: name=%s model=HeaterCooler setup_code=%s setup_id=%s payload=%s paired=%d",
              app_config::kHomeKitAccessoryName,
              app_config::kHomeKitSetupCode,
              app_config::kHomeKitSetupId,
@@ -731,22 +467,16 @@ void syncFromMock() {
     }
 
     const cn105_core::MockState state = cn105_core::getMockState();
+    const float target_celsius = fahrenheitToCelsius(state.targetTemperatureF);
+    updateCharUInt8(active_char, activeFromMock(state));
+    updateCharFloat(current_temp_char, fahrenheitToCelsius(state.roomTemperatureF));
     updateCharUInt8(current_state_char, currentStateFromMock(state));
     updateCharUInt8(target_state_char, targetStateFromMock(state));
-    updateCharFloat(current_temp_char, fahrenheitToCelsius(state.roomTemperatureF));
-    updateCharFloat(target_temp_char, fahrenheitToCelsius(state.targetTemperatureF));
+    updateCharFloat(cooling_threshold_char, target_celsius);
+    updateCharFloat(heating_threshold_char, target_celsius);
+    updateCharFloat(rotation_speed_char, fanToPercent(state.fan));
+    updateCharUInt8(swing_mode_char, swingFromMock(state));
     updateCharUInt8(temp_units_char, kDisplayFahrenheit);
-    updateCharUInt8(fan_active_char, activeFromMock(state));
-    updateCharFloat(fan_speed_char, fanSpeedFromMock(state));
-    updateCharUInt8(fan_current_state_char, currentFanStateFromMock(state));
-    updateCharUInt8(fan_target_state_char, targetFanStateFromMock(state));
-    updateCharUInt8(fan_swing_char, swingFromMock(state));
-    updateCharUInt8(vertical_slat_state_char, slatStateFromValue(state.vane));
-    updateCharInt(vertical_current_tilt_char, verticalTiltFromVane(state.vane));
-    updateCharInt(vertical_target_tilt_char, verticalTiltFromVane(state.vane));
-    updateCharUInt8(wide_slat_state_char, slatStateFromValue(state.wideVane));
-    updateCharInt(wide_current_tilt_char, horizontalTiltFromWideVane(state.wideVane));
-    updateCharInt(wide_target_tilt_char, horizontalTiltFromWideVane(state.wideVane));
 }
 
 }  // namespace homekit_bridge
