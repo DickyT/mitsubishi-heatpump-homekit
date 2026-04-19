@@ -1,15 +1,32 @@
 const $=id=>document.getElementById(id);
 document.getElementById('t5').classList.add('active');
 let homekitStatus=null;
+let qrLibraryPromise=null;
 
-function renderHomeKitQr(payload){
+function ensureQrLibrary(){
+  if(window.QRCode)return Promise.resolve();
+  if(qrLibraryPromise)return qrLibraryPromise;
+  qrLibraryPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    script.onload=()=>resolve();
+    script.onerror=()=>reject(new Error('QRCode library failed to load from cdnjs'));
+    document.head.appendChild(script);
+  });
+  return qrLibraryPromise;
+}
+
+async function renderHomeKitQr(payload){
   const target=$('hk-qr');
   if(!target)return;
   if(!payload||payload==='-'){
     target.textContent='当前没有可用的 Setup Payload。';
     return;
   }
-  if(!window.QRCode){
+  target.textContent='二维码加载中...';
+  try{
+    await ensureQrLibrary();
+  }catch(e){
     target.textContent='二维码库加载失败，请直接使用配对码。';
     return;
   }

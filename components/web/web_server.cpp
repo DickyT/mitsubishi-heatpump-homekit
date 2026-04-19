@@ -26,6 +26,7 @@ esp_err_t start() {
     config.max_open_sockets = app_config::kWebServerMaxOpenSockets;
     config.max_uri_handlers = app_config::kWebServerMaxUriHandlers;
     config.lru_purge_enable = true;
+    config.uri_match_fn = httpd_uri_match_wildcard;
 
     ESP_LOGI(TAG,
              "Starting WebUI on port %u stack=%u max_open_sockets=%u max_uri_handlers=%u",

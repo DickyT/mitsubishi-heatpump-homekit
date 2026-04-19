@@ -1,66 +1,46 @@
 #include "web_pages.h"
 
 #include "esp_http_server.h"
+#include "web_assets.h"
 
-extern const char style_css_start[] asm("_binary_style_css_start");
-extern const char style_css_end[]   asm("_binary_style_css_end");
-extern const char tabs_html_start[] asm("_binary_tabs_html_start");
-extern const char tabs_html_end[]   asm("_binary_tabs_html_end");
-extern const char root_html_start[] asm("_binary_root_html_start");
-extern const char root_html_end[]   asm("_binary_root_html_end");
-extern const char root_js_start[]   asm("_binary_root_js_start");
-extern const char root_js_end[]     asm("_binary_root_js_end");
-extern const char debug_html_start[] asm("_binary_debug_html_start");
-extern const char debug_html_end[]   asm("_binary_debug_html_end");
-extern const char debug_js_start[]   asm("_binary_debug_js_start");
-extern const char debug_js_end[]     asm("_binary_debug_js_end");
-extern const char logs_html_start[] asm("_binary_logs_html_start");
-extern const char logs_html_end[]   asm("_binary_logs_html_end");
-extern const char logs_js_start[]   asm("_binary_logs_js_start");
-extern const char logs_js_end[]     asm("_binary_logs_js_end");
-extern const char files_html_start[] asm("_binary_files_html_start");
-extern const char files_html_end[]   asm("_binary_files_html_end");
-extern const char files_js_start[]   asm("_binary_files_js_start");
-extern const char files_js_end[]     asm("_binary_files_js_end");
-extern const char admin_html_start[] asm("_binary_admin_html_start");
-extern const char admin_html_end[]   asm("_binary_admin_html_end");
-extern const char admin_js_start[]   asm("_binary_admin_js_start");
-extern const char admin_js_end[]     asm("_binary_admin_js_end");
+#include <cstdio>
+#include <cstring>
 
 namespace {
 
-const char* kHtmlHead = "<!doctype html><html lang=\"zh-Hans\"><head>"
-    "<meta charset=\"utf-8\">"
-    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
-    "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
-    "<title>Mitsubishi AC</title><style>";
-const char* kHeadEnd = "</style></head><body>";
-const char* kScriptOpen = "<script>";
-const char* kHtmlEnd = "</script></body></html>";
+esp_err_t sendShell(httpd_req_t* req, const char* page) {
+    char body[768] = {};
+    std::snprintf(body,
+                  sizeof(body),
+                  "<!doctype html><html lang=\"zh-Hans\"><head>"
+                  "<meta charset=\"utf-8\">"
+                  "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
+                  "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
+                  "<title>Mitsubishi AC</title>"
+                  "</head><body data-page=\"%s\">"
+                  "<div id=\"app\"><main><h1>加载中</h1><div class=\"subtitle\">WebUI 正在加载...</div></main></div>"
+                  "<script src=\"/assets/loader.js?v=%s\" defer></script>"
+                  "</body></html>",
+                  page,
+                  web_assets::version());
 
-size_t embeddedLen(const char* start, const char* end) {
-    size_t len = static_cast<size_t>(end - start);
-    if (len > 0 && start[len - 1] == '\0') {
-        len--;
-    }
-    return len;
-}
-
-esp_err_t sendPage(httpd_req_t* req, const char* body_start, const char* body_end,
-                   const char* js_start, const char* js_end) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     httpd_resp_set_hdr(req, "Pragma", "no-cache");
-    httpd_resp_send_chunk(req, kHtmlHead, -1);
-    httpd_resp_send_chunk(req, style_css_start, embeddedLen(style_css_start, style_css_end));
-    httpd_resp_send_chunk(req, kHeadEnd, -1);
-    httpd_resp_send_chunk(req, tabs_html_start, embeddedLen(tabs_html_start, tabs_html_end));
-    httpd_resp_send_chunk(req, body_start, embeddedLen(body_start, body_end));
-    httpd_resp_send_chunk(req, kScriptOpen, -1);
-    httpd_resp_send_chunk(req, js_start, embeddedLen(js_start, js_end));
-    httpd_resp_send_chunk(req, kHtmlEnd, -1);
-    httpd_resp_send_chunk(req, nullptr, 0);
-    return ESP_OK;
+    return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+}
+
+void stripQuery(const char* uri, char* out, size_t out_len) {
+    if (out_len == 0) {
+        return;
+    }
+
+    size_t written = 0;
+    while (uri != nullptr && uri[written] != '\0' && uri[written] != '?' && written + 1 < out_len) {
+        out[written] = uri[written];
+        written++;
+    }
+    out[written] = '\0';
 }
 
 }  // namespace
@@ -68,23 +48,40 @@ esp_err_t sendPage(httpd_req_t* req, const char* body_start, const char* body_en
 namespace web_pages {
 
 esp_err_t sendRoot(httpd_req_t* req) {
-    return sendPage(req, root_html_start, root_html_end, root_js_start, root_js_end);
+    return sendShell(req, "root");
 }
 
 esp_err_t sendDebug(httpd_req_t* req) {
-    return sendPage(req, debug_html_start, debug_html_end, debug_js_start, debug_js_end);
+    return sendShell(req, "debug");
 }
 
 esp_err_t sendLogs(httpd_req_t* req) {
-    return sendPage(req, logs_html_start, logs_html_end, logs_js_start, logs_js_end);
+    return sendShell(req, "logs");
 }
 
 esp_err_t sendFiles(httpd_req_t* req) {
-    return sendPage(req, files_html_start, files_html_end, files_js_start, files_js_end);
+    return sendShell(req, "files");
 }
 
 esp_err_t sendAdmin(httpd_req_t* req) {
-    return sendPage(req, admin_html_start, admin_html_end, admin_js_start, admin_js_end);
+    return sendShell(req, "admin");
+}
+
+esp_err_t sendAsset(httpd_req_t* req) {
+    char path[160] = {};
+    stripQuery(req->uri, path, sizeof(path));
+
+    const web_assets::GzipAsset* asset = web_assets::find(path);
+    if (asset == nullptr) {
+        httpd_resp_set_status(req, "404 Not Found");
+        return httpd_resp_send(req, "Asset not found", HTTPD_RESP_USE_STRLEN);
+    }
+
+    const size_t len = static_cast<size_t>(asset->end - asset->start);
+    httpd_resp_set_type(req, asset->contentType);
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=3600, immutable");
+    return httpd_resp_send(req, reinterpret_cast<const char*>(asset->start), len);
 }
 
 }  // namespace web_pages

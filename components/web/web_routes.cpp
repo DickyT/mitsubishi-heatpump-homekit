@@ -408,6 +408,10 @@ esp_err_t adminHandler(httpd_req_t* req) {
     return web_pages::sendAdmin(req);
 }
 
+esp_err_t assetHandler(httpd_req_t* req) {
+    return web_pages::sendAsset(req);
+}
+
 esp_err_t logsListHandler(httpd_req_t* req) {
     const platform_log::Status status = platform_log::getStatus();
     std::string body = "{\"ok\":true,\"active\":";
@@ -658,6 +662,7 @@ const web_http::Route ROUTES[] = {
     { "/logs", HTTP_GET, logsHandler },
     { "/files", HTTP_GET, filesHandler },
     { "/admin", HTTP_GET, adminHandler },
+    { "/assets/*", HTTP_GET, assetHandler },
     { "/api/health", HTTP_GET, healthHandler },
     { "/api/status", HTTP_GET, statusHandler },
     { "/api/reboot", HTTP_POST, rebootHandler },

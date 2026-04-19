@@ -19,6 +19,7 @@ Completed baseline:
 - Wi-Fi power save is disabled; Wi-Fi failure stays in STA/reconnect mode and does not start a fallback AP
 - ESP-IDF WebUI is available on port `8080`; HomeKit/HAP owns port `80`
 - `GET /`, `GET /api/health`, and `GET /api/status` are available for platform verification
+- WebUI pages use tiny HTML shells plus build-time gzip static asset fragments under `/assets/*`; the browser loader fetches fragments serially to avoid large chunked HTML responses and concurrent static asset bursts on ESP32
 - CN105 offline protocol core is available with SET payload builder, packet decode, and mock state
 - WebUI feature layer is available: `/` is the virtual remote, `/debug` is the raw decode/API console, `/logs` is log viewing/live tail, and `/files` is the SPIFFS file manager
 - HomeKit SDK bridge is integrated and can run over the shared CN105 state model
@@ -68,6 +69,7 @@ The current baseline is considered healthy when:
 - [`components/platform_uart`](./components/platform_uart): CN105 UART setup
 - [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
 - [`components/web`](./components/web): minimal ESP-IDF HTTP/WebUI foundation
+- [`components/web/tools/build_assets.py`](./components/web/tools/build_assets.py): build-time gzip splitter for WebUI shell assets
 - [`components/core_cn105`](./components/core_cn105): offline CN105 protocol core and mock state
 - [`components/homekit_bridge`](./components/homekit_bridge): Espressif HomeKit SDK binding over mock CN105 state
 - [`partitions.csv`](./partitions.csv): custom 4MB flash partition table

@@ -25,6 +25,7 @@
 - `cn105_uart` 固定使用 `UART1 RX=GPIO26 TX=GPIO32 2400 8E1`
 - `platform_wifi` 为 STA-only，失败后只重连，不 fallback AP
 - `web` 提供 `/`、`/debug`、`/logs`、`/files`、`/admin`
+- WebUI 静态页面使用 build-time gzip 小分片和浏览器端串行 loader，避免 ESP32 上 runtime 拼整页和大 chunked response
 - `core_cn105` 提供 packet builder、parser、checksum、Fahrenheit roundtrip、shared state
 - `homekit_bridge` 已绑定当前 CN105 state model，并支持 Home App / WebUI 同步
 - `cn105_transport` 已具备 connect / info / set 的真实 UART transport 逻辑

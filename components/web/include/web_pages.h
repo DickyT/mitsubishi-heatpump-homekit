@@ -9,5 +9,6 @@ esp_err_t sendDebug(httpd_req_t* req);
 esp_err_t sendLogs(httpd_req_t* req);
 esp_err_t sendFiles(httpd_req_t* req);
 esp_err_t sendAdmin(httpd_req_t* req);
+esp_err_t sendAsset(httpd_req_t* req);
 
 }  // namespace web_pages
