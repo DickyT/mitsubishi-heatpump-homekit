@@ -459,6 +459,18 @@ nav.tabs svg {
   margin-top: 4px
 }
 
+.notice {
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 186, 58, .24);
+  border-radius: 16px;
+  background: rgba(255, 186, 58, .08);
+  color: #ffd487;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5
+}
+
 .actions {
   display: flex;
   gap: 8px;

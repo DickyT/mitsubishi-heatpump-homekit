@@ -9,6 +9,12 @@ async function loadFiles(){
     $('fs-info').textContent=JSON.stringify(j.info||{},null,2);
     const list=$('file-list');list.innerHTML='';
     if(!j.ok){list.textContent=j.error||'读取失败';return;}
+    if(j.truncated){
+      const note=document.createElement('div');
+      note.className='notice';
+      note.textContent='只显示前 '+j.returnedItems+' 项，共 '+j.totalItems+' 项。日志太多时请先到“日志”页下载/清理，或输入更具体的目录。';
+      list.appendChild(note);
+    }
     if(!j.items.length){list.textContent='这个目录是空的。';return;}
     j.items.forEach(item=>{
       const row=document.createElement('div');row.className='listrow';

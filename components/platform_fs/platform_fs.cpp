@@ -12,6 +12,7 @@
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -36,11 +37,6 @@ bool appendJsonItem(std::string& json, const char* name, const char* type, size_
     json += std::to_string(size);
     json += "}";
     return true;
-}
-
-bool arrayContainsName(const std::string& json, const std::string& name) {
-    std::string needle = "\"name\":\"" + platform_fs::jsonEscape(name.c_str()) + "\"";
-    return json.find(needle) != std::string::npos;
 }
 
 std::string logicalNameFromDirent(const char* name) {
@@ -412,8 +408,22 @@ std::string listJson(const char* raw_dir) {
     }
 
     std::string prefix = std::strcmp(dir, "/") == 0 ? "/" : std::string(dir) + "/";
-    std::string dirs;
-    std::string files;
+    std::string items;
+    std::vector<std::string> seen_dirs;
+    size_t total_items = 0;
+    size_t returned_items = 0;
+
+    const auto seenDir = [&seen_dirs](const std::string& name) {
+        return std::find(seen_dirs.begin(), seen_dirs.end(), name) != seen_dirs.end();
+    };
+    const auto appendLimited = [&](const char* name, const char* type, size_t size) {
+        total_items++;
+        if (returned_items >= app_config::kWebFileListMaxItems) {
+            return;
+        }
+        appendJsonItem(items, name, type, size);
+        returned_items++;
+    };
 
     DIR* root = opendir(app_config::kSpiffsBasePath);
     if (root == nullptr) {
@@ -433,19 +443,20 @@ std::string listJson(const char* raw_dir) {
         const size_t slash = rest.find('/');
         if (slash != std::string::npos) {
             const std::string child_dir = prefix + rest.substr(0, slash);
-            if (!arrayContainsName(dirs, child_dir)) {
-                appendJsonItem(dirs, child_dir.c_str(), "dir", 0);
+            if (!seenDir(child_dir)) {
+                seen_dirs.push_back(child_dir);
+                appendLimited(child_dir.c_str(), "dir", 0);
             }
         } else {
-            char physical[192] = {};
             size_t size = 0;
-            if (toPhysicalPath(logical.c_str(), physical, sizeof(physical))) {
+            if (returned_items < app_config::kWebFileListMaxItems) {
+                char physical[192] = {};
                 struct stat st {};
-                if (stat(physical, &st) == 0) {
+                if (toPhysicalPath(logical.c_str(), physical, sizeof(physical)) && stat(physical, &st) == 0) {
                     size = static_cast<size_t>(st.st_size);
                 }
             }
-            appendJsonItem(files, logical.c_str(), "file", size);
+            appendLimited(logical.c_str(), "file", size);
         }
     }
     closedir(root);
@@ -453,12 +464,16 @@ std::string listJson(const char* raw_dir) {
     std::string json = "{\"ok\":true,\"dir\":\"";
     json += jsonEscape(dir);
     json += "\",\"items\":[";
-    json += dirs;
-    if (!dirs.empty() && !files.empty()) {
-        json += ",";
-    }
-    json += files;
-    json += "],\"info\":";
+    json += items;
+    json += "],\"truncated\":";
+    json += total_items > returned_items ? "true" : "false";
+    json += ",\"totalItems\":";
+    json += std::to_string(total_items);
+    json += ",\"returnedItems\":";
+    json += std::to_string(returned_items);
+    json += ",\"limit\":";
+    json += std::to_string(app_config::kWebFileListMaxItems);
+    json += ",\"info\":";
     json += infoJson();
     json += "}";
     return json;
