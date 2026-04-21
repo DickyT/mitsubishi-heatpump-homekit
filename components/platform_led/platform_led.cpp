@@ -33,7 +33,7 @@ State state;
 constexpr Color kOff = {0, 0, 0};
 constexpr Color kGreen = {0, 255, 0};
 constexpr Color kBlue = {0, 0, 255};
-constexpr Color kOrange = {255, 96, 0};
+constexpr Color kOrange = {255, 40, 0};
 constexpr Color kRed = {255, 0, 0};
 
 int64_t nowUs() {
