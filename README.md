@@ -25,17 +25,17 @@ Completed baseline:
 - HomeKit SDK bridge is integrated and can run over the shared CN105 state model
 - Project-facing temperature APIs use Fahrenheit; the protocol core converts to CN105 Celsius payload bytes internally
 - The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
-- Real CN105 transport code is present; the default build still keeps `mock` transport enabled until final hardware validation is locked down
+- Real CN105 transport code is present and is now the default build mode; `mock` transport remains available as a fallback/dev mode
 
 Not restored yet:
 
-- making real CN105 transport the default compiled mode after final hardware verification
+- final long-run hardware validation of the default real CN105 transport path
 
 The previous working Arduino implementation is preserved in git history and branches for reference.
 
 ## Current Baseline Verification
 
-Verify that the full ESP-IDF baseline is healthy before switching the default build from mock transport to real CN105 transport.
+Verify that the full ESP-IDF baseline is healthy with real CN105 transport enabled by default.
 
 The current baseline is considered healthy when:
 
@@ -57,7 +57,7 @@ The current baseline is considered healthy when:
 - `http://<esp-ip>:8080/files` can list, download, upload, create, and delete SPIFFS files
 - serial output shows HomeKit started with setup code and setup payload
 - Apple Home can pair, then WebUI and HomeKit show the same mock power/mode/temperature state after refresh
-- if `kCn105UseRealTransport=true`, serial output shows CN105 connect/info polling and the WebUI runtime mode reflects `真实 CN105`
+- serial output shows CN105 connect/info polling and the WebUI runtime mode reflects `真实 CN105`
 
 ## Repository Layout
 
@@ -200,5 +200,5 @@ Finish the last hardware-oriented checkpoint:
 - pair Apple Home using setup code `111-22-333`
 - verify Home App changes show in WebUI after refresh
 - verify WebUI changes update HomeKit characteristics
-- when CN105 wiring is connected, set `kCn105UseRealTransport=true` and verify real connect/info/set flow
-- after that passes, switch the default build to real CN105 transport and treat mock as a fallback/dev mode
+- verify real connect/info/set flow with CN105 wiring connected
+- keep `mock` transport only as a fallback/dev mode if you need isolated WebUI/HomeKit testing

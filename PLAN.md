@@ -13,7 +13,7 @@
 - CN105 offline protocol core 已完成
 - HomeKit bridge 已完成
 - real CN105 transport 代码已接入
-- 当前默认构建仍使用 `mock` transport，等待最终硬件验证后再决定是否切成默认 `real`
+- 当前默认构建已经使用 `real` transport，`mock` 仅保留为开发/回退模式
 
 ## Current Repository Status
 
@@ -35,23 +35,23 @@
 严格来说，现在剩下的不是“大功能开发”，而是最后的定版验证：
 
 1. 真实 CN105 线缆接入后的硬件验证
-2. 决定是否把 `kCn105UseRealTransport` 默认改成 `true`
-3. 如果切到默认 real transport，再做一次长期运行稳定性观察
+2. 默认 real transport 的长期运行稳定性观察
+3. 若出现兼容性问题，再决定是否临时回退到 `mock` 作为调试模式
 
 也就是说：
 
 - `mock` 模式现在更像开发/调试 fallback
-- `real` 模式已经不是“未来要写”的功能，而是“要不要默认启用”的定版选择
+- `real` 模式已经是默认主路径，剩下的是实机稳定性验证
 
 ## Recommended Next Checkpoint
 
 建议按这个顺序完成最后收尾：
 
-1. 保持当前默认 `mock`，先确认 WebUI 和 HomeKit 在现有板子上持续稳定
-2. 接上 CN105 线缆后，把 `kCn105UseRealTransport` 改成 `true`
-3. 验证 connect / info poll / set command / HomeKit 同步
-4. 如果真实空调控制稳定，再把默认 transport 改成 `real`
-5. 文档改成“stable release baseline”，把 `mock` 明确写成开发回退模式
+1. 接上 CN105 线缆，直接验证默认 `real` transport
+2. 验证 connect / info poll / set command / HomeKit 同步
+3. 做一轮持续运行观察
+4. 如果真实空调控制稳定，就把当前状态视为 stable baseline
+5. `mock` 保留为开发回退模式，不再作为默认路线
 
 ## Validation Checklist
 
@@ -70,4 +70,4 @@
 
 一句话总结当前项目状态：
 
-**代码层面已经基本完成，剩下的是默认 real transport 前的最终硬件验证与定版。**
+**代码层面已经基本完成，剩下的是默认 real transport 的最终硬件验证与稳定性观察。**
