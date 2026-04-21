@@ -65,6 +65,7 @@ The current baseline is considered healthy when:
 - [`main/app_main.cpp`](./main/app_main.cpp): app bootstrap entrypoint
 - [`components/app_config`](./components/app_config): centralized compile-time config
 - [`components/platform_fs`](./components/platform_fs): SPIFFS mount, safe path helpers, and file manager operations
+- [`components/platform_led`](./components/platform_led): board status RGB LED policy for Wi-Fi/CN105 health
 - [`components/platform_log`](./components/platform_log): ESP-IDF log setup, persistent log mirroring, log pruning, and live log reads
 - [`components/platform_uart`](./components/platform_uart): CN105 UART setup
 - [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
@@ -91,6 +92,21 @@ CN105 wiring target remains:
 - `Pin2` -> `GND`
 - `Pin4 (TX)` -> `ESP32 GPIO26 (RX)`
 - `Pin5 (RX)` -> `ESP32 GPIO32 (TX)`
+
+## LED Status Policy
+
+The current codebase drives the board RGB LED with this policy:
+
+- `green solid`: Wi-Fi connected and CN105 link healthy
+- `green blinking`: active CN105 communication is in progress
+- `blue solid`: Wi-Fi is not connected
+- `orange solid`: Wi-Fi is connected, but CN105 is not connected
+- `red solid`: both Wi-Fi and CN105 are unavailable
+
+Implementation note:
+
+- LED control lives in `components/platform_led`
+- the LED policy stays simple and diagnostic-first rather than becoming a second notification system
 
 ## Verification
 

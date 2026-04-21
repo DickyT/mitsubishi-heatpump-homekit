@@ -28,6 +28,14 @@ inline constexpr uint32_t kWebServerStackBytes = 12288;
 inline constexpr uint8_t kWebServerMaxOpenSockets = 3;
 inline constexpr uint8_t kWebServerMaxUriHandlers = 32;
 inline constexpr size_t kWebFileListMaxItems = 8;
+inline constexpr bool kStatusLedEnabled = true;
+inline constexpr gpio_num_t kStatusLedPin = GPIO_NUM_27;
+inline constexpr size_t kStatusLedPixels = 1;
+inline constexpr uint8_t kStatusLedBrightness = 24;
+inline constexpr uint32_t kStatusLedUpdateIntervalMs = 100;
+inline constexpr uint32_t kStatusLedBlinkPeriodMs = 400;
+inline constexpr uint32_t kStatusLedCommHoldMs = 700;
+inline constexpr size_t kStatusLedTaskStackBytes = 3072;
 
 inline constexpr bool kHomeKitEnabled = true;
 inline constexpr char kHomeKitAccessoryName[] = "Mitsubishi AC";

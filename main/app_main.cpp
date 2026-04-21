@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "homekit_bridge.h"
 #include "platform_fs.h"
+#include "platform_led.h"
 #include "platform_log.h"
 #include "platform_wifi.h"
 #include "web_server.h"
@@ -45,6 +46,11 @@ extern "C" void app_main(void) {
              (chip_info.features & CHIP_FEATURE_BT) ? "BT " : "",
              (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "EmbeddedFlash" : "");
     ESP_LOGI(TAG, "Flash size: %lu MB", static_cast<unsigned long>(flash_size / (1024 * 1024)));
+
+    const esp_err_t led_err = platform_led::init();
+    if (led_err != ESP_OK) {
+        ESP_LOGE(TAG, "Status LED init failed: %s", esp_err_to_name(led_err));
+    }
 
     const esp_err_t uart_err = cn105_uart::init();
     if (uart_err != ESP_OK) {
