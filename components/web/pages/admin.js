@@ -16,7 +16,7 @@ function formatHomeKitCode(code){
 }
 
 function normalizeHomeKitCodeInput(code){
-  return formatHomeKitCode(code).replace(/\s+/g,'');
+  return String(code||'').replace(/\D/g,'');
 }
 
 function formatUptime(ms){
@@ -62,24 +62,66 @@ function syncUptime(status){
   }
 }
 
+function openNoticeModal(title,message){
+  $('notice-title').textContent=title||'操作失败';
+  $('notice-body').textContent=message||'请稍后重试。';
+  $('notice-close').disabled=false;
+  $('notice-close').style.display='';
+  $('notice-modal').classList.add('open');
+  $('notice-modal').setAttribute('aria-hidden','false');
+}
+
+function openRestartModal(title,message){
+  $('notice-title').textContent=title||'正在重启';
+  $('notice-body').textContent=message||'设备正在重启，页面将在 5 秒后自动刷新。';
+  $('notice-close').disabled=true;
+  $('notice-close').style.display='none';
+  $('notice-modal').classList.add('open');
+  $('notice-modal').setAttribute('aria-hidden','false');
+  setTimeout(()=>window.location.reload(),5000);
+}
+
+function closeNoticeModal(e){
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  if($('notice-close').disabled)return;
+  $('notice-modal').classList.remove('open');
+  $('notice-modal').setAttribute('aria-hidden','true');
+}
+
 async function saveConfig(){
   const params=new URLSearchParams();
+  const homekitCode=normalizeHomeKitCodeInput($('cfg-homekit-code').value.trim());
+  if(homekitCode&&homekitCode.length!==8){
+    openNoticeModal('保存失败','HomeKit 配对码需要 8 位数字，例如 1111-2222。');
+    return;
+  }
   params.set('device_name',$('cfg-device-name').value.trim()||'Mitsubishi AC');
-  params.set('homekit_code',normalizeHomeKitCodeInput($('cfg-homekit-code').value.trim()));
+  if(homekitCode)params.set('homekit_code',homekitCode);
   params.set('led_enabled',$('cfg-led-enabled').value);
   params.set('cn105_mode',$('cfg-cn105-mode').value);
   params.set('cn105_baud',$('cfg-cn105-baud').value);
   params.set('log_level',$('cfg-log-level').value);
   params.set('poll_active_ms',$('cfg-poll-active').value);
   params.set('poll_off_ms',$('cfg-poll-off').value);
-  $('msg').textContent='设置保存中...';
+  const button=$('cfg-save-btn');
+  button.disabled=true;
+  $('msg').textContent='设置保存中，成功后会自动重启...';
   try{
     const r=await fetch('/api/config/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()});
     const j=await r.json();
-    $('msg').textContent=(j.ok?'完成: ':'失败: ')+(j.message||'设置已保存')+(j.reboot_required?'\n部分改动需要重启后完全生效。':'');
-    await loadInfo();
+    if(!j.ok){
+      button.disabled=false;
+      openNoticeModal('保存失败',j.error||j.message||'设备拒绝了这次设置保存。');
+      return;
+    }
+    openRestartModal('设置已保存','设备正在重启，页面将在 5 秒后自动刷新。');
+    await fetch('/api/reboot',{method:'POST'}).catch(()=>{});
   }catch(e){
-    $('msg').textContent='保存失败: '+e;
+    button.disabled=false;
+    openNoticeModal('保存失败','请求没有成功发出或设备没有响应：'+e);
   }
 }
 
@@ -312,8 +354,9 @@ async function loadInfo(){
 }
 async function reboot(){
   if(!confirm('\u786e\u5b9a\u8981\u91cd\u542f\u8bbe\u5907\u5417\uff1f'))return;
-  try{await fetch('/api/reboot',{method:'POST'});$('msg').textContent='\u91cd\u542f\u4e2d...';}
-  catch(e){$('msg').textContent='\u91cd\u542f\u8bf7\u6c42\u5df2\u53d1\u9001';}
+  openRestartModal('正在重启','设备正在重启，页面将在 5 秒后自动刷新。');
+  try{await fetch('/api/reboot',{method:'POST'});}
+  catch(e){}
 }
 async function maintenance(url,label,prompt){
   if(!confirm(prompt))return;
@@ -331,12 +374,15 @@ $('cfg-save-btn').addEventListener('click',saveConfig);
 $('ota-file').addEventListener('change',uploadOta);
 $('ota-modal-cancel').addEventListener('click',handleOtaCancel);
 $('ota-modal-confirm').addEventListener('click',handleOtaConfirm);
+$('notice-close').addEventListener('click',closeNoticeModal);
 $('cfg-homekit-code').addEventListener('blur',()=>{$('cfg-homekit-code').value=normalizeHomeKitCodeInput($('cfg-homekit-code').value);});
 document.querySelectorAll('[data-close-modal="hk-modal"]').forEach(el=>el.addEventListener('click',closeHomeKitModal));
 document.querySelectorAll('[data-close-modal="ota-modal"]').forEach(el=>el.addEventListener('click',handleOtaCancel));
+document.querySelectorAll('[data-close-modal="notice-modal"]').forEach(el=>el.addEventListener('click',closeNoticeModal));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&$('hk-modal').classList.contains('open'))closeHomeKitModal();
   if(e.key==='Escape'&&$('ota-modal').classList.contains('open'))handleOtaCancel(e);
+  if(e.key==='Escape'&&$('notice-modal').classList.contains('open')&&!$('notice-close').disabled)closeNoticeModal(e);
 });
 
 loadInfo();

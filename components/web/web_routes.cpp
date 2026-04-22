@@ -173,6 +173,30 @@ bool readBody(httpd_req_t* req, char* out, size_t out_len) {
     return remaining == 0;
 }
 
+bool normalizeHomeKitCodeParam(const char* value, char* out_digits, size_t out_len) {
+    if (out_digits == nullptr || out_len < 9) {
+        return false;
+    }
+    size_t count = 0;
+    if (value != nullptr) {
+        for (size_t i = 0; value[i] != '\0'; ++i) {
+            if (value[i] >= '0' && value[i] <= '9') {
+                if (count >= 8) {
+                    return false;
+                }
+                out_digits[count++] = value[i];
+            } else if (value[i] != '-' && value[i] != ' ' && value[i] != '\t') {
+                return false;
+            }
+        }
+    }
+    if (count != 8) {
+        return false;
+    }
+    out_digits[count] = '\0';
+    return true;
+}
+
 void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t out_len) {
     char esc_error[128] = {};
     web_http::jsonEscape(state.lastError, esc_error, sizeof(esc_error));
@@ -620,7 +644,11 @@ esp_err_t configSaveHandler(httpd_req_t* req) {
         next.deviceName[sizeof(next.deviceName) - 1] = '\0';
     }
     if (web_http::queryValue(body, "homekit_code", value, sizeof(value))) {
-        std::strncpy(next.homeKitCode, value, sizeof(next.homeKitCode) - 1);
+        char digits[sizeof(next.homeKitCode)] = {};
+        if (!normalizeHomeKitCodeParam(value, digits, sizeof(digits))) {
+            return web_http::sendJsonError(req, "invalid HomeKit setup code");
+        }
+        std::strncpy(next.homeKitCode, digits, sizeof(next.homeKitCode) - 1);
         next.homeKitCode[sizeof(next.homeKitCode) - 1] = '\0';
     }
     if (web_http::queryValue(body, "led_enabled", value, sizeof(value))) {
