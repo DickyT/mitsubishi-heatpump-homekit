@@ -182,6 +182,7 @@ For the standalone installer/probe firmware, use:
 ```bash
 ./build.py --app installer build
 ./build.py --app installer flash-auto --monitor
+./build.py buildall
 ```
 
 Each successful build exports a flash-ready package into:
@@ -223,6 +224,9 @@ For quieter Codex/tool runs, use `--quiet-first`. It captures the first `idf.py`
 
 `flash-auto --no-build` flashes the latest exported package for the selected app
 instead of reading directly from the live `build/` directory.
+
+`buildall` builds both `main` and `installer` in one pass and forces them to
+share the same exported firmware version folder.
 
 The project default flash baud is `115200` for the current M5Stack/ESP32 board.
 `serial-log` also overwrites an ignored local copy at `serial_logs/latest-serial.log` by default.
