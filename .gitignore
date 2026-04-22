@@ -17,6 +17,7 @@ build/
 managed_components/
 sdkconfig
 sdkconfig.old
+debug_apps/*/dependencies.lock
 .idf/
 eim_config.toml
 serial_logs/

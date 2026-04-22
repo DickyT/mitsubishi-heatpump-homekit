@@ -31,6 +31,7 @@ IDF_SCRIPT = IDF_PATH / "tools" / "idf.py"
 
 APP_ROOTS = {
     "main": REPO_ROOT,
+    "installer": REPO_ROOT / "debug_apps" / "cn105_probe",
     "cn105-probe": REPO_ROOT / "debug_apps" / "cn105_probe",
 }
 

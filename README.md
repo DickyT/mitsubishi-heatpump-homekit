@@ -177,11 +177,20 @@ For this project, the preferred local wrapper is:
 ./build.py flash monitor
 ```
 
-For the standalone CN105-only debug app, use:
+For the standalone installer/probe firmware, use:
 
 ```bash
-./build.py --app cn105-probe build
-./build.py --app cn105-probe flash-auto --monitor
+./build.py --app installer build
+./build.py --app installer flash-auto --monitor
+```
+
+The installer/probe firmware has its own port-80 WebUI after BLE Wi-Fi
+provisioning and uses the same OTA partition table as the formal firmware. Its
+job is to detect CN105 hardware settings, write `device_cfg` NVS with a full
+overwrite strategy, then OTA-upload the formal app binary:
+
+```text
+build/mitsubishi_heatpump_homekit.bin
 ```
 
 Or use the project-specific auto-flash helper:
