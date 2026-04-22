@@ -1,6 +1,7 @@
 #include "platform_wifi.h"
 
 #include "app_config.h"
+#include "device_settings.h"
 #include "esp_check.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -31,7 +32,7 @@ char last_event[32] = "boot";
 esp_netif_t* sta_netif = nullptr;
 
 bool hasConfiguredStaCredentials() {
-    return std::strcmp(app_config::kWifiSsid, "YOUR_WIFI_SSID") != 0 && app_config::kWifiSsid[0] != '\0';
+    return std::strcmp(device_settings::wifiSsid(), "YOUR_WIFI_SSID") != 0 && device_settings::wifiSsid()[0] != '\0';
 }
 
 void setLastEvent(const char* name) {
@@ -139,7 +140,7 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
         sta_connected = true;
         reconnect_attempts = 0;
         setLastEvent("STA_GOT_IP");
-        ESP_LOGI(TAG, "Connected to %s ip=%s", app_config::kWifiSsid, current_ip);
+        ESP_LOGI(TAG, "Connected to %s ip=%s", device_settings::wifiSsid(), current_ip);
     }
 }
 
@@ -149,11 +150,11 @@ esp_err_t startSta() {
     }
 
     wifi_config_t sta_config = {};
-    std::strncpy(reinterpret_cast<char*>(sta_config.sta.ssid), app_config::kWifiSsid, sizeof(sta_config.sta.ssid));
+    std::strncpy(reinterpret_cast<char*>(sta_config.sta.ssid), device_settings::wifiSsid(), sizeof(sta_config.sta.ssid));
     std::strncpy(reinterpret_cast<char*>(sta_config.sta.password),
-                 app_config::kWifiPassword,
+                 device_settings::wifiPassword(),
                  sizeof(sta_config.sta.password));
-    sta_config.sta.threshold.authmode = std::strlen(app_config::kWifiPassword) == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+    sta_config.sta.threshold.authmode = std::strlen(device_settings::wifiPassword()) == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
 
     ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "esp_wifi_set_mode STA failed");
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &sta_config), TAG, "esp_wifi_set_config STA failed");
@@ -161,7 +162,7 @@ esp_err_t startSta() {
     disablePowerSave("sta-start");
 
     sta_mode_active = true;
-    ESP_LOGI(TAG, "Connecting to WiFi SSID: %s", app_config::kWifiSsid);
+    ESP_LOGI(TAG, "Connecting to WiFi SSID: %s", device_settings::wifiSsid());
     return ESP_OK;
 }
 
@@ -230,7 +231,7 @@ Status getStatus() {
         std::strncpy(status.mode, modeName(mode), sizeof(status.mode) - 1);
     }
 
-    std::strncpy(status.ssid, app_config::kWifiSsid, sizeof(status.ssid) - 1);
+    std::strncpy(status.ssid, device_settings::wifiSsid(), sizeof(status.ssid) - 1);
 
     std::strncpy(status.ip, current_ip, sizeof(status.ip) - 1);
     formatMac(status.mac, sizeof(status.mac));
@@ -276,7 +277,7 @@ void maintain() {
 
     last_reconnect_us = now_us;
     reconnect_attempts = 0;
-    ESP_LOGW(TAG, "Reconnecting WiFi SSID: %s", app_config::kWifiSsid);
+    ESP_LOGW(TAG, "Reconnecting WiFi SSID: %s", device_settings::wifiSsid());
     esp_wifi_connect();
 }
 

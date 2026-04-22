@@ -134,7 +134,7 @@ The real CN105 transport does not use one fixed poll interval anymore.
 
 Current behavior:
 
-- if the indoor unit is `ON`, status polling runs every `2` seconds
+- if the indoor unit is `ON`, status polling runs every `15` seconds
 - if the indoor unit is `OFF`, status polling slows to every `60` seconds
 - if HomeKit or the WebUI sends a `POWER ON` command, the transport immediately
   returns to fast polling before the next state roundtrip completes
@@ -142,10 +142,11 @@ Current behavior:
   conservative and only falls back to the slow interval after a later
   `0x02 settings` response confirms the indoor unit is really `OFF`
 
-The compile-time knobs for this live in [`app_config.h`](./components/app_config/include/app_config.h):
+The defaults are seeded into NVS by `device_settings` on first boot, and existing
+NVS values are not overwritten by later firmware boots:
 
-- `kCn105PollIntervalActiveMs = 2000`
-- `kCn105PollIntervalOffMs = 60000`
+- active polling: `15000 ms`
+- off polling: `60000 ms`
 
 ## Verification
 
@@ -201,32 +202,26 @@ For quieter Codex/tool runs, use `--quiet-first`. It captures the first `idf.py`
 The project default flash baud is `115200` for the current M5Stack/ESP32 board.
 `serial-log` also overwrites an ignored local copy at `serial_logs/latest-serial.log` by default.
 
-## Local Wi-Fi Config
+## Runtime Configuration
 
-Wi-Fi credentials are intentionally kept out of git. To test STA mode locally:
+User-editable settings live in NVS under the `device_cfg` namespace. On first
+boot, the firmware writes placeholder/default values only for missing keys; if a
+key already exists, it is preserved. The current default Wi-Fi values are
+placeholder strings, so a fresh formal firmware flash will stay offline until an
+installer/probe firmware or WebUI save writes real Wi-Fi credentials into NVS.
 
-```bash
-cp components/app_config/include/app_config_local.example.h components/app_config/include/app_config_local.h
-```
-
-Then edit `components/app_config/include/app_config_local.h`:
-
-```cpp
-#define APP_WIFI_SSID "YOUR_WIFI_SSID"
-#define APP_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
-```
-
-If no real SSID is configured, the device stays offline and does not start a fallback AP. If STA connection fails, it keeps retrying in STA mode.
+If no real SSID is configured, the device stays offline and does not start a
+fallback AP. If STA connection fails, it keeps retrying in STA mode.
 
 Expected serial output:
 
 - custom partition table with `factory` and `spiffs`
 - `SPIFFS mounted`
 - `Persistent log enabled (async): /boot-...-log.txt` or a timestamped `/YYYY-MM-DD-HH-MM-SS-log.txt`
-- `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1`
+- `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1 rxPull=on txOD=off`
 - `WiFi power save disabled`
 - `CN105 offline self-test passed: 77F SET roundtrip`
-- `HomeKit started: name=Mitsubishi AC setup_code=111-22-333 ...`
+- `HomeKit started: name=Mitsubishi AC setup_code=<random/generated> ...`
 - `WebUI ready: http://<esp-ip>:8080/`
 - either `Connected to ...` or reconnect/offline STA status
 - a repeating platform heartbeat every 5 seconds with Wi-Fi status

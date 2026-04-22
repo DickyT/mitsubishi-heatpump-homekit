@@ -1,7 +1,6 @@
 #include "device_settings.h"
 
 #include "app_config.h"
-#include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "nvs.h"
@@ -15,10 +14,32 @@ namespace {
 const char* TAG = "device_settings";
 const char* kNamespace = "device_cfg";
 
+constexpr char kDefaultDeviceName[] = "Mitsubishi AC";
+constexpr char kDefaultWifiSsid[] = "YOUR_WIFI_SSID";
+constexpr char kDefaultWifiPassword[] = "YOUR_WIFI_PASSWORD";
+constexpr char kDefaultHomeKitManufacturer[] = "dkt smart home";
+constexpr char kDefaultHomeKitModel[] = "Mitsubishi Heat Pump";
+constexpr char kDefaultHomeKitSerial[] = "DKT-MITSUBISHI-HOMEKIT";
+constexpr char kDefaultHomeKitSetupId[] = "DKT1";
+constexpr bool kDefaultUseRealCn105 = false;
+constexpr bool kDefaultStatusLedEnabled = true;
+constexpr int kDefaultStatusLedPin = 27;
+constexpr int kDefaultCn105RxPin = 26;
+constexpr int kDefaultCn105TxPin = 32;
+constexpr int kDefaultCn105BaudRate = 2400;
+constexpr int kDefaultCn105DataBits = 8;
+constexpr char kDefaultCn105Parity = 'E';
+constexpr int kDefaultCn105StopBits = 1;
+constexpr bool kDefaultCn105RxPullupEnabled = true;
+constexpr bool kDefaultCn105TxOpenDrain = false;
+constexpr uint32_t kDefaultCn105PollIntervalActiveMs = 15000;
+constexpr uint32_t kDefaultCn105PollIntervalOffMs = 60000;
+
 device_settings::Settings settings{};
 bool initialized = false;
 char setup_code_canonical[12] = "";
 char setup_code_display[10] = "";
+char cn105_format_name[4] = "8E1";
 
 const char* logLevelNameLocal(esp_log_level_t level) {
     switch (level) {
@@ -43,13 +64,27 @@ void setMessage(char* out, size_t out_len, const char* value) {
 }
 
 void loadDefaults() {
-    copyString(settings.deviceName, sizeof(settings.deviceName), app_config::kHomeKitAccessoryName);
+    copyString(settings.deviceName, sizeof(settings.deviceName), kDefaultDeviceName);
+    copyString(settings.wifiSsid, sizeof(settings.wifiSsid), kDefaultWifiSsid);
+    copyString(settings.wifiPassword, sizeof(settings.wifiPassword), kDefaultWifiPassword);
     settings.homeKitCode[0] = '\0';
-    settings.useRealCn105 = app_config::kCn105UseRealTransport;
-    settings.statusLedEnabled = app_config::kStatusLedEnabled;
-    settings.cn105BaudRate = app_config::kCn105BaudRate;
-    settings.pollIntervalActiveMs = 15000;
-    settings.pollIntervalOffMs = 60000;
+    copyString(settings.homeKitManufacturer, sizeof(settings.homeKitManufacturer), kDefaultHomeKitManufacturer);
+    copyString(settings.homeKitModel, sizeof(settings.homeKitModel), kDefaultHomeKitModel);
+    copyString(settings.homeKitSerial, sizeof(settings.homeKitSerial), kDefaultHomeKitSerial);
+    copyString(settings.homeKitSetupId, sizeof(settings.homeKitSetupId), kDefaultHomeKitSetupId);
+    settings.useRealCn105 = kDefaultUseRealCn105;
+    settings.statusLedEnabled = kDefaultStatusLedEnabled;
+    settings.statusLedPin = kDefaultStatusLedPin;
+    settings.cn105RxPin = kDefaultCn105RxPin;
+    settings.cn105TxPin = kDefaultCn105TxPin;
+    settings.cn105DataBits = kDefaultCn105DataBits;
+    settings.cn105Parity = kDefaultCn105Parity;
+    settings.cn105StopBits = kDefaultCn105StopBits;
+    settings.cn105RxPullupEnabled = kDefaultCn105RxPullupEnabled;
+    settings.cn105TxOpenDrain = kDefaultCn105TxOpenDrain;
+    settings.cn105BaudRate = kDefaultCn105BaudRate;
+    settings.pollIntervalActiveMs = kDefaultCn105PollIntervalActiveMs;
+    settings.pollIntervalOffMs = kDefaultCn105PollIntervalOffMs;
     settings.logLevel = app_config::kDefaultLogLevel;
 }
 
@@ -64,6 +99,42 @@ esp_err_t ensureNvs() {
 
 bool validBaud(int value) {
     return value == 2400 || value == 4800 || value == 9600;
+}
+
+bool validGpio(int value) {
+    return value >= 0 && value <= 39;
+}
+
+bool validOutputGpio(int value) {
+    return validGpio(value) && value < 34;
+}
+
+bool validDataBits(int value) {
+    return value == 8;
+}
+
+bool validParity(char value) {
+    return value == 'N' || value == 'E' || value == 'O';
+}
+
+bool validStopBits(int value) {
+    return value == 1 || value == 2;
+}
+
+bool validSetupId(const char* value) {
+    if (value == nullptr || std::strlen(value) != 4) {
+        return false;
+    }
+    for (size_t i = 0; i < 4; ++i) {
+        const char c = value[i];
+        const bool ok = (c >= '0' && c <= '9') ||
+                        (c >= 'A' && c <= 'Z') ||
+                        (c >= 'a' && c <= 'z');
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool sanitizeHomeKitCode(const char* value, char* out_digits, size_t out_len) {
@@ -122,6 +193,15 @@ void refreshCodeFormats() {
                   settings.homeKitCode[7]);
 }
 
+void refreshCn105FormatName() {
+    std::snprintf(cn105_format_name,
+                  sizeof(cn105_format_name),
+                  "%d%c%d",
+                  settings.cn105DataBits,
+                  settings.cn105Parity,
+                  settings.cn105StopBits);
+}
+
 void generateRandomHomeKitCode(char* out_digits, size_t out_len) {
     if (out_digits == nullptr || out_len < 9) {
         return;
@@ -134,6 +214,73 @@ void generateRandomHomeKitCode(char* out_digits, size_t out_len) {
 
 bool validLogLevel(uint8_t value) {
     return value <= static_cast<uint8_t>(ESP_LOG_VERBOSE);
+}
+
+bool loadStringSetting(nvs_handle_t handle, const char* key, char* out, size_t out_len, bool* wrote_defaults) {
+    size_t len = out_len;
+    const esp_err_t err = nvs_get_str(handle, key, out, &len);
+    if (err == ESP_OK) {
+        return true;
+    }
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_str(handle, key, out);
+        if (wrote_defaults != nullptr) {
+            *wrote_defaults = true;
+        }
+        return true;
+    }
+    ESP_LOGW(TAG, "Failed reading NVS string key %s: %s", key, esp_err_to_name(err));
+    return false;
+}
+
+void loadBoolSetting(nvs_handle_t handle, const char* key, bool* value, bool* wrote_defaults) {
+    uint8_t raw = *value ? 1 : 0;
+    const esp_err_t err = nvs_get_u8(handle, key, &raw);
+    if (err == ESP_OK) {
+        *value = raw != 0;
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u8(handle, key, raw);
+        if (wrote_defaults != nullptr) {
+            *wrote_defaults = true;
+        }
+    }
+}
+
+void loadI32Setting(nvs_handle_t handle, const char* key, int* value, bool (*validator)(int), bool* wrote_defaults) {
+    int32_t raw = *value;
+    const esp_err_t err = nvs_get_i32(handle, key, &raw);
+    if (err == ESP_OK) {
+        if (validator == nullptr || validator(raw)) {
+            *value = raw;
+        } else {
+            ESP_LOGW(TAG, "Invalid NVS value for %s: %ld; using default %d", key, static_cast<long>(raw), *value);
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_i32(handle, key, *value);
+        if (wrote_defaults != nullptr) {
+            *wrote_defaults = true;
+        }
+    }
+}
+
+void loadU32Setting(nvs_handle_t handle, const char* key, uint32_t* value, uint32_t min_value, bool* wrote_defaults) {
+    uint32_t raw = *value;
+    const esp_err_t err = nvs_get_u32(handle, key, &raw);
+    if (err == ESP_OK) {
+        if (raw >= min_value) {
+            *value = raw;
+        } else {
+            ESP_LOGW(TAG, "Invalid NVS value for %s: %lu; using default %lu",
+                     key,
+                     static_cast<unsigned long>(raw),
+                     static_cast<unsigned long>(*value));
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u32(handle, key, *value);
+        if (wrote_defaults != nullptr) {
+            *wrote_defaults = true;
+        }
+    }
 }
 
 }  // namespace
@@ -161,15 +308,24 @@ esp_err_t init() {
 
     bool wrote_defaults = false;
 
-    size_t len = sizeof(settings.deviceName);
-    err = nvs_get_str(handle, "device_name", settings.deviceName, &len);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_set_str(handle, "device_name", settings.deviceName);
-        wrote_defaults = true;
+    loadStringSetting(handle, "device_name", settings.deviceName, sizeof(settings.deviceName), &wrote_defaults);
+    loadStringSetting(handle, "wifi_ssid", settings.wifiSsid, sizeof(settings.wifiSsid), &wrote_defaults);
+    loadStringSetting(handle, "wifi_pass", settings.wifiPassword, sizeof(settings.wifiPassword), &wrote_defaults);
+    loadStringSetting(handle, "hk_mfr", settings.homeKitManufacturer, sizeof(settings.homeKitManufacturer), &wrote_defaults);
+    loadStringSetting(handle, "hk_model", settings.homeKitModel, sizeof(settings.homeKitModel), &wrote_defaults);
+    loadStringSetting(handle, "hk_serial", settings.homeKitSerial, sizeof(settings.homeKitSerial), &wrote_defaults);
+
+    char stored_setup_id[sizeof(settings.homeKitSetupId)] = {};
+    copyString(stored_setup_id, sizeof(stored_setup_id), settings.homeKitSetupId);
+    loadStringSetting(handle, "hk_setupid", stored_setup_id, sizeof(stored_setup_id), &wrote_defaults);
+    if (validSetupId(stored_setup_id)) {
+        copyString(settings.homeKitSetupId, sizeof(settings.homeKitSetupId), stored_setup_id);
+    } else {
+        ESP_LOGW(TAG, "Invalid HomeKit setup id in NVS; using default %s", settings.homeKitSetupId);
     }
 
     char stored_homekit_code[sizeof(settings.homeKitCode)] = {};
-    len = sizeof(stored_homekit_code);
+    size_t len = sizeof(stored_homekit_code);
     err = nvs_get_str(handle, "hk_code", stored_homekit_code, &len);
     if (err == ESP_OK && sanitizeHomeKitCode(stored_homekit_code, settings.homeKitCode, sizeof(settings.homeKitCode))) {
         // Loaded existing code.
@@ -184,68 +340,27 @@ esp_err_t init() {
         wrote_defaults = true;
     }
 
-    uint8_t use_real = settings.useRealCn105 ? 1 : 0;
-    err = nvs_get_u8(handle, "use_real", &use_real);
-    if (err == ESP_OK) {
-        settings.useRealCn105 = use_real != 0;
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_set_u8(handle, "use_real", use_real);
-        wrote_defaults = true;
+    loadBoolSetting(handle, "use_real", &settings.useRealCn105, &wrote_defaults);
+    loadBoolSetting(handle, "led_on", &settings.statusLedEnabled, &wrote_defaults);
+    loadI32Setting(handle, "led_pin", &settings.statusLedPin, validOutputGpio, &wrote_defaults);
+    loadI32Setting(handle, "rx_pin", &settings.cn105RxPin, validGpio, &wrote_defaults);
+    loadI32Setting(handle, "tx_pin", &settings.cn105TxPin, validOutputGpio, &wrote_defaults);
+    loadI32Setting(handle, "baud", &settings.cn105BaudRate, validBaud, &wrote_defaults);
+    loadI32Setting(handle, "data_bits", &settings.cn105DataBits, validDataBits, &wrote_defaults);
+    loadI32Setting(handle, "stop_bits", &settings.cn105StopBits, validStopBits, &wrote_defaults);
+    loadBoolSetting(handle, "rx_pull", &settings.cn105RxPullupEnabled, &wrote_defaults);
+    loadBoolSetting(handle, "tx_od", &settings.cn105TxOpenDrain, &wrote_defaults);
+
+    char parity[2] = {settings.cn105Parity, '\0'};
+    loadStringSetting(handle, "parity", parity, sizeof(parity), &wrote_defaults);
+    if (validParity(parity[0])) {
+        settings.cn105Parity = parity[0];
+    } else {
+        ESP_LOGW(TAG, "Invalid CN105 parity in NVS: %s; using default %c", parity, settings.cn105Parity);
     }
 
-    uint8_t led_enabled = settings.statusLedEnabled ? 1 : 0;
-    err = nvs_get_u8(handle, "led_on", &led_enabled);
-    if (err == ESP_OK) {
-        settings.statusLedEnabled = led_enabled != 0;
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_set_u8(handle, "led_on", led_enabled);
-        wrote_defaults = true;
-    }
-
-    int32_t baud = settings.cn105BaudRate;
-    err = nvs_get_i32(handle, "baud", &baud);
-    if (err == ESP_OK) {
-        if (validBaud(baud)) {
-            settings.cn105BaudRate = baud;
-        } else {
-            ESP_LOGW(TAG, "Invalid CN105 baud rate in NVS: %ld; using default %d",
-                     static_cast<long>(baud),
-                     settings.cn105BaudRate);
-        }
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_set_i32(handle, "baud", settings.cn105BaudRate);
-        wrote_defaults = true;
-    }
-
-    uint32_t active_ms = settings.pollIntervalActiveMs;
-    err = nvs_get_u32(handle, "poll_on", &active_ms);
-    if (err == ESP_OK) {
-        if (active_ms >= 1000) {
-            settings.pollIntervalActiveMs = active_ms;
-        } else {
-            ESP_LOGW(TAG, "Invalid active poll interval in NVS: %lu; using default %lu",
-                     static_cast<unsigned long>(active_ms),
-                     static_cast<unsigned long>(settings.pollIntervalActiveMs));
-        }
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_set_u32(handle, "poll_on", settings.pollIntervalActiveMs);
-        wrote_defaults = true;
-    }
-
-    uint32_t off_ms = settings.pollIntervalOffMs;
-    err = nvs_get_u32(handle, "poll_off", &off_ms);
-    if (err == ESP_OK) {
-        if (off_ms >= 5000) {
-            settings.pollIntervalOffMs = off_ms;
-        } else {
-            ESP_LOGW(TAG, "Invalid off poll interval in NVS: %lu; using default %lu",
-                     static_cast<unsigned long>(off_ms),
-                     static_cast<unsigned long>(settings.pollIntervalOffMs));
-        }
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_set_u32(handle, "poll_off", settings.pollIntervalOffMs);
-        wrote_defaults = true;
-    }
+    loadU32Setting(handle, "poll_on", &settings.pollIntervalActiveMs, 1000, &wrote_defaults);
+    loadU32Setting(handle, "poll_off", &settings.pollIntervalOffMs, 5000, &wrote_defaults);
 
     uint8_t level = static_cast<uint8_t>(settings.logLevel);
     err = nvs_get_u8(handle, "log_level", &level);
@@ -268,14 +383,22 @@ esp_err_t init() {
 
     nvs_close(handle);
     refreshCodeFormats();
+    refreshCn105FormatName();
     initialized = true;
     ESP_LOGI(TAG,
-             "Loaded settings: name=%s homekit_code=%s transport=%s led=%s baud=%d poll_on=%lu poll_off=%lu log=%s",
+             "Loaded settings: name=%s homekit_code=%s transport=%s led=%s ledPin=%d wifi=%s cn105=rx%d/tx%d/%d/%s/rxPull=%s/txOD=%s poll_on=%lu poll_off=%lu log=%s",
              settings.deviceName,
              setup_code_display,
              settings.useRealCn105 ? "real" : "mock",
              settings.statusLedEnabled ? "on" : "off",
+             settings.statusLedPin,
+             settings.wifiSsid,
+             settings.cn105RxPin,
+             settings.cn105TxPin,
              settings.cn105BaudRate,
+             cn105_format_name,
+             settings.cn105RxPullupEnabled ? "on" : "off",
+             settings.cn105TxOpenDrain ? "on" : "off",
              static_cast<unsigned long>(settings.pollIntervalActiveMs),
              static_cast<unsigned long>(settings.pollIntervalOffMs),
              logLevelNameLocal(settings.logLevel));
@@ -290,6 +413,14 @@ const char* deviceName() {
     return settings.deviceName;
 }
 
+const char* wifiSsid() {
+    return settings.wifiSsid;
+}
+
+const char* wifiPassword() {
+    return settings.wifiPassword;
+}
+
 const char* homeKitCodeDigits() {
     return settings.homeKitCode;
 }
@@ -302,12 +433,60 @@ const char* homeKitDisplayCode() {
     return setup_code_display;
 }
 
+const char* homeKitManufacturer() {
+    return settings.homeKitManufacturer;
+}
+
+const char* homeKitModel() {
+    return settings.homeKitModel;
+}
+
+const char* homeKitSerial() {
+    return settings.homeKitSerial;
+}
+
+const char* homeKitSetupId() {
+    return settings.homeKitSetupId;
+}
+
 bool useRealCn105() {
     return settings.useRealCn105;
 }
 
 bool statusLedEnabled() {
     return settings.statusLedEnabled;
+}
+
+int statusLedPin() {
+    return settings.statusLedPin;
+}
+
+int cn105RxPin() {
+    return settings.cn105RxPin;
+}
+
+int cn105TxPin() {
+    return settings.cn105TxPin;
+}
+
+int cn105DataBits() {
+    return settings.cn105DataBits;
+}
+
+char cn105Parity() {
+    return settings.cn105Parity;
+}
+
+int cn105StopBits() {
+    return settings.cn105StopBits;
+}
+
+bool cn105RxPullupEnabled() {
+    return settings.cn105RxPullupEnabled;
+}
+
+bool cn105TxOpenDrain() {
+    return settings.cn105TxOpenDrain;
 }
 
 int cn105BaudRate() {
@@ -328,6 +507,10 @@ esp_log_level_t logLevel() {
 
 const char* logLevelName() {
     return logLevelNameLocal(settings.logLevel);
+}
+
+const char* cn105FormatName() {
+    return cn105_format_name;
 }
 
 bool parseLogLevel(const char* value, esp_log_level_t* out) {
@@ -357,6 +540,21 @@ bool parseLogLevel(const char* value, esp_log_level_t* out) {
     return false;
 }
 
+bool parseCn105Parity(const char* value, char* out) {
+    if (value == nullptr || out == nullptr) {
+        return false;
+    }
+    char parity = value[0];
+    if (parity >= 'a' && parity <= 'z') {
+        parity = static_cast<char>(parity - 'a' + 'A');
+    }
+    if (!validParity(parity)) {
+        return false;
+    }
+    *out = parity;
+    return true;
+}
+
 bool save(const Settings& requested, bool* reboot_required, char* message, size_t message_len) {
     if (!initialized && init() != ESP_OK) {
         setMessage(message, message_len, "settings init failed");
@@ -365,7 +563,23 @@ bool save(const Settings& requested, bool* reboot_required, char* message, size_
 
     Settings next = requested;
     if (next.deviceName[0] == '\0') {
-        copyString(next.deviceName, sizeof(next.deviceName), app_config::kHomeKitAccessoryName);
+        copyString(next.deviceName, sizeof(next.deviceName), kDefaultDeviceName);
+    }
+    if (next.homeKitManufacturer[0] == '\0') {
+        copyString(next.homeKitManufacturer, sizeof(next.homeKitManufacturer), kDefaultHomeKitManufacturer);
+    }
+    if (next.homeKitModel[0] == '\0') {
+        copyString(next.homeKitModel, sizeof(next.homeKitModel), kDefaultHomeKitModel);
+    }
+    if (next.homeKitSerial[0] == '\0') {
+        copyString(next.homeKitSerial, sizeof(next.homeKitSerial), kDefaultHomeKitSerial);
+    }
+    if (next.homeKitSetupId[0] == '\0') {
+        copyString(next.homeKitSetupId, sizeof(next.homeKitSetupId), kDefaultHomeKitSetupId);
+    }
+    if (!validGpio(next.cn105RxPin) || !validOutputGpio(next.cn105TxPin) || !validOutputGpio(next.statusLedPin)) {
+        setMessage(message, message_len, "invalid GPIO pin");
+        return false;
     }
     char sanitized_code[sizeof(next.homeKitCode)] = {};
     if (!sanitizeHomeKitCode(next.homeKitCode, sanitized_code, sizeof(sanitized_code))) {
@@ -375,6 +589,14 @@ bool save(const Settings& requested, bool* reboot_required, char* message, size_
     copyString(next.homeKitCode, sizeof(next.homeKitCode), sanitized_code);
     if (!validBaud(next.cn105BaudRate)) {
         setMessage(message, message_len, "invalid CN105 baud rate");
+        return false;
+    }
+    if (!validDataBits(next.cn105DataBits) || !validParity(next.cn105Parity) || !validStopBits(next.cn105StopBits)) {
+        setMessage(message, message_len, "invalid CN105 serial format");
+        return false;
+    }
+    if (!validSetupId(next.homeKitSetupId)) {
+        setMessage(message, message_len, "invalid HomeKit setup id");
         return false;
     }
     if (next.pollIntervalActiveMs < 1000 || next.pollIntervalOffMs < 5000) {
@@ -390,15 +612,44 @@ bool save(const Settings& requested, bool* reboot_required, char* message, size_
 
     bool needs_reboot = false;
     needs_reboot = needs_reboot || std::strcmp(settings.deviceName, next.deviceName) != 0;
+    needs_reboot = needs_reboot || std::strcmp(settings.wifiSsid, next.wifiSsid) != 0;
+    needs_reboot = needs_reboot || std::strcmp(settings.wifiPassword, next.wifiPassword) != 0;
     needs_reboot = needs_reboot || std::strcmp(settings.homeKitCode, next.homeKitCode) != 0;
+    needs_reboot = needs_reboot || std::strcmp(settings.homeKitManufacturer, next.homeKitManufacturer) != 0;
+    needs_reboot = needs_reboot || std::strcmp(settings.homeKitModel, next.homeKitModel) != 0;
+    needs_reboot = needs_reboot || std::strcmp(settings.homeKitSerial, next.homeKitSerial) != 0;
+    needs_reboot = needs_reboot || std::strcmp(settings.homeKitSetupId, next.homeKitSetupId) != 0;
     needs_reboot = needs_reboot || settings.useRealCn105 != next.useRealCn105;
+    needs_reboot = needs_reboot || settings.statusLedPin != next.statusLedPin;
+    needs_reboot = needs_reboot || settings.cn105RxPin != next.cn105RxPin;
+    needs_reboot = needs_reboot || settings.cn105TxPin != next.cn105TxPin;
     needs_reboot = needs_reboot || settings.cn105BaudRate != next.cn105BaudRate;
+    needs_reboot = needs_reboot || settings.cn105DataBits != next.cn105DataBits;
+    needs_reboot = needs_reboot || settings.cn105Parity != next.cn105Parity;
+    needs_reboot = needs_reboot || settings.cn105StopBits != next.cn105StopBits;
+    needs_reboot = needs_reboot || settings.cn105RxPullupEnabled != next.cn105RxPullupEnabled;
+    needs_reboot = needs_reboot || settings.cn105TxOpenDrain != next.cn105TxOpenDrain;
 
     nvs_set_str(handle, "device_name", next.deviceName);
+    nvs_set_str(handle, "wifi_ssid", next.wifiSsid);
+    nvs_set_str(handle, "wifi_pass", next.wifiPassword);
     nvs_set_str(handle, "hk_code", next.homeKitCode);
+    nvs_set_str(handle, "hk_mfr", next.homeKitManufacturer);
+    nvs_set_str(handle, "hk_model", next.homeKitModel);
+    nvs_set_str(handle, "hk_serial", next.homeKitSerial);
+    nvs_set_str(handle, "hk_setupid", next.homeKitSetupId);
     nvs_set_u8(handle, "use_real", next.useRealCn105 ? 1 : 0);
     nvs_set_u8(handle, "led_on", next.statusLedEnabled ? 1 : 0);
+    nvs_set_i32(handle, "led_pin", next.statusLedPin);
+    nvs_set_i32(handle, "rx_pin", next.cn105RxPin);
+    nvs_set_i32(handle, "tx_pin", next.cn105TxPin);
     nvs_set_i32(handle, "baud", next.cn105BaudRate);
+    nvs_set_i32(handle, "data_bits", next.cn105DataBits);
+    char parity_value[2] = {next.cn105Parity, '\0'};
+    nvs_set_str(handle, "parity", parity_value);
+    nvs_set_i32(handle, "stop_bits", next.cn105StopBits);
+    nvs_set_u8(handle, "rx_pull", next.cn105RxPullupEnabled ? 1 : 0);
+    nvs_set_u8(handle, "tx_od", next.cn105TxOpenDrain ? 1 : 0);
     nvs_set_u32(handle, "poll_on", next.pollIntervalActiveMs);
     nvs_set_u32(handle, "poll_off", next.pollIntervalOffMs);
     nvs_set_u8(handle, "log_level", static_cast<uint8_t>(next.logLevel));
@@ -411,6 +662,7 @@ bool save(const Settings& requested, bool* reboot_required, char* message, size_
 
     settings = next;
     refreshCodeFormats();
+    refreshCn105FormatName();
     if (reboot_required != nullptr) {
         *reboot_required = needs_reboot;
     }

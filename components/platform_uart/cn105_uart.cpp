@@ -11,16 +11,33 @@ namespace {
 const char* TAG = "cn105_uart";
 bool initialized = false;
 
-const char* parityName(uart_parity_t parity) {
-    switch (parity) {
-        case UART_PARITY_DISABLE:
-            return "N";
-        case UART_PARITY_EVEN:
-            return "E";
-        case UART_PARITY_ODD:
-            return "O";
+uart_word_length_t dataBitsFromSetting(int data_bits) {
+    switch (data_bits) {
+        case 8:
         default:
-            return "?";
+            return UART_DATA_8_BITS;
+    }
+}
+
+uart_parity_t parityFromSetting(char parity) {
+    switch (parity) {
+        case 'N':
+            return UART_PARITY_DISABLE;
+        case 'O':
+            return UART_PARITY_ODD;
+        case 'E':
+        default:
+            return UART_PARITY_EVEN;
+    }
+}
+
+uart_stop_bits_t stopBitsFromSetting(int stop_bits) {
+    switch (stop_bits) {
+        case 2:
+            return UART_STOP_BITS_2;
+        case 1:
+        default:
+            return UART_STOP_BITS_1;
     }
 }
 
@@ -29,11 +46,13 @@ const char* parityName(uart_parity_t parity) {
 namespace cn105_uart {
 
 esp_err_t init() {
+    const gpio_num_t rx_pin = static_cast<gpio_num_t>(device_settings::cn105RxPin());
+    const gpio_num_t tx_pin = static_cast<gpio_num_t>(device_settings::cn105TxPin());
     const uart_config_t config = {
-        .baud_rate = app_config::kCn105BaudRate,
-        .data_bits = app_config::kCn105DataBits,
-        .parity = app_config::kCn105Parity,
-        .stop_bits = app_config::kCn105StopBits,
+        .baud_rate = device_settings::cn105BaudRate(),
+        .data_bits = dataBitsFromSetting(device_settings::cn105DataBits()),
+        .parity = parityFromSetting(device_settings::cn105Parity()),
+        .stop_bits = stopBitsFromSetting(device_settings::cn105StopBits()),
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 0,
         .source_clk = UART_SCLK_DEFAULT,
@@ -41,25 +60,24 @@ esp_err_t init() {
     };
 
     ESP_LOGI(TAG,
-             "Initializing CN105 UART: uart=%d rx=%d tx=%d baud=%d format=8%s1",
+             "Initializing CN105 UART: uart=%d rx=%d tx=%d baud=%d format=%s rxPull=%s txOD=%s",
              app_config::kCn105UartPort,
-             app_config::kCn105RxPin,
-             app_config::kCn105TxPin,
+             static_cast<int>(rx_pin),
+             static_cast<int>(tx_pin),
              device_settings::cn105BaudRate(),
-             parityName(app_config::kCn105Parity));
+             device_settings::cn105FormatName(),
+             device_settings::cn105RxPullupEnabled() ? "on" : "off",
+             device_settings::cn105TxOpenDrain() ? "on" : "off");
 
-    uart_config_t runtime_config = config;
-    runtime_config.baud_rate = device_settings::cn105BaudRate();
-
-    esp_err_t err = uart_param_config(app_config::kCn105UartPort, &runtime_config);
+    esp_err_t err = uart_param_config(app_config::kCn105UartPort, &config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_param_config failed: %s", esp_err_to_name(err));
         return err;
     }
 
     err = uart_set_pin(app_config::kCn105UartPort,
-                       app_config::kCn105TxPin,
-                       app_config::kCn105RxPin,
+                       tx_pin,
+                       rx_pin,
                        UART_PIN_NO_CHANGE,
                        UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
@@ -78,13 +96,26 @@ esp_err_t init() {
         return err;
     }
 
-    if (app_config::kCn105RxPullupEnabled) {
-        err = gpio_pullup_en(app_config::kCn105RxPin);
+    if (device_settings::cn105TxOpenDrain()) {
+        err = gpio_set_direction(tx_pin, GPIO_MODE_OUTPUT_OD);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "gpio_set_direction(tx open-drain) failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        ESP_LOGI(TAG, "CN105 TX open-drain enabled on GPIO%d", static_cast<int>(tx_pin));
+    } else {
+        gpio_set_direction(tx_pin, GPIO_MODE_OUTPUT);
+    }
+
+    if (device_settings::cn105RxPullupEnabled()) {
+        err = gpio_pullup_en(rx_pin);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "gpio_pullup_en(rx) failed: %s", esp_err_to_name(err));
             return err;
         }
-        ESP_LOGI(TAG, "CN105 RX pullup enabled on GPIO%d", static_cast<int>(app_config::kCn105RxPin));
+        ESP_LOGI(TAG, "CN105 RX pullup enabled on GPIO%d", static_cast<int>(rx_pin));
+    } else {
+        gpio_pullup_dis(rx_pin);
     }
 
     initialized = true;
@@ -96,10 +127,10 @@ Status getStatus() {
     return Status{
         .initialized = initialized,
         .uart = static_cast<int>(app_config::kCn105UartPort),
-        .rxPin = static_cast<int>(app_config::kCn105RxPin),
-        .txPin = static_cast<int>(app_config::kCn105TxPin),
+        .rxPin = device_settings::cn105RxPin(),
+        .txPin = device_settings::cn105TxPin(),
         .baudRate = device_settings::cn105BaudRate(),
-        .format = "8E1",
+        .format = device_settings::cn105FormatName(),
     };
 }
 

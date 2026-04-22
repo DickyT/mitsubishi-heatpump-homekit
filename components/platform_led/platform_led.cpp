@@ -93,7 +93,7 @@ Color selectColor() {
 
 void ledTask(void*) {
     state.taskRunning = true;
-    ESP_LOGI(TAG, "Status LED task started on GPIO%d", app_config::kStatusLedPin);
+    ESP_LOGI(TAG, "Status LED task started on GPIO%d", device_settings::statusLedPin());
 
     while (true) {
         applyColor(selectColor());
@@ -106,8 +106,8 @@ void ledTask(void*) {
 namespace platform_led {
 
 esp_err_t init() {
-    if (!app_config::kStatusLedEnabled) {
-        ESP_LOGI(TAG, "Status LED disabled by config");
+    if (!device_settings::statusLedEnabled()) {
+        ESP_LOGI(TAG, "Status LED disabled by settings");
         return ESP_OK;
     }
     if (state.taskRunning) {
@@ -115,7 +115,7 @@ esp_err_t init() {
     }
 
     led_strip_config_t strip_config = {
-        .strip_gpio_num = app_config::kStatusLedPin,
+        .strip_gpio_num = device_settings::statusLedPin(),
         .max_leds = static_cast<uint32_t>(app_config::kStatusLedPixels),
         .led_pixel_format = LED_PIXEL_FORMAT_GRB,
         .led_model = LED_MODEL_WS2812,

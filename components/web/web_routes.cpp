@@ -369,13 +369,23 @@ esp_err_t statusHandler(httpd_req_t* req) {
     char esc_device_name[128] = {};
     char esc_version[64] = {};
     char esc_config_name[128] = {};
+    char esc_config_wifi_ssid[96] = {};
+    char esc_config_hk_mfr[128] = {};
+    char esc_config_hk_model[128] = {};
+    char esc_config_hk_serial[128] = {};
+    char esc_config_hk_setup_id[16] = {};
     char esc_homekit_code[32] = {};
     web_http::jsonEscape(device_settings::deviceName(), esc_device_name, sizeof(esc_device_name));
     web_http::jsonEscape(build_info::firmwareVersion(), esc_version, sizeof(esc_version));
     web_http::jsonEscape(config.deviceName, esc_config_name, sizeof(esc_config_name));
+    web_http::jsonEscape(config.wifiSsid, esc_config_wifi_ssid, sizeof(esc_config_wifi_ssid));
+    web_http::jsonEscape(config.homeKitManufacturer, esc_config_hk_mfr, sizeof(esc_config_hk_mfr));
+    web_http::jsonEscape(config.homeKitModel, esc_config_hk_model, sizeof(esc_config_hk_model));
+    web_http::jsonEscape(config.homeKitSerial, esc_config_hk_serial, sizeof(esc_config_hk_serial));
+    web_http::jsonEscape(config.homeKitSetupId, esc_config_hk_setup_id, sizeof(esc_config_hk_setup_id));
     web_http::jsonEscape(device_settings::homeKitDisplayCode(), esc_homekit_code, sizeof(esc_homekit_code));
 
-    constexpr size_t kStatusBodyLen = 5120;
+    constexpr size_t kStatusBodyLen = 8192;
     char* body = static_cast<char*>(std::calloc(kStatusBodyLen, sizeof(char)));
     if (body == nullptr) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
@@ -394,7 +404,29 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"boot_time_unix_ms\":%llu,"
                   "\"boot_time_valid\":%s,"
                   "\"uptime_ms\":%llu,"
-                  "\"config\":{\"device_name\":\"%s\",\"homekit_code\":\"%s\",\"led_enabled\":%s,\"cn105_mode\":\"%s\",\"cn105_baud\":%d,\"poll_active_ms\":%lu,\"poll_off_ms\":%lu,\"log_level\":\"%s\"},"
+                  "\"config\":{"
+                  "\"device_name\":\"%s\","
+                  "\"wifi_ssid\":\"%s\","
+                  "\"wifi_password_set\":%s,"
+                  "\"homekit_code\":\"%s\","
+                  "\"homekit_manufacturer\":\"%s\","
+                  "\"homekit_model\":\"%s\","
+                  "\"homekit_serial\":\"%s\","
+                  "\"homekit_setup_id\":\"%s\","
+                  "\"led_enabled\":%s,"
+                  "\"led_pin\":%d,"
+                  "\"cn105_mode\":\"%s\","
+                  "\"cn105_rx_pin\":%d,"
+                  "\"cn105_tx_pin\":%d,"
+                  "\"cn105_baud\":%d,"
+                  "\"cn105_data_bits\":%d,"
+                  "\"cn105_parity\":\"%c\","
+                  "\"cn105_stop_bits\":%d,"
+                  "\"cn105_rx_pullup\":%s,"
+                  "\"cn105_tx_open_drain\":%s,"
+                  "\"poll_active_ms\":%lu,"
+                  "\"poll_off_ms\":%lu,"
+                  "\"log_level\":\"%s\"},"
                   "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"bssid\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
                   "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
@@ -412,10 +444,24 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   server_time_valid ? "true" : "false",
                   static_cast<unsigned long long>(uptimeMs()),
                   esc_config_name,
+                  esc_config_wifi_ssid,
+                  config.wifiPassword[0] == '\0' ? "false" : "true",
                   esc_homekit_code,
+                  esc_config_hk_mfr,
+                  esc_config_hk_model,
+                  esc_config_hk_serial,
+                  esc_config_hk_setup_id,
                   config.statusLedEnabled ? "true" : "false",
+                  config.statusLedPin,
                   transport_mode,
+                  config.cn105RxPin,
+                  config.cn105TxPin,
                   config.cn105BaudRate,
+                  config.cn105DataBits,
+                  config.cn105Parity,
+                  config.cn105StopBits,
+                  config.cn105RxPullupEnabled ? "true" : "false",
+                  config.cn105TxOpenDrain ? "true" : "false",
                   static_cast<unsigned long>(config.pollIntervalActiveMs),
                   static_cast<unsigned long>(config.pollIntervalOffMs),
                   device_settings::logLevelName(),
@@ -631,17 +677,25 @@ esp_err_t adminHandler(httpd_req_t* req) {
 }
 
 esp_err_t configSaveHandler(httpd_req_t* req) {
-    char body[512] = {};
+    char body[1536] = {};
     if (!readBody(req, body, sizeof(body))) {
         return web_http::sendJsonError(req, "failed to read request body");
     }
 
     device_settings::Settings next = device_settings::get();
 
-    char value[128] = {};
+    char value[192] = {};
     if (web_http::queryValue(body, "device_name", value, sizeof(value))) {
         std::strncpy(next.deviceName, value, sizeof(next.deviceName) - 1);
         next.deviceName[sizeof(next.deviceName) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "wifi_ssid", value, sizeof(value))) {
+        std::strncpy(next.wifiSsid, value, sizeof(next.wifiSsid) - 1);
+        next.wifiSsid[sizeof(next.wifiSsid) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "wifi_password", value, sizeof(value))) {
+        std::strncpy(next.wifiPassword, value, sizeof(next.wifiPassword) - 1);
+        next.wifiPassword[sizeof(next.wifiPassword) - 1] = '\0';
     }
     if (web_http::queryValue(body, "homekit_code", value, sizeof(value))) {
         char digits[sizeof(next.homeKitCode)] = {};
@@ -651,16 +705,64 @@ esp_err_t configSaveHandler(httpd_req_t* req) {
         std::strncpy(next.homeKitCode, digits, sizeof(next.homeKitCode) - 1);
         next.homeKitCode[sizeof(next.homeKitCode) - 1] = '\0';
     }
+    if (web_http::queryValue(body, "homekit_manufacturer", value, sizeof(value))) {
+        std::strncpy(next.homeKitManufacturer, value, sizeof(next.homeKitManufacturer) - 1);
+        next.homeKitManufacturer[sizeof(next.homeKitManufacturer) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "homekit_model", value, sizeof(value))) {
+        std::strncpy(next.homeKitModel, value, sizeof(next.homeKitModel) - 1);
+        next.homeKitModel[sizeof(next.homeKitModel) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "homekit_serial", value, sizeof(value))) {
+        std::strncpy(next.homeKitSerial, value, sizeof(next.homeKitSerial) - 1);
+        next.homeKitSerial[sizeof(next.homeKitSerial) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "homekit_setup_id", value, sizeof(value))) {
+        std::strncpy(next.homeKitSetupId, value, sizeof(next.homeKitSetupId) - 1);
+        next.homeKitSetupId[sizeof(next.homeKitSetupId) - 1] = '\0';
+    }
     if (web_http::queryValue(body, "led_enabled", value, sizeof(value))) {
         next.statusLedEnabled = std::strcmp(value, "0") != 0 &&
                                 std::strcmp(value, "false") != 0 &&
                                 std::strcmp(value, "off") != 0;
     }
+    if (web_http::queryValue(body, "led_pin", value, sizeof(value))) {
+        next.statusLedPin = std::atoi(value);
+    }
     if (web_http::queryValue(body, "cn105_mode", value, sizeof(value))) {
         next.useRealCn105 = std::strcmp(value, "mock") != 0;
     }
+    if (web_http::queryValue(body, "cn105_rx_pin", value, sizeof(value))) {
+        next.cn105RxPin = std::atoi(value);
+    }
+    if (web_http::queryValue(body, "cn105_tx_pin", value, sizeof(value))) {
+        next.cn105TxPin = std::atoi(value);
+    }
     if (web_http::queryValue(body, "cn105_baud", value, sizeof(value))) {
         next.cn105BaudRate = std::atoi(value);
+    }
+    if (web_http::queryValue(body, "cn105_data_bits", value, sizeof(value))) {
+        next.cn105DataBits = std::atoi(value);
+    }
+    if (web_http::queryValue(body, "cn105_parity", value, sizeof(value))) {
+        char parity = 'E';
+        if (!device_settings::parseCn105Parity(value, &parity)) {
+            return web_http::sendJsonError(req, "invalid CN105 parity");
+        }
+        next.cn105Parity = parity;
+    }
+    if (web_http::queryValue(body, "cn105_stop_bits", value, sizeof(value))) {
+        next.cn105StopBits = std::atoi(value);
+    }
+    if (web_http::queryValue(body, "cn105_rx_pullup", value, sizeof(value))) {
+        next.cn105RxPullupEnabled = std::strcmp(value, "0") != 0 &&
+                                    std::strcmp(value, "false") != 0 &&
+                                    std::strcmp(value, "off") != 0;
+    }
+    if (web_http::queryValue(body, "cn105_tx_open_drain", value, sizeof(value))) {
+        next.cn105TxOpenDrain = std::strcmp(value, "0") != 0 &&
+                                std::strcmp(value, "false") != 0 &&
+                                std::strcmp(value, "off") != 0;
     }
     if (web_http::queryValue(body, "poll_active_ms", value, sizeof(value))) {
         next.pollIntervalActiveMs = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));

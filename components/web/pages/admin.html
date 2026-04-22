@@ -17,10 +17,24 @@
 <div class="subtitle">保存后设备会自动重启，让设备名、HomeKit、CN105 和运行参数全部按同一套新设置启动。</div>
 <div class="grid2">
 <label class="field"><span>设备名称</span><input id="cfg-device-name" type="text" maxlength="63" placeholder="Mitsubishi AC"></label>
+<label class="field"><span>WiFi SSID</span><input id="cfg-wifi-ssid" type="text" maxlength="32" placeholder="YOUR_WIFI_SSID"></label>
+<label class="field"><span>WiFi 密码</span><input id="cfg-wifi-password" type="password" maxlength="64" placeholder="留空则不修改"></label>
 <label class="field"><span>HomeKit 配对码</span><input id="cfg-homekit-code" type="text" maxlength="9" placeholder="1234-5678"></label>
+<label class="field"><span>HomeKit Setup ID</span><input id="cfg-homekit-setup-id" type="text" maxlength="4" placeholder="DKT1"></label>
+<label class="field"><span>HomeKit 厂商</span><input id="cfg-homekit-manufacturer" type="text" maxlength="63" placeholder="dkt smart home"></label>
+<label class="field"><span>HomeKit Model</span><input id="cfg-homekit-model" type="text" maxlength="63" placeholder="Mitsubishi Heat Pump"></label>
+<label class="field"><span>HomeKit Serial</span><input id="cfg-homekit-serial" type="text" maxlength="63" placeholder="DKT-MITSUBISHI-HOMEKIT"></label>
 <label class="field"><span>状态灯</span><select id="cfg-led-enabled"><option value="1">开启</option><option value="0">关闭</option></select></label>
+<label class="field"><span>状态灯 GPIO</span><input id="cfg-led-pin" type="number" min="0" max="33" step="1"></label>
 <label class="field"><span>CN105 模式</span><select id="cfg-cn105-mode"><option value="real">真实 CN105</option><option value="mock">Mock</option></select></label>
+<label class="field"><span>CN105 RX GPIO</span><input id="cfg-cn105-rx-pin" type="number" min="0" max="39" step="1"></label>
+<label class="field"><span>CN105 TX GPIO</span><input id="cfg-cn105-tx-pin" type="number" min="0" max="33" step="1"></label>
 <label class="field"><span>CN105 波特率</span><select id="cfg-cn105-baud"><option value="2400">2400</option><option value="4800">4800</option><option value="9600">9600</option></select></label>
+<label class="field"><span>CN105 数据位</span><select id="cfg-cn105-data-bits"><option value="8">8</option></select></label>
+<label class="field"><span>CN105 校验</span><select id="cfg-cn105-parity"><option value="E">Even</option><option value="N">None</option><option value="O">Odd</option></select></label>
+<label class="field"><span>CN105 停止位</span><select id="cfg-cn105-stop-bits"><option value="1">1</option><option value="2">2</option></select></label>
+<label class="field"><span>CN105 RX 上拉</span><select id="cfg-cn105-rx-pullup"><option value="1">开启</option><option value="0">关闭</option></select></label>
+<label class="field"><span>CN105 TX 开漏</span><select id="cfg-cn105-tx-open-drain"><option value="0">关闭</option><option value="1">开启</option></select></label>
 <label class="field"><span>日志等级</span><select id="cfg-log-level"><option value="error">error</option><option value="warn">warn</option><option value="info">info</option><option value="debug">debug</option><option value="verbose">verbose</option></select></label>
 <label class="field"><span>开机轮询(ms)</span><input id="cfg-poll-active" type="number" min="1000" step="1000"></label>
 <label class="field"><span>关机轮询(ms)</span><input id="cfg-poll-off" type="number" min="5000" step="1000"></label>

@@ -401,9 +401,9 @@ esp_err_t start() {
 
     hap_acc_cfg_t cfg = {
         .name = hapString(device_settings::deviceName()),
-        .model = hapString(device_settings::deviceName()),
-        .manufacturer = hapString(app_config::kHomeKitManufacturer),
-        .serial_num = hapString(app_config::kHomeKitSerialNumber),
+        .model = hapString(device_settings::homeKitModel()),
+        .manufacturer = hapString(device_settings::homeKitManufacturer()),
+        .serial_num = hapString(device_settings::homeKitSerial()),
         .fw_rev = hapString(build_info::firmwareVersion()),
         .hw_rev = hapString(app_config::kHomeKitHardwareRevision),
         .pv = hapString("1.1.0"),
@@ -428,13 +428,13 @@ esp_err_t start() {
 
     hap_add_accessory(accessory);
     hap_set_setup_code(device_settings::homeKitSetupCode());
-    if (hap_set_setup_id(app_config::kHomeKitSetupId) != HAP_SUCCESS) {
+    if (hap_set_setup_id(device_settings::homeKitSetupId()) != HAP_SUCCESS) {
         setLastError("hap_set_setup_id failed");
         return ESP_FAIL;
     }
 
     char* payload = esp_hap_get_setup_payload(hapString(device_settings::homeKitSetupCode()),
-                                              hapString(app_config::kHomeKitSetupId),
+                                              hapString(device_settings::homeKitSetupId()),
                                               false,
                                               HAP_CID_AIR_CONDITIONER);
     if (payload != nullptr) {
@@ -456,9 +456,9 @@ esp_err_t start() {
     ESP_LOGI(TAG,
              "HomeKit started: name=%s model=%s setup_code=%s setup_id=%s payload=%s paired=%d",
              device_settings::deviceName(),
-             device_settings::deviceName(),
+             device_settings::homeKitModel(),
              device_settings::homeKitSetupCode(),
-             app_config::kHomeKitSetupId,
+             device_settings::homeKitSetupId(),
              setup_payload,
              hap_get_paired_controller_count());
     return ESP_OK;
@@ -470,10 +470,10 @@ Status getStatus() {
     status.started = started;
     status.pairedControllers = started ? hap_get_paired_controller_count() : 0;
     status.accessoryName = device_settings::deviceName();
-    status.model = device_settings::deviceName();
+    status.model = device_settings::homeKitModel();
     status.firmwareRevision = build_info::firmwareVersion();
     status.setupCode = device_settings::homeKitSetupCode();
-    status.setupId = app_config::kHomeKitSetupId;
+    status.setupId = device_settings::homeKitSetupId();
     status.setupPayload = setup_payload;
     status.lastEvent = last_event;
     status.lastError = last_error;
