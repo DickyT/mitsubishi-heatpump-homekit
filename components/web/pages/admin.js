@@ -126,6 +126,14 @@ function closeOtaModal(reset=true){
   if(reset)resetOtaUi();
 }
 
+function handleOtaCancel(e){
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  closeOtaModal(true);
+}
+
 function uploadOta(){
   if(otaUploading)return;
   otaUploadResult=null;
@@ -192,6 +200,14 @@ async function confirmOtaReboot(){
   }catch(e){
     setOtaMessage('重启请求已发送，等待设备重新上线...');
   }
+}
+
+function handleOtaConfirm(e){
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  confirmOtaReboot();
 }
 
 
@@ -297,15 +313,15 @@ $('hk-modal-btn').addEventListener('click',openHomeKitModal);
 $('hk-modal-close').addEventListener('click',closeHomeKitModal);
 $('cfg-save-btn').addEventListener('click',saveConfig);
 $('ota-file').addEventListener('change',uploadOta);
-$('ota-modal-close').addEventListener('click',closeOtaModal);
-$('ota-modal-cancel').addEventListener('click',closeOtaModal);
-$('ota-modal-confirm').addEventListener('click',confirmOtaReboot);
+$('ota-modal-close').addEventListener('click',handleOtaCancel);
+$('ota-modal-cancel').addEventListener('click',handleOtaCancel);
+$('ota-modal-confirm').addEventListener('click',handleOtaConfirm);
 $('cfg-homekit-code').addEventListener('blur',()=>{$('cfg-homekit-code').value=normalizeHomeKitCodeInput($('cfg-homekit-code').value);});
 document.querySelectorAll('[data-close-modal="hk-modal"]').forEach(el=>el.addEventListener('click',closeHomeKitModal));
-document.querySelectorAll('[data-close-modal="ota-modal"]').forEach(el=>el.addEventListener('click',closeOtaModal));
+document.querySelectorAll('[data-close-modal="ota-modal"]').forEach(el=>el.addEventListener('click',handleOtaCancel));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&$('hk-modal').classList.contains('open'))closeHomeKitModal();
-  if(e.key==='Escape'&&$('ota-modal').classList.contains('open'))closeOtaModal();
+  if(e.key==='Escape'&&$('ota-modal').classList.contains('open'))handleOtaCancel(e);
 });
 
 loadInfo();

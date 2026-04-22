@@ -307,15 +307,18 @@ button,
   font-weight: 900;
   text-decoration: none;
   cursor: pointer;
+  touch-action: manipulation;
   transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
   box-shadow: inset 0 0 0 1px rgba(84, 241, 255, .06), 0 0 22px rgba(84, 241, 255, .08);
 }
 
-button:hover,
-.linkbtn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 66, 210, .54);
-  box-shadow: inset 0 0 0 1px rgba(255, 66, 210, .14), 0 0 28px rgba(255, 66, 210, .18);
+@media (hover: hover) and (pointer: fine) {
+  button:hover,
+  .linkbtn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 66, 210, .54);
+    box-shadow: inset 0 0 0 1px rgba(255, 66, 210, .14), 0 0 28px rgba(255, 66, 210, .18);
+  }
 }
 
 button:active {
@@ -526,12 +529,14 @@ nav.tabs svg {
 .modal-backdrop {
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: rgba(3, 6, 15, .76);
   backdrop-filter: blur(10px);
 }
 
 .modal-panel {
   position: relative;
+  z-index: 1;
   width: min(760px, calc(100vw - 24px));
   max-height: min(88dvh, 920px);
   overflow: auto;
