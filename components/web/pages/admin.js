@@ -7,6 +7,7 @@ let uptimeAnchorClientMs=0;
 let uptimeTimer=null;
 let otaUploading=false;
 let otaUploadResult=null;
+let otaApplying=false;
 
 function formatHomeKitCode(code){
   const digits=String(code||'').replace(/\D/g,'');
@@ -90,6 +91,7 @@ function setOtaMessage(text,isError=false){
 
 function resetOtaUi(){
   otaUploadResult=null;
+  otaApplying=false;
   const fileInput=$('ota-file');
   const progress=$('ota-progress');
   if(fileInput){
@@ -105,9 +107,12 @@ function resetOtaUi(){
 
 function openOtaModal(result){
   otaUploadResult=result;
+  otaApplying=false;
   $('ota-modal-current').textContent=result.current_version||'--';
   $('ota-modal-new').textContent=result.uploaded_version||'--';
   $('ota-modal-partition').textContent=result.partition||'--';
+  $('ota-modal-status').textContent='固件已经上传完成。确认后设备会重启并切换到新的 OTA 分区。';
+  $('ota-modal').querySelectorAll('button').forEach(button=>button.disabled=false);
   const warning=$('ota-modal-warning');
   if(result.same_or_older||result.rollback){
     warning.style.display='block';
@@ -121,9 +126,16 @@ function openOtaModal(result){
 }
 
 function closeOtaModal(reset=true){
+  if(otaApplying)return;
   $('ota-modal').classList.remove('open');
   $('ota-modal').setAttribute('aria-hidden','true');
   if(reset)resetOtaUi();
+}
+
+function setOtaApplying(message){
+  otaApplying=true;
+  $('ota-modal-status').textContent=message;
+  $('ota-modal').querySelectorAll('button').forEach(button=>button.disabled=true);
 }
 
 function handleOtaCancel(e){
@@ -188,18 +200,22 @@ function uploadOta(){
 
 async function confirmOtaReboot(){
   if(!otaUploadResult)return;
-  closeOtaModal(false);
-  setOtaMessage('重启中，设备会短暂离线...');
+  setOtaApplying('正在应用 OTA 更新，设备会重启。页面将在 5 秒后自动刷新。');
+  setOtaMessage('');
   try{
     const r=await fetch('/api/ota/apply',{method:'POST'});
     if(!r.ok){
       const j=await r.json().catch(()=>({}));
+      otaApplying=false;
+      $('ota-modal').querySelectorAll('button').forEach(button=>button.disabled=false);
+      $('ota-modal-status').textContent='OTA 应用失败，请检查错误后重试或重新上传。';
       setOtaMessage('OTA 应用失败: '+(j.error||`HTTP ${r.status}`),true);
       return;
     }
   }catch(e){
-    setOtaMessage('重启请求已发送，等待设备重新上线...');
+    // The reboot can close the TCP connection before the browser sees a response.
   }
+  setTimeout(()=>window.location.reload(),5000);
 }
 
 function handleOtaConfirm(e){
@@ -313,7 +329,6 @@ $('hk-modal-btn').addEventListener('click',openHomeKitModal);
 $('hk-modal-close').addEventListener('click',closeHomeKitModal);
 $('cfg-save-btn').addEventListener('click',saveConfig);
 $('ota-file').addEventListener('change',uploadOta);
-$('ota-modal-close').addEventListener('click',handleOtaCancel);
 $('ota-modal-cancel').addEventListener('click',handleOtaCancel);
 $('ota-modal-confirm').addEventListener('click',handleOtaConfirm);
 $('cfg-homekit-code').addEventListener('blur',()=>{$('cfg-homekit-code').value=normalizeHomeKitCodeInput($('cfg-homekit-code').value);});

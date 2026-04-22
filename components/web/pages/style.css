@@ -326,6 +326,13 @@ button:active {
   opacity: .78
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .52;
+  transform: none;
+  pointer-events: none;
+}
+
 .btn-primary,
 .btn-send {
   color: #06101d;
