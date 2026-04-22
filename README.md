@@ -99,7 +99,6 @@ CN105 wiring target remains:
 The current codebase drives the board RGB LED with this policy:
 
 - `green solid`: Wi-Fi connected and CN105 link healthy
-- `green blinking`: active CN105 communication is in progress
 - `blue solid`: Wi-Fi is not connected
 - `orange solid`: Wi-Fi is connected, but CN105 is not connected
 - `red solid`: both Wi-Fi and CN105 are unavailable
@@ -108,6 +107,45 @@ Implementation note:
 
 - LED control lives in `components/platform_led`
 - the LED policy stays simple and diagnostic-first rather than becoming a second notification system
+
+## CN105 Transport Notes
+
+Recent hardware debugging produced a few implementation details that are now
+reflected in the main firmware:
+
+- CN105 `CONNECT ACK` packets (`0x7A` / `0x7B`) must be framed using the packet
+  header length field, i.e. `byte[4] + 6`, rather than assuming a fixed
+  8-byte response. Real hardware can return a valid 7-byte ACK such as
+  `FC 7A 01 30 01 00 54`.
+- The current real-transport baseline for the tested M5Stack ATOM Lite wiring
+  is:
+  - `UART1`
+  - `2400 8E1`
+  - `GPIO26` as `RX`
+  - `GPIO32` as `TX`
+  - CN105 `RX` pullup enabled on the ESP32 side
+- The standalone probe app at [`debug_apps/cn105_probe`](./debug_apps/cn105_probe)
+  exists specifically to validate pinout, baud, pullup behavior, and
+  `0x5A`/`0x5B` connect behavior against unknown indoor units.
+
+## CN105 Polling Strategy
+
+The real CN105 transport does not use one fixed poll interval anymore.
+
+Current behavior:
+
+- if the indoor unit is `ON`, status polling runs every `2` seconds
+- if the indoor unit is `OFF`, status polling slows to every `60` seconds
+- if HomeKit or the WebUI sends a `POWER ON` command, the transport immediately
+  returns to fast polling before the next state roundtrip completes
+- if HomeKit or the WebUI sends a `POWER OFF` command, the transport stays
+  conservative and only falls back to the slow interval after a later
+  `0x02 settings` response confirms the indoor unit is really `OFF`
+
+The compile-time knobs for this live in [`app_config.h`](./components/app_config/include/app_config.h):
+
+- `kCn105PollIntervalActiveMs = 2000`
+- `kCn105PollIntervalOffMs = 60000`
 
 ## Verification
 

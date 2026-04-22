@@ -12,6 +12,8 @@ struct Status {
     bool fallbackApActive = false;
     int rssi = 0;
     int channel = 0;
+    char ssid[33] = "";
+    char bssid[18] = "--";
     char mode[12] = "OFF";
     char ip[16] = "0.0.0.0";
     char mac[18] = "--";

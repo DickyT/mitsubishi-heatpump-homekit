@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "cn105_core.h"
+#include "device_settings.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -42,6 +43,7 @@ struct TransportState {
     uint8_t pollCodes[3] = {0x02, 0x03, 0x06};
     int pollIndex = 0;
     uint8_t awaitingInfoCode = 0;
+    bool forceFastPolling = false;
     int64_t requestSentUs = 0;
     int64_t lastPollUs = 0;
     int64_t lastConnectAttemptUs = 0;
@@ -124,8 +126,25 @@ void sendSetPacket(const cn105_core::SetCommand& command) {
     if (uartSend(packet.bytes, packet.length)) {
         ts.phase = Phase::kAwaitingSetAck;
         ts.requestSentUs = nowUs();
+        ts.pollIndex = 0;
+        if (command.hasPower && command.power != nullptr && std::strcmp(command.power, "ON") == 0) {
+            ts.forceFastPolling = true;
+        }
         ESP_LOGI(TAG, "SET sent");
     }
+}
+
+bool shouldUseFastPolling() {
+    if (ts.forceFastPolling) {
+        return true;
+    }
+    const cn105_core::MockState state = cn105_core::getMockState();
+    return state.power != nullptr && std::strcmp(state.power, "ON") == 0;
+}
+
+uint32_t currentPollIntervalMs() {
+    return shouldUseFastPolling() ? device_settings::pollIntervalActiveMs()
+                                  : device_settings::pollIntervalOffMs();
 }
 
 size_t expectedLenForCommand(uint8_t command) {
@@ -167,6 +186,9 @@ void handlePacket(const uint8_t* bytes, size_t len) {
         case 0x62:
             if (ts.phase == Phase::kAwaitingInfoResponse) {
                 cn105_core::applyInfoResponseToState(bytes, len);
+                if (ts.awaitingInfoCode == 0x02) {
+                    ts.forceFastPolling = false;
+                }
                 ts.phase = Phase::kIdle;
             }
             break;
@@ -274,7 +296,7 @@ void transportTask(void*) {
                     sendSetPacket(command);
                     break;
                 }
-                if (elapsedMs(ts.lastPollUs, app_config::kCn105PollIntervalMs)) {
+                if (elapsedMs(ts.lastPollUs, currentPollIntervalMs())) {
                     sendInfoRequest(ts.pollCodes[ts.pollIndex]);
                     ts.pollIndex = (ts.pollIndex + 1) % 3;
                     if (ts.pollIndex == 0) {

@@ -2,8 +2,8 @@
 
 #include "app_config.h"
 #include "cn105_transport.h"
+#include "device_settings.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
@@ -22,9 +22,6 @@ struct Color {
 struct State {
     led_strip_handle_t strip = nullptr;
     bool taskRunning = false;
-    uint32_t lastTxPackets = 0;
-    uint32_t lastRxPackets = 0;
-    int64_t commActiveUntilUs = 0;
     Color applied = {};
 };
 
@@ -35,10 +32,6 @@ constexpr Color kGreen = {0, 255, 0};
 constexpr Color kBlue = {0, 0, 255};
 constexpr Color kOrange = {255, 40, 0};
 constexpr Color kRed = {255, 0, 0};
-
-int64_t nowUs() {
-    return static_cast<int64_t>(esp_timer_get_time());
-}
 
 Color scaled(Color color) {
     const uint32_t brightness = app_config::kStatusLedBrightness;
@@ -72,26 +65,14 @@ void applyColor(Color color) {
 }
 
 bool isCn105Healthy(const cn105_transport::Status& transport) {
-    return !app_config::kCn105UseRealTransport || transport.connected;
-}
-
-bool isCommunicationActive(const cn105_transport::Status& transport) {
-    if (!app_config::kCn105UseRealTransport || !transport.connected) {
-        state.lastTxPackets = transport.txPackets;
-        state.lastRxPackets = transport.rxPackets;
-        state.commActiveUntilUs = 0;
-        return false;
-    }
-
-    if (transport.txPackets != state.lastTxPackets || transport.rxPackets != state.lastRxPackets) {
-        state.commActiveUntilUs = nowUs() + static_cast<int64_t>(app_config::kStatusLedCommHoldMs) * 1000;
-        state.lastTxPackets = transport.txPackets;
-        state.lastRxPackets = transport.rxPackets;
-    }
-    return nowUs() < state.commActiveUntilUs;
+    return !device_settings::useRealCn105() || transport.connected;
 }
 
 Color selectColor() {
+    if (!device_settings::statusLedEnabled()) {
+        return kOff;
+    }
+
     const platform_wifi::Status wifi = platform_wifi::getStatus();
     const cn105_transport::Status transport = cn105_transport::getStatus();
     const bool wifiHealthy = wifi.staConnected;
@@ -105,11 +86,6 @@ Color selectColor() {
     }
     if (!cn105Healthy) {
         return kOrange;
-    }
-
-    if (isCommunicationActive(transport)) {
-        const uint32_t phase = static_cast<uint32_t>((nowUs() / 1000) / app_config::kStatusLedBlinkPeriodMs);
-        return (phase % 2 == 0) ? kGreen : kOff;
     }
 
     return kGreen;

@@ -15,6 +15,7 @@ struct Status {
 };
 
 void init();
+void applyConfiguredLogLevel();
 void enablePersistentLog();
 void logStartupSummary();
 Status getStatus();

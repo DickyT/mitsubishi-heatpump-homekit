@@ -1,9 +1,11 @@
 #include "web_routes.h"
 
 #include "app_config.h"
+#include "build_info.h"
 #include "cn105_core.h"
 #include "cn105_transport.h"
 #include "cn105_uart.h"
+#include "device_settings.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -21,11 +23,43 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <sys/time.h>
 
 namespace {
 
 uint64_t uptimeMs() {
     return static_cast<uint64_t>(esp_timer_get_time() / 1000);
+}
+
+uint64_t currentUnixMs(bool* valid) {
+    timeval tv {};
+    gettimeofday(&tv, nullptr);
+    const uint64_t unix_ms = (static_cast<uint64_t>(tv.tv_sec) * 1000ULL) +
+                             static_cast<uint64_t>(tv.tv_usec / 1000);
+    const bool looks_valid = tv.tv_sec >= 1704067200;  // 2024-01-01 UTC
+    if (valid != nullptr) {
+        *valid = looks_valid;
+    }
+    return unix_ms;
+}
+
+bool readBody(httpd_req_t* req, char* out, size_t out_len) {
+    if (out == nullptr || out_len == 0) {
+        return false;
+    }
+    out[0] = '\0';
+    int remaining = req->content_len;
+    size_t total = 0;
+    while (remaining > 0 && total + 1 < out_len) {
+        const int received = httpd_req_recv(req, out + total, std::min<int>(remaining, static_cast<int>(out_len - total - 1)));
+        if (received <= 0) {
+            return false;
+        }
+        total += static_cast<size_t>(received);
+        remaining -= received;
+    }
+    out[total] = '\0';
+    return remaining == 0;
 }
 
 void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t out_len) {
@@ -67,7 +101,13 @@ void writeMockStateJson(const cn105_core::MockState& state, char* out, size_t ou
 
 void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t out_len) {
     char esc_error[128] = {};
+    char esc_name[128] = {};
+    char esc_model[128] = {};
+    char esc_fw[64] = {};
     web_http::jsonEscape(status.lastError, esc_error, sizeof(esc_error));
+    web_http::jsonEscape(status.accessoryName, esc_name, sizeof(esc_name));
+    web_http::jsonEscape(status.model, esc_model, sizeof(esc_model));
+    web_http::jsonEscape(status.firmwareRevision, esc_fw, sizeof(esc_fw));
     std::snprintf(out,
                   out_len,
                   "\"homekit\":{"
@@ -75,6 +115,8 @@ void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t ou
                   "\"started\":%s,"
                   "\"paired_controllers\":%d,"
                   "\"accessory_name\":\"%s\","
+                  "\"model\":\"%s\","
+                  "\"firmware_revision\":\"%s\","
                   "\"setup_code\":\"%s\","
                   "\"setup_id\":\"%s\","
                   "\"setup_payload\":\"%s\","
@@ -84,7 +126,9 @@ void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t ou
                   status.enabled ? "true" : "false",
                   status.started ? "true" : "false",
                   status.pairedControllers,
-                  status.accessoryName,
+                  esc_name,
+                  esc_model,
+                  esc_fw,
                   status.setupCode,
                   status.setupId,
                   status.setupPayload,
@@ -147,10 +191,12 @@ esp_err_t streamFile(httpd_req_t* req, FILE* file, const char* content_type, con
 
 esp_err_t healthHandler(httpd_req_t* req) {
     char body[512] = {};
+    char esc_device[128] = {};
+    web_http::jsonEscape(device_settings::deviceName(), esc_device, sizeof(esc_device));
     std::snprintf(body,
                   sizeof(body),
                   "{\"ok\":true,\"device\":\"%s\",\"phase\":\"%s\",\"uptime_ms\":%llu}",
-                  app_config::kDeviceName,
+                  esc_device,
                   app_config::kPhaseName,
                   static_cast<unsigned long long>(uptimeMs()));
 
@@ -165,6 +211,11 @@ esp_err_t statusHandler(httpd_req_t* req) {
     const homekit_bridge::Status homekit = homekit_bridge::getStatus();
     const cn105_transport::Status transport = cn105_transport::getStatus();
     const platform_log::Status log = platform_log::getStatus();
+    bool server_time_valid = false;
+    const uint64_t server_time_unix_ms = currentUnixMs(&server_time_valid);
+    const uint64_t boot_time_unix_ms = server_time_valid && server_time_unix_ms >= uptimeMs()
+        ? (server_time_unix_ms - uptimeMs())
+        : 0;
 
     char mock_json[768] = {};
     writeMockStateJson(mock, mock_json, sizeof(mock_json));
@@ -172,10 +223,20 @@ esp_err_t statusHandler(httpd_req_t* req) {
     char homekit_json[512] = {};
     writeHomeKitJson(homekit, homekit_json, sizeof(homekit_json));
 
+    const device_settings::Settings& config = device_settings::get();
+
     char esc_transport_err[128] = {};
     web_http::jsonEscape(transport.lastError, esc_transport_err, sizeof(esc_transport_err));
     char esc_log_path[160] = {};
     web_http::jsonEscape(log.currentPath, esc_log_path, sizeof(esc_log_path));
+    char esc_device_name[128] = {};
+    char esc_version[64] = {};
+    char esc_config_name[128] = {};
+    char esc_homekit_code[32] = {};
+    web_http::jsonEscape(device_settings::deviceName(), esc_device_name, sizeof(esc_device_name));
+    web_http::jsonEscape(build_info::firmwareVersion(), esc_version, sizeof(esc_version));
+    web_http::jsonEscape(config.deviceName, esc_config_name, sizeof(esc_config_name));
+    web_http::jsonEscape(device_settings::homeKitDisplayCode(), esc_homekit_code, sizeof(esc_homekit_code));
 
     constexpr size_t kStatusBodyLen = 5120;
     char* body = static_cast<char*>(std::calloc(kStatusBodyLen, sizeof(char)));
@@ -183,16 +244,21 @@ esp_err_t statusHandler(httpd_req_t* req) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
     }
 
-    const char* transport_mode = app_config::kCn105UseRealTransport ? "real" : "mock";
+    const char* transport_mode = device_settings::useRealCn105() ? "real" : "mock";
 
     std::snprintf(body,
                   kStatusBodyLen,
                   "{"
                   "\"ok\":true,"
                   "\"device\":\"%s\","
+                  "\"version\":\"%s\","
                   "\"phase\":\"%s\","
+                  "\"server_time_unix_ms\":%llu,"
+                  "\"boot_time_unix_ms\":%llu,"
+                  "\"boot_time_valid\":%s,"
                   "\"uptime_ms\":%llu,"
-                  "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
+                  "\"config\":{\"device_name\":\"%s\",\"homekit_code\":\"%s\",\"led_enabled\":%s,\"cn105_mode\":\"%s\",\"cn105_baud\":%d,\"poll_active_ms\":%lu,\"poll_off_ms\":%lu,\"log_level\":\"%s\"},"
+                  "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"bssid\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
                   "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
                   "\"log\":{\"active\":%s,\"current\":\"%s\",\"current_bytes\":%u,\"dropped_lines\":%u,\"level\":\"%s\"},"
@@ -200,16 +266,30 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"transport_status\":{\"running\":%s,\"connected\":%s,\"phase\":\"%s\",\"connect_attempts\":%lu,\"poll_cycles\":%lu,\"rx_packets\":%lu,\"rx_errors\":%lu,\"tx_packets\":%lu,\"sets_pending\":%lu,\"last_error\":\"%s\"},"
                   "%s}"
                   "}",
-                  app_config::kDeviceName,
+                  esc_device_name,
+                  esc_version,
                   app_config::kPhaseName,
+                  static_cast<unsigned long long>(server_time_unix_ms),
+                  static_cast<unsigned long long>(boot_time_unix_ms),
+                  server_time_valid ? "true" : "false",
                   static_cast<unsigned long long>(uptimeMs()),
+                  esc_config_name,
+                  esc_homekit_code,
+                  config.statusLedEnabled ? "true" : "false",
+                  transport_mode,
+                  config.cn105BaudRate,
+                  static_cast<unsigned long>(config.pollIntervalActiveMs),
+                  static_cast<unsigned long>(config.pollIntervalOffMs),
+                  device_settings::logLevelName(),
                   wifi.initialized ? "true" : "false",
                   wifi.staConnected ? "true" : "false",
                   wifi.mode,
+                  wifi.ssid,
                   wifi.ip,
                   wifi.rssi,
                   wifi.channel,
                   wifi.mac,
+                  wifi.bssid,
                   wifi.lastEvent,
                   static_cast<unsigned long>(wifi.lastEventAgeMs),
                   homekit_json,
@@ -337,7 +417,7 @@ esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
     const bool apply = req->method == HTTP_POST ||
         (web_http::queryValue(query, "apply", apply_value, sizeof(apply_value)) && std::strcmp(apply_value, "1") == 0);
     if (apply) {
-        if (app_config::kCn105UseRealTransport) {
+        if (device_settings::useRealCn105()) {
             if (!cn105_transport::queueSetCommand(command)) {
                 return web_http::sendJsonError(req, "transport queue full");
             }
@@ -406,6 +486,67 @@ esp_err_t cn105DecodeHandler(httpd_req_t* req) {
 
 esp_err_t adminHandler(httpd_req_t* req) {
     return web_pages::sendAdmin(req);
+}
+
+esp_err_t configSaveHandler(httpd_req_t* req) {
+    char body[512] = {};
+    if (!readBody(req, body, sizeof(body))) {
+        return web_http::sendJsonError(req, "failed to read request body");
+    }
+
+    device_settings::Settings next = device_settings::get();
+
+    char value[128] = {};
+    if (web_http::queryValue(body, "device_name", value, sizeof(value))) {
+        std::strncpy(next.deviceName, value, sizeof(next.deviceName) - 1);
+        next.deviceName[sizeof(next.deviceName) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "homekit_code", value, sizeof(value))) {
+        std::strncpy(next.homeKitCode, value, sizeof(next.homeKitCode) - 1);
+        next.homeKitCode[sizeof(next.homeKitCode) - 1] = '\0';
+    }
+    if (web_http::queryValue(body, "led_enabled", value, sizeof(value))) {
+        next.statusLedEnabled = std::strcmp(value, "0") != 0 &&
+                                std::strcmp(value, "false") != 0 &&
+                                std::strcmp(value, "off") != 0;
+    }
+    if (web_http::queryValue(body, "cn105_mode", value, sizeof(value))) {
+        next.useRealCn105 = std::strcmp(value, "mock") != 0;
+    }
+    if (web_http::queryValue(body, "cn105_baud", value, sizeof(value))) {
+        next.cn105BaudRate = std::atoi(value);
+    }
+    if (web_http::queryValue(body, "poll_active_ms", value, sizeof(value))) {
+        next.pollIntervalActiveMs = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
+    }
+    if (web_http::queryValue(body, "poll_off_ms", value, sizeof(value))) {
+        next.pollIntervalOffMs = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
+    }
+    if (web_http::queryValue(body, "log_level", value, sizeof(value))) {
+        esp_log_level_t level = ESP_LOG_INFO;
+        if (!device_settings::parseLogLevel(value, &level)) {
+            return web_http::sendJsonError(req, "invalid log level");
+        }
+        next.logLevel = level;
+    }
+
+    bool reboot_required = false;
+    char message[192] = {};
+    if (!device_settings::save(next, &reboot_required, message, sizeof(message))) {
+        return web_http::sendJsonError(req, message);
+    }
+
+    platform_log::applyConfiguredLogLevel();
+
+    char escaped[256] = {};
+    web_http::jsonEscape(message, escaped, sizeof(escaped));
+    char response[512] = {};
+    std::snprintf(response,
+                  sizeof(response),
+                  "{\"ok\":true,\"reboot_required\":%s,\"message\":\"%s\"}",
+                  reboot_required ? "true" : "false",
+                  escaped);
+    return web_http::sendText(req, "application/json", response);
 }
 
 esp_err_t assetHandler(httpd_req_t* req) {
@@ -666,6 +807,7 @@ const web_http::Route ROUTES[] = {
     { "/api/health", HTTP_GET, healthHandler },
     { "/api/status", HTTP_GET, statusHandler },
     { "/api/reboot", HTTP_POST, rebootHandler },
+    { "/api/config/save", HTTP_POST, configSaveHandler },
     { "/api/maintenance/reset-homekit", HTTP_POST, resetHomeKitHandler },
     { "/api/maintenance/clear-logs", HTTP_POST, clearLogsHandler },
     { "/api/maintenance/clear-spiffs", HTTP_POST, clearSpiffsHandler },

@@ -230,6 +230,8 @@ Status getStatus() {
         std::strncpy(status.mode, modeName(mode), sizeof(status.mode) - 1);
     }
 
+    std::strncpy(status.ssid, app_config::kWifiSsid, sizeof(status.ssid) - 1);
+
     std::strncpy(status.ip, current_ip, sizeof(status.ip) - 1);
     formatMac(status.mac, sizeof(status.mac));
     std::strncpy(status.lastEvent, last_event, sizeof(status.lastEvent) - 1);
@@ -243,6 +245,19 @@ Status getStatus() {
         if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
             status.rssi = ap_info.rssi;
             status.channel = ap_info.primary;
+            std::snprintf(status.ssid,
+                          sizeof(status.ssid),
+                          "%s",
+                          reinterpret_cast<const char*>(ap_info.ssid));
+            std::snprintf(status.bssid,
+                          sizeof(status.bssid),
+                          "%02X:%02X:%02X:%02X:%02X:%02X",
+                          ap_info.bssid[0],
+                          ap_info.bssid[1],
+                          ap_info.bssid[2],
+                          ap_info.bssid[3],
+                          ap_info.bssid[4],
+                          ap_info.bssid[5]);
         }
     }
 

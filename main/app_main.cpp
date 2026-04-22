@@ -1,9 +1,11 @@
 #include <stdio.h>
 
 #include "app_config.h"
+#include "build_info.h"
 #include "cn105_core.h"
 #include "cn105_transport.h"
 #include "cn105_uart.h"
+#include "device_settings.h"
 #include "esp_chip_info.h"
 #include "esp_err.h"
 #include "esp_flash.h"
@@ -20,6 +22,10 @@
 static const char* TAG = "bootstrap";
 
 extern "C" void app_main(void) {
+    const esp_err_t settings_err = device_settings::init();
+    if (settings_err != ESP_OK) {
+        ESP_LOGE(TAG, "Device settings init failed: %s", esp_err_to_name(settings_err));
+    }
     platform_log::init();
 
     const esp_err_t fs_err = platform_fs::init();
@@ -36,6 +42,7 @@ extern "C" void app_main(void) {
     esp_flash_get_size(nullptr, &flash_size);
 
     ESP_LOGI(TAG, "Mitsubishi Heat Pump HomeKit bootstrap starting");
+    ESP_LOGI(TAG, "Firmware version: %s", build_info::firmwareVersion());
     platform_log::logStartupSummary();
     ESP_LOGI(TAG,
              "Chip: cores=%d, revision=%d, features=%s%s%s%s",
@@ -63,7 +70,7 @@ extern "C" void app_main(void) {
         ESP_LOGW(TAG, "CN105 offline self-test failed: %s", cn105_self_test_error);
     }
 
-    if (app_config::kCn105UseRealTransport) {
+    if (device_settings::useRealCn105()) {
         const esp_err_t transport_err = cn105_transport::start();
         if (transport_err != ESP_OK) {
             ESP_LOGE(TAG, "CN105 transport start failed: %s", esp_err_to_name(transport_err));

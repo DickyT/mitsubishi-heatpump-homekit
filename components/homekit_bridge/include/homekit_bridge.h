@@ -9,6 +9,8 @@ struct Status {
     bool started = false;
     int pairedControllers = 0;
     const char* accessoryName = "";
+    const char* model = "";
+    const char* firmwareRevision = "";
     const char* setupCode = "";
     const char* setupId = "";
     const char* setupPayload = "";

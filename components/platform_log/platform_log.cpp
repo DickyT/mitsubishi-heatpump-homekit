@@ -1,6 +1,7 @@
 #include "platform_log.h"
 
 #include "app_config.h"
+#include "device_settings.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "platform_fs.h"
@@ -334,9 +335,13 @@ const char* logLevelName(esp_log_level_t level) {
 namespace platform_log {
 
 void init() {
-    esp_log_level_set("*", app_config::kDefaultLogLevel);
+    esp_log_level_set("*", device_settings::logLevel());
     setenv("TZ", app_config::kPersistentLogTimezone, 1);
     tzset();
+}
+
+void applyConfiguredLogLevel() {
+    esp_log_level_set("*", device_settings::logLevel());
 }
 
 void enablePersistentLog() {
@@ -376,9 +381,9 @@ void enablePersistentLog() {
 }
 
 void logStartupSummary() {
-    ESP_LOGI(TAG, "Device: %s", app_config::kDeviceName);
+    ESP_LOGI(TAG, "Device: %s", device_settings::deviceName());
     ESP_LOGI(TAG, "Migration phase: %s", app_config::kPhaseName);
-    ESP_LOGI(TAG, "Default log level: %s", logLevelName(app_config::kDefaultLogLevel));
+    ESP_LOGI(TAG, "Configured log level: %s", device_settings::logLevelName());
 }
 
 Status getStatus() {
@@ -388,7 +393,7 @@ Status getStatus() {
     copyString(status.currentPath, sizeof(status.currentPath), current_path);
     status.currentBytes = current_bytes;
     status.droppedLines = dropped_lines;
-    copyString(status.levelName, sizeof(status.levelName), logLevelName(app_config::kDefaultLogLevel));
+    copyString(status.levelName, sizeof(status.levelName), device_settings::logLevelName());
     return status;
 }
 

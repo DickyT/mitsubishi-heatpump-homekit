@@ -47,9 +47,13 @@ Result resetHomeKit() {
 
 Result clearLogs() {
     Result result{};
-    char message[256] = {};
-    const bool ok = platform_log::clearAllLogs(message, sizeof(message));
-    setResult(result, "clear-logs", ok, false, message);
+    const bool ok = platform_log::clearCurrentLog("manual current log clear");
+    setResult(result,
+              "clear-logs",
+              ok,
+              false,
+              ok ? "Current log cleared. Logging will continue in the same file."
+                 : "Failed to clear current log.");
     return result;
 }
 

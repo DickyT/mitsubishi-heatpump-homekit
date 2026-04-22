@@ -1,6 +1,7 @@
 #include "cn105_uart.h"
 
 #include "app_config.h"
+#include "device_settings.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -44,10 +45,13 @@ esp_err_t init() {
              app_config::kCn105UartPort,
              app_config::kCn105RxPin,
              app_config::kCn105TxPin,
-             app_config::kCn105BaudRate,
+             device_settings::cn105BaudRate(),
              parityName(app_config::kCn105Parity));
 
-    esp_err_t err = uart_param_config(app_config::kCn105UartPort, &config);
+    uart_config_t runtime_config = config;
+    runtime_config.baud_rate = device_settings::cn105BaudRate();
+
+    esp_err_t err = uart_param_config(app_config::kCn105UartPort, &runtime_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_param_config failed: %s", esp_err_to_name(err));
         return err;
@@ -94,7 +98,7 @@ Status getStatus() {
         .uart = static_cast<int>(app_config::kCn105UartPort),
         .rxPin = static_cast<int>(app_config::kCn105RxPin),
         .txPin = static_cast<int>(app_config::kCn105TxPin),
-        .baudRate = app_config::kCn105BaudRate,
+        .baudRate = device_settings::cn105BaudRate(),
         .format = "8E1",
     };
 }

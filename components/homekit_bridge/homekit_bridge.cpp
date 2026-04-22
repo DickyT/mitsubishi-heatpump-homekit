@@ -1,8 +1,10 @@
 #include "homekit_bridge.h"
 
 #include "app_config.h"
+#include "build_info.h"
 #include "cn105_core.h"
 #include "cn105_transport.h"
+#include "device_settings.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -200,7 +202,7 @@ void updateCharFloat(hap_char_t* character, float value) {
 }
 
 bool applyCommand(const cn105_core::SetCommand& command) {
-    if (app_config::kCn105UseRealTransport) {
+    if (device_settings::useRealCn105()) {
         if (!cn105_transport::queueSetCommand(command)) {
             setLastError("transport queue full");
             ESP_LOGW(TAG, "HomeKit command queue failed");
@@ -339,7 +341,7 @@ esp_err_t addHeaterCoolerService(hap_acc_t* target_accessory) {
         return ESP_FAIL;
     }
 
-    int ret = hap_serv_add_char(heater_cooler, hap_char_name_create(hapString(app_config::kHomeKitAccessoryName)));
+    int ret = hap_serv_add_char(heater_cooler, hap_char_name_create(hapString(device_settings::deviceName())));
     ret |= hap_serv_add_char(heater_cooler, hap_char_cooling_threshold_temperature_create(fahrenheitToCelsius(state.targetTemperatureF)));
     ret |= hap_serv_add_char(heater_cooler, hap_char_heating_threshold_temperature_create(fahrenheitToCelsius(state.targetTemperatureF)));
     ret |= hap_serv_add_char(heater_cooler, hap_char_rotation_speed_create(fanToPercent(state.fan)));
@@ -398,11 +400,11 @@ esp_err_t start() {
     }
 
     hap_acc_cfg_t cfg = {
-        .name = hapString(app_config::kHomeKitAccessoryName),
-        .model = hapString(app_config::kHomeKitModel),
+        .name = hapString(device_settings::deviceName()),
+        .model = hapString(device_settings::deviceName()),
         .manufacturer = hapString(app_config::kHomeKitManufacturer),
         .serial_num = hapString(app_config::kHomeKitSerialNumber),
-        .fw_rev = hapString(app_config::kHomeKitFirmwareRevision),
+        .fw_rev = hapString(build_info::firmwareVersion()),
         .hw_rev = hapString(app_config::kHomeKitHardwareRevision),
         .pv = hapString("1.1.0"),
         .cid = HAP_CID_AIR_CONDITIONER,
@@ -425,13 +427,13 @@ esp_err_t start() {
     }
 
     hap_add_accessory(accessory);
-    hap_set_setup_code(app_config::kHomeKitSetupCode);
+    hap_set_setup_code(device_settings::homeKitSetupCode());
     if (hap_set_setup_id(app_config::kHomeKitSetupId) != HAP_SUCCESS) {
         setLastError("hap_set_setup_id failed");
         return ESP_FAIL;
     }
 
-    char* payload = esp_hap_get_setup_payload(hapString(app_config::kHomeKitSetupCode),
+    char* payload = esp_hap_get_setup_payload(hapString(device_settings::homeKitSetupCode()),
                                               hapString(app_config::kHomeKitSetupId),
                                               false,
                                               HAP_CID_AIR_CONDITIONER);
@@ -452,9 +454,10 @@ esp_err_t start() {
     syncFromMock();
     setLastEvent("started");
     ESP_LOGI(TAG,
-             "HomeKit started: name=%s model=HeaterCooler setup_code=%s setup_id=%s payload=%s paired=%d",
-             app_config::kHomeKitAccessoryName,
-             app_config::kHomeKitSetupCode,
+             "HomeKit started: name=%s model=%s setup_code=%s setup_id=%s payload=%s paired=%d",
+             device_settings::deviceName(),
+             device_settings::deviceName(),
+             device_settings::homeKitSetupCode(),
              app_config::kHomeKitSetupId,
              setup_payload,
              hap_get_paired_controller_count());
@@ -466,8 +469,10 @@ Status getStatus() {
     status.enabled = app_config::kHomeKitEnabled;
     status.started = started;
     status.pairedControllers = started ? hap_get_paired_controller_count() : 0;
-    status.accessoryName = app_config::kHomeKitAccessoryName;
-    status.setupCode = app_config::kHomeKitSetupCode;
+    status.accessoryName = device_settings::deviceName();
+    status.model = device_settings::deviceName();
+    status.firmwareRevision = build_info::firmwareVersion();
+    status.setupCode = device_settings::homeKitSetupCode();
     status.setupId = app_config::kHomeKitSetupId;
     status.setupPayload = setup_payload;
     status.lastEvent = last_event;
@@ -479,7 +484,7 @@ void syncFromMock() {
     if (!started) {
         return;
     }
-    if (app_config::kCn105UseRealTransport &&
+    if (device_settings::useRealCn105() &&
         (esp_timer_get_time() - last_command_us) < kGracePeriodUs) {
         return;
     }
