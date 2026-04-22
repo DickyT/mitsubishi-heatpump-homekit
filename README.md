@@ -73,6 +73,7 @@ The current baseline is considered healthy when:
 - [`components/web/tools/build_assets.py`](./components/web/tools/build_assets.py): build-time gzip splitter for WebUI shell assets
 - [`components/core_cn105`](./components/core_cn105): offline CN105 protocol core and mock state
 - [`components/homekit_bridge`](./components/homekit_bridge): Espressif HomeKit SDK binding over mock CN105 state
+- [`debug_apps/cn105_probe`](./debug_apps/cn105_probe): standalone minimal ESP-IDF CN105 UART probe app for low-level wiring and handshake tests
 - [`partitions.csv`](./partitions.csv): custom 4MB flash partition table
 - [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local project guide and hardware rules
 - [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
@@ -135,6 +136,13 @@ For this project, the preferred local wrapper is:
 ```bash
 ./build.py build
 ./build.py flash monitor
+```
+
+For the standalone CN105-only debug app, use:
+
+```bash
+./build.py --app cn105-probe build
+./build.py --app cn105-probe flash-auto --monitor
 ```
 
 Or use the project-specific auto-flash helper:

@@ -16,15 +16,20 @@ import time
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent
 IDF_VERSION = "v5.4.1"
 DEFAULT_FLASH_BAUD = 115200
-SERIAL_LOG_DIR = PROJECT_ROOT / "serial_logs"
+SERIAL_LOG_DIR = REPO_ROOT / "serial_logs"
 SERIAL_LOG_PATH = SERIAL_LOG_DIR / "latest-serial.log"
 IDF_TOOLS_PATH = Path.home() / ".espressif" / "tools"
 IDF_PATH = Path.home() / ".espressif" / IDF_VERSION / "esp-idf"
 IDF_PYTHON = IDF_TOOLS_PATH / "python" / IDF_VERSION / "venv" / "bin" / "python"
 IDF_SCRIPT = IDF_PATH / "tools" / "idf.py"
+
+APP_ROOTS = {
+    "main": REPO_ROOT,
+    "cn105-probe": REPO_ROOT / "debug_apps" / "cn105_probe",
+}
 
 TOOL_PATHS = [
     IDF_TOOLS_PATH / "cmake" / "3.30.2" / "CMake.app" / "Contents" / "bin",
@@ -98,16 +103,26 @@ def detect_serial_ports() -> list[str]:
     return sorted(set(ports))
 
 
-def run_idf(args: list[str], quiet_first: bool = False) -> int:
+def project_root_for(app: str) -> Path:
+    root = APP_ROOTS.get(app)
+    if not root:
+        known = ", ".join(sorted(APP_ROOTS.keys()))
+        fail(f"Unknown app '{app}'. Known apps: {known}")
+    if not root.exists():
+        fail(f"Project root for app '{app}' is missing at {root}")
+    return root
+
+
+def run_idf(args: list[str], quiet_first: bool = False, project_root: Path = REPO_ROOT) -> int:
     cmd = [str(IDF_PYTHON), str(IDF_SCRIPT), *args]
     env = build_env()
     if not quiet_first:
-        return subprocess.call(cmd, cwd=PROJECT_ROOT, env=env)
+        return subprocess.call(cmd, cwd=project_root, env=env)
 
     print(f"Running quietly: idf.py {' '.join(args)}", flush=True)
     result = subprocess.run(
         cmd,
-        cwd=PROJECT_ROOT,
+        cwd=project_root,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -121,7 +136,7 @@ def run_idf(args: list[str], quiet_first: bool = False) -> int:
         f"Quiet run failed with exit code {result.returncode}; re-running once with normal verbose output...",
         flush=True,
     )
-    return subprocess.call(cmd, cwd=PROJECT_ROOT, env=env)
+    return subprocess.call(cmd, cwd=project_root, env=env)
 
 
 def flash(args: argparse.Namespace) -> int:
@@ -151,7 +166,7 @@ def flash(args: argparse.Namespace) -> int:
         idf_args.extend(["build", "flash"])
     if args.monitor:
         idf_args.append("monitor")
-    return run_idf(idf_args, quiet_first=args.quiet_first)
+    return run_idf(idf_args, quiet_first=args.quiet_first, project_root=args.project_root)
 
 
 def flash_esptool(args: argparse.Namespace) -> int:
@@ -171,7 +186,7 @@ def flash_esptool(args: argparse.Namespace) -> int:
             print("No ESP32-like serial port found.", file=sys.stderr)
             return 2
 
-    build_dir = PROJECT_ROOT / "build"
+    build_dir = args.project_root / "build"
     flash_args = build_dir / "flasher_args.json"
     if not flash_args.exists():
         fail(f"No build found at {flash_args}. Run a build first (e.g. via Docker).")
@@ -260,6 +275,23 @@ def serial_log(args: argparse.Namespace) -> int:
 def main() -> int:
     argv = sys.argv[1:]
 
+    app = "main"
+    normalized_argv: list[str] = []
+    skip = False
+    for index, arg in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if arg in ("--app", "-a"):
+            if index + 1 >= len(argv):
+                fail("Missing value after --app")
+            app = argv[index + 1]
+            skip = True
+            continue
+        normalized_argv.append(arg)
+    argv = normalized_argv
+    project_root = project_root_for(app)
+
     if len(argv) > 0 and argv[0] in ("flash-esptool", "serial-log"):
         pass
     else:
@@ -278,6 +310,7 @@ def main() -> int:
         parser.add_argument("-p", "--port", help="Serial port, for example /dev/cu.usbserial-xxxx")
         parser.add_argument("-b", "--baud", default=DEFAULT_FLASH_BAUD, type=int, help="Flash baud rate")
         parsed = parser.parse_args(argv[1:])
+        parsed.project_root = project_root
         return flash_esptool(parsed)
 
     if len(argv) > 0 and argv[0] == "flash-auto":
@@ -289,6 +322,7 @@ def main() -> int:
         parser.add_argument("--quiet-first", action="store_true", help="Capture idf.py output first, rerun verbose only on failure")
         parsed = parser.parse_args(argv[1:])
         parsed.quiet_first = parsed.quiet_first or quiet_first
+        parsed.project_root = project_root
         return flash(parsed)
 
     if len(argv) > 0 and argv[0] == "serial-log":
@@ -301,8 +335,12 @@ def main() -> int:
         return serial_log(parser.parse_args(argv[1:]))
 
     args = argv or ["build"]
-    return run_idf(args, quiet_first=quiet_first)
+    return run_idf(args, quiet_first=quiet_first, project_root=project_root)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+APP_ROOTS = {
+    "main": REPO_ROOT,
+    "cn105-probe": REPO_ROOT / "debug_apps" / "cn105_probe",
+}
