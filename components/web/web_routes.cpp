@@ -29,6 +29,8 @@
 
 namespace {
 
+const esp_partition_t* pending_ota_partition = nullptr;
+
 uint64_t uptimeMs() {
     return static_cast<uint64_t>(esp_timer_get_time() / 1000);
 }
@@ -986,22 +988,19 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
         return web_http::sendJsonError(req, message);
     }
 
-    err = esp_ota_set_boot_partition(update_partition);
-    if (err != ESP_OK) {
-        char message[128] = {};
-        std::snprintf(message, sizeof(message), "set boot partition failed: %s", esp_err_to_name(err));
-        return web_http::sendJsonError(req, message);
-    }
-
     char uploaded_version[32] = {};
     char current_version[32] = {};
     versionFromAppDesc(uploaded_desc, uploaded_version, sizeof(uploaded_version));
     std::snprintf(current_version, sizeof(current_version), "%s", build_info::firmwareVersion());
 
     const uint64_t uploaded_stamp = appDescStamp(uploaded_desc);
-    const uint64_t current_stamp = current_desc == nullptr ? 0 : appDescStamp(*current_desc);
+    uint64_t current_stamp = versionStamp(current_version);
+    if (current_stamp == 0 && current_desc != nullptr) {
+        current_stamp = appDescStamp(*current_desc);
+    }
     const bool rollback = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp < current_stamp;
     const bool same_or_older = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp <= current_stamp;
+    pending_ota_partition = update_partition;
 
     char body[768] = {};
     std::snprintf(body,
@@ -1025,6 +1024,27 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
     return web_http::sendText(req, "application/json", body);
 }
 
+esp_err_t otaApplyHandler(httpd_req_t* req) {
+    if (pending_ota_partition == nullptr) {
+        return web_http::sendJsonError(req, "no pending OTA upload");
+    }
+
+    const esp_partition_t* partition = pending_ota_partition;
+    pending_ota_partition = nullptr;
+
+    const esp_err_t err = esp_ota_set_boot_partition(partition);
+    if (err != ESP_OK) {
+        char message[128] = {};
+        std::snprintf(message, sizeof(message), "set boot partition failed: %s", esp_err_to_name(err));
+        return web_http::sendJsonError(req, message);
+    }
+
+    web_http::sendText(req, "application/json", "{\"ok\":true,\"message\":\"rebooting into uploaded OTA firmware\"}");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+    return ESP_OK;
+}
+
 const web_http::Route ROUTES[] = {
     { "/", HTTP_GET, rootHandler },
     { "/debug", HTTP_GET, debugHandler },
@@ -1041,6 +1061,7 @@ const web_http::Route ROUTES[] = {
     { "/api/maintenance/clear-spiffs", HTTP_POST, clearSpiffsHandler },
     { "/api/maintenance/clear-all-nvs", HTTP_POST, clearAllNvsHandler },
     { "/api/ota/upload", HTTP_POST, otaUploadHandler },
+    { "/api/ota/apply", HTTP_POST, otaApplyHandler },
     { "/api/logs", HTTP_GET, logsListHandler },
     { "/api/log/file", HTTP_GET, logFileHandler },
     { "/api/log/live", HTTP_GET, liveLogHandler },

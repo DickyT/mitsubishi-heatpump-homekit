@@ -88,6 +88,21 @@ function setOtaMessage(text,isError=false){
   el.textContent=text;
 }
 
+function resetOtaUi(){
+  otaUploadResult=null;
+  const fileInput=$('ota-file');
+  const progress=$('ota-progress');
+  if(fileInput){
+    fileInput.disabled=false;
+    fileInput.value='';
+  }
+  if(progress){
+    progress.style.display='none';
+    progress.value=0;
+  }
+  setOtaMessage('');
+}
+
 function openOtaModal(result){
   otaUploadResult=result;
   $('ota-modal-current').textContent=result.current_version||'--';
@@ -105,13 +120,15 @@ function openOtaModal(result){
   $('ota-modal').setAttribute('aria-hidden','false');
 }
 
-function closeOtaModal(){
+function closeOtaModal(reset=true){
   $('ota-modal').classList.remove('open');
   $('ota-modal').setAttribute('aria-hidden','true');
+  if(reset)resetOtaUi();
 }
 
 function uploadOta(){
   if(otaUploading)return;
+  otaUploadResult=null;
   const fileInput=$('ota-file');
   const file=fileInput&&fileInput.files&&fileInput.files[0];
   if(!file){
@@ -127,7 +144,6 @@ function uploadOta(){
   progress.value=0;
   otaUploading=true;
   fileInput.disabled=true;
-  $('ota-reboot-btn').disabled=true;
   setOtaMessage(`OTA 上传中: ${file.name}`);
 
   const xhr=new XMLHttpRequest();
@@ -141,13 +157,13 @@ function uploadOta(){
   xhr.onload=()=>{
     otaUploading=false;
     fileInput.disabled=false;
-    $('ota-reboot-btn').disabled=false;
     let result=null;
     try{result=JSON.parse(xhr.responseText||'{}');}catch(e){}
     if(xhr.status>=200&&xhr.status<300&&result&&result.ok){
       progress.value=100;
-      const warning=result.same_or_older?'\n注意：新版本号小于或等于当前版本。':'';
-      setOtaMessage(`上传完成: ${result.uploaded_version||'unknown'} -> ${result.partition||'OTA'}。请在弹窗中确认是否重启生效。${warning}`,false);
+      progress.style.display='none';
+      fileInput.value='';
+      setOtaMessage('');
       openOtaModal(result);
     }else{
       const err=(result&&result.error)||xhr.responseText||`HTTP ${xhr.status}`;
@@ -157,26 +173,22 @@ function uploadOta(){
   xhr.onerror=()=>{
     otaUploading=false;
     fileInput.disabled=false;
-    $('ota-reboot-btn').disabled=false;
     setOtaMessage('OTA 上传失败: 网络错误',true);
   };
   xhr.send(file);
 }
 
-async function rebootForOta(){
-  if(otaUploadResult){
-    openOtaModal(otaUploadResult);
-    return;
-  }
-  if(!confirm('当前没有本页面记录的上传结果。仍然要重启设备吗？'))return;
-  await confirmOtaReboot();
-}
-
 async function confirmOtaReboot(){
-  closeOtaModal();
+  if(!otaUploadResult)return;
+  closeOtaModal(false);
   setOtaMessage('重启中，设备会短暂离线...');
   try{
-    await fetch('/api/reboot',{method:'POST'});
+    const r=await fetch('/api/ota/apply',{method:'POST'});
+    if(!r.ok){
+      const j=await r.json().catch(()=>({}));
+      setOtaMessage('OTA 应用失败: '+(j.error||`HTTP ${r.status}`),true);
+      return;
+    }
   }catch(e){
     setOtaMessage('重启请求已发送，等待设备重新上线...');
   }
@@ -244,8 +256,6 @@ async function loadInfo(){
     homekitStatus=j.homekit||null;
     $('i-device').textContent=j.device;
     $('i-version').textContent=j.version||'--';
-    $('ota-current-version').textContent=j.version||'--';
-    $('ota-running').textContent=((j.ota&&j.ota.running_partition)||'--')+' / boot '+((j.ota&&j.ota.boot_partition)||'--');
     $('i-runtime').textContent=j.cn105.transport==='real'?'真实 CN105':'Mock CN105';
     syncUptime(j);
     $('i-wifi-info').textContent=`${j.wifi.ssid||'--'} | ${j.wifi.ip||'0.0.0.0'} | ${signalIcon(j.wifi.rssi)} ${j.wifi.rssi} dBm | BSSID ${j.wifi.bssid||'--'}`;
@@ -287,7 +297,6 @@ $('hk-modal-btn').addEventListener('click',openHomeKitModal);
 $('hk-modal-close').addEventListener('click',closeHomeKitModal);
 $('cfg-save-btn').addEventListener('click',saveConfig);
 $('ota-file').addEventListener('change',uploadOta);
-$('ota-reboot-btn').addEventListener('click',rebootForOta);
 $('ota-modal-close').addEventListener('click',closeOtaModal);
 $('ota-modal-cancel').addEventListener('click',closeOtaModal);
 $('ota-modal-confirm').addEventListener('click',confirmOtaReboot);
