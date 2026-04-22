@@ -77,7 +77,7 @@ inline constexpr uart_stop_bits_t kCn105StopBits = UART_STOP_BITS_1;
 inline constexpr int kCn105RxBufferBytes = 256;
 inline constexpr int kCn105TxBufferBytes = 256;
 
-inline constexpr bool kCn105UseRealTransport = true;
+inline constexpr bool kCn105UseRealTransport = false;
 inline constexpr uint32_t kCn105ConnectRetryMs = 10000;
 inline constexpr uint32_t kCn105PollIntervalActiveMs = 15000;
 inline constexpr uint32_t kCn105PollIntervalOffMs = 60000;

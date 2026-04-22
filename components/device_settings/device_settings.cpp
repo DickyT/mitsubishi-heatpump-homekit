@@ -45,7 +45,7 @@ void setMessage(char* out, size_t out_len, const char* value) {
 void loadDefaults() {
     copyString(settings.deviceName, sizeof(settings.deviceName), app_config::kHomeKitAccessoryName);
     settings.homeKitCode[0] = '\0';
-    settings.useRealCn105 = true;
+    settings.useRealCn105 = app_config::kCn105UseRealTransport;
     settings.statusLedEnabled = app_config::kStatusLedEnabled;
     settings.cn105BaudRate = app_config::kCn105BaudRate;
     settings.pollIntervalActiveMs = 15000;
@@ -132,6 +132,10 @@ void generateRandomHomeKitCode(char* out_digits, size_t out_len) {
     out_digits[8] = '\0';
 }
 
+bool validLogLevel(uint8_t value) {
+    return value <= static_cast<uint8_t>(ESP_LOG_VERBOSE);
+}
+
 }  // namespace
 
 namespace device_settings {
@@ -155,52 +159,110 @@ esp_err_t init() {
         return err;
     }
 
+    bool wrote_defaults = false;
+
     size_t len = sizeof(settings.deviceName);
-    nvs_get_str(handle, "device_name", settings.deviceName, &len);
+    err = nvs_get_str(handle, "device_name", settings.deviceName, &len);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_str(handle, "device_name", settings.deviceName);
+        wrote_defaults = true;
+    }
 
     char stored_homekit_code[sizeof(settings.homeKitCode)] = {};
     len = sizeof(stored_homekit_code);
-    bool generated_homekit_code = false;
-    if (nvs_get_str(handle, "hk_code", stored_homekit_code, &len) == ESP_OK &&
-        sanitizeHomeKitCode(stored_homekit_code, settings.homeKitCode, sizeof(settings.homeKitCode))) {
+    err = nvs_get_str(handle, "hk_code", stored_homekit_code, &len);
+    if (err == ESP_OK && sanitizeHomeKitCode(stored_homekit_code, settings.homeKitCode, sizeof(settings.homeKitCode))) {
         // Loaded existing code.
-    } else {
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
         generateRandomHomeKitCode(settings.homeKitCode, sizeof(settings.homeKitCode));
         nvs_set_str(handle, "hk_code", settings.homeKitCode);
-        generated_homekit_code = true;
+        wrote_defaults = true;
+    } else {
+        ESP_LOGW(TAG, "Invalid HomeKit setup code in NVS; generating a replacement");
+        generateRandomHomeKitCode(settings.homeKitCode, sizeof(settings.homeKitCode));
+        nvs_set_str(handle, "hk_code", settings.homeKitCode);
+        wrote_defaults = true;
     }
 
     uint8_t use_real = settings.useRealCn105 ? 1 : 0;
-    if (nvs_get_u8(handle, "use_real", &use_real) == ESP_OK) {
+    err = nvs_get_u8(handle, "use_real", &use_real);
+    if (err == ESP_OK) {
         settings.useRealCn105 = use_real != 0;
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u8(handle, "use_real", use_real);
+        wrote_defaults = true;
     }
 
     uint8_t led_enabled = settings.statusLedEnabled ? 1 : 0;
-    if (nvs_get_u8(handle, "led_on", &led_enabled) == ESP_OK) {
+    err = nvs_get_u8(handle, "led_on", &led_enabled);
+    if (err == ESP_OK) {
         settings.statusLedEnabled = led_enabled != 0;
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u8(handle, "led_on", led_enabled);
+        wrote_defaults = true;
     }
 
     int32_t baud = settings.cn105BaudRate;
-    if (nvs_get_i32(handle, "baud", &baud) == ESP_OK && validBaud(baud)) {
-        settings.cn105BaudRate = baud;
+    err = nvs_get_i32(handle, "baud", &baud);
+    if (err == ESP_OK) {
+        if (validBaud(baud)) {
+            settings.cn105BaudRate = baud;
+        } else {
+            ESP_LOGW(TAG, "Invalid CN105 baud rate in NVS: %ld; using default %d",
+                     static_cast<long>(baud),
+                     settings.cn105BaudRate);
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_i32(handle, "baud", settings.cn105BaudRate);
+        wrote_defaults = true;
     }
 
     uint32_t active_ms = settings.pollIntervalActiveMs;
-    if (nvs_get_u32(handle, "poll_on", &active_ms) == ESP_OK && active_ms >= 1000) {
-        settings.pollIntervalActiveMs = active_ms;
+    err = nvs_get_u32(handle, "poll_on", &active_ms);
+    if (err == ESP_OK) {
+        if (active_ms >= 1000) {
+            settings.pollIntervalActiveMs = active_ms;
+        } else {
+            ESP_LOGW(TAG, "Invalid active poll interval in NVS: %lu; using default %lu",
+                     static_cast<unsigned long>(active_ms),
+                     static_cast<unsigned long>(settings.pollIntervalActiveMs));
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u32(handle, "poll_on", settings.pollIntervalActiveMs);
+        wrote_defaults = true;
     }
 
     uint32_t off_ms = settings.pollIntervalOffMs;
-    if (nvs_get_u32(handle, "poll_off", &off_ms) == ESP_OK && off_ms >= 5000) {
-        settings.pollIntervalOffMs = off_ms;
+    err = nvs_get_u32(handle, "poll_off", &off_ms);
+    if (err == ESP_OK) {
+        if (off_ms >= 5000) {
+            settings.pollIntervalOffMs = off_ms;
+        } else {
+            ESP_LOGW(TAG, "Invalid off poll interval in NVS: %lu; using default %lu",
+                     static_cast<unsigned long>(off_ms),
+                     static_cast<unsigned long>(settings.pollIntervalOffMs));
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u32(handle, "poll_off", settings.pollIntervalOffMs);
+        wrote_defaults = true;
     }
 
     uint8_t level = static_cast<uint8_t>(settings.logLevel);
-    if (nvs_get_u8(handle, "log_level", &level) == ESP_OK) {
-        settings.logLevel = static_cast<esp_log_level_t>(level);
+    err = nvs_get_u8(handle, "log_level", &level);
+    if (err == ESP_OK) {
+        if (validLogLevel(level)) {
+            settings.logLevel = static_cast<esp_log_level_t>(level);
+        } else {
+            ESP_LOGW(TAG, "Invalid log level in NVS: %u; using default %s",
+                     static_cast<unsigned>(level),
+                     logLevelNameLocal(settings.logLevel));
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_set_u8(handle, "log_level", static_cast<uint8_t>(settings.logLevel));
+        wrote_defaults = true;
     }
 
-    if (generated_homekit_code) {
+    if (wrote_defaults) {
         nvs_commit(handle);
     }
 

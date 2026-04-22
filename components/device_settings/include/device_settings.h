@@ -10,7 +10,7 @@ namespace device_settings {
 struct Settings {
     char deviceName[64] = "";
     char homeKitCode[9] = "";
-    bool useRealCn105 = true;
+    bool useRealCn105 = false;
     bool statusLedEnabled = true;
     int cn105BaudRate = 2400;
     uint32_t pollIntervalActiveMs = 15000;
