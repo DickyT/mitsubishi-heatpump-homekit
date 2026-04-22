@@ -205,6 +205,10 @@ h2 {
   display: block
 }
 
+.ota-file-field {
+  margin-top: 16px
+}
+
 .field span {
   display: block;
   color: var(--cyan);
@@ -574,6 +578,22 @@ nav.tabs svg {
   background: linear-gradient(180deg, rgba(10, 15, 31, .96), rgba(6, 10, 22, .98));
   padding: 18px;
   box-shadow: inset 0 0 0 1px rgba(84, 241, 255, .04);
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.ota-warning {
+  margin-top: 14px;
+  border: 1px solid rgba(255, 186, 58, .34);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 186, 58, .13), rgba(255, 75, 110, .10));
+  color: #ffd98a;
+  padding: 13px 14px;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .section-label {

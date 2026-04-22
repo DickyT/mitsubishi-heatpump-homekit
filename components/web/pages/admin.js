@@ -5,6 +5,8 @@ let qrLibraryPromise=null;
 let uptimeAnchorMs=0;
 let uptimeAnchorClientMs=0;
 let uptimeTimer=null;
+let otaUploading=false;
+let otaUploadResult=null;
 
 function formatHomeKitCode(code){
   const digits=String(code||'').replace(/\D/g,'');
@@ -86,7 +88,30 @@ function setOtaMessage(text,isError=false){
   el.textContent=text;
 }
 
+function openOtaModal(result){
+  otaUploadResult=result;
+  $('ota-modal-current').textContent=result.current_version||'--';
+  $('ota-modal-new').textContent=result.uploaded_version||'--';
+  $('ota-modal-partition').textContent=result.partition||'--';
+  const warning=$('ota-modal-warning');
+  if(result.same_or_older||result.rollback){
+    warning.style.display='block';
+    warning.textContent='注意：新版本号小于或等于当前版本。系统不会禁止回退/重刷，但请确认这是你想要的固件。';
+  }else{
+    warning.style.display='none';
+    warning.textContent='';
+  }
+  $('ota-modal').classList.add('open');
+  $('ota-modal').setAttribute('aria-hidden','false');
+}
+
+function closeOtaModal(){
+  $('ota-modal').classList.remove('open');
+  $('ota-modal').setAttribute('aria-hidden','true');
+}
+
 function uploadOta(){
+  if(otaUploading)return;
   const fileInput=$('ota-file');
   const file=fileInput&&fileInput.files&&fileInput.files[0];
   if(!file){
@@ -96,12 +121,14 @@ function uploadOta(){
   if(!file.name.endsWith('.bin')){
     if(!confirm('这个文件名不是 .bin，仍然继续上传吗？'))return;
   }
-  if(!confirm('确定上传 OTA 固件吗？上传成功后需要重启才会切换到新固件。'))return;
 
   const progress=$('ota-progress');
   progress.style.display='block';
   progress.value=0;
-  setOtaMessage('OTA 上传中...');
+  otaUploading=true;
+  fileInput.disabled=true;
+  $('ota-reboot-btn').disabled=true;
+  setOtaMessage(`OTA 上传中: ${file.name}`);
 
   const xhr=new XMLHttpRequest();
   xhr.open('POST','/api/ota/upload');
@@ -112,19 +139,47 @@ function uploadOta(){
     }
   };
   xhr.onload=()=>{
+    otaUploading=false;
+    fileInput.disabled=false;
+    $('ota-reboot-btn').disabled=false;
     let result=null;
     try{result=JSON.parse(xhr.responseText||'{}');}catch(e){}
     if(xhr.status>=200&&xhr.status<300&&result&&result.ok){
       progress.value=100;
-      const warning=result.rollback?`\n提醒: ${result.warning}`:'';
-      setOtaMessage(`上传完成: ${result.uploaded_version||'unknown'} -> ${result.partition||'OTA'}。点击“重启应用更新”后生效。${warning}`,false);
+      const warning=result.same_or_older?'\n注意：新版本号小于或等于当前版本。':'';
+      setOtaMessage(`上传完成: ${result.uploaded_version||'unknown'} -> ${result.partition||'OTA'}。请在弹窗中确认是否重启生效。${warning}`,false);
+      openOtaModal(result);
     }else{
       const err=(result&&result.error)||xhr.responseText||`HTTP ${xhr.status}`;
       setOtaMessage('OTA 上传失败: '+err,true);
     }
   };
-  xhr.onerror=()=>setOtaMessage('OTA 上传失败: 网络错误',true);
+  xhr.onerror=()=>{
+    otaUploading=false;
+    fileInput.disabled=false;
+    $('ota-reboot-btn').disabled=false;
+    setOtaMessage('OTA 上传失败: 网络错误',true);
+  };
   xhr.send(file);
+}
+
+async function rebootForOta(){
+  if(otaUploadResult){
+    openOtaModal(otaUploadResult);
+    return;
+  }
+  if(!confirm('当前没有本页面记录的上传结果。仍然要重启设备吗？'))return;
+  await confirmOtaReboot();
+}
+
+async function confirmOtaReboot(){
+  closeOtaModal();
+  setOtaMessage('重启中，设备会短暂离线...');
+  try{
+    await fetch('/api/reboot',{method:'POST'});
+  }catch(e){
+    setOtaMessage('重启请求已发送，等待设备重新上线...');
+  }
 }
 
 
@@ -190,6 +245,7 @@ async function loadInfo(){
     $('i-device').textContent=j.device;
     $('i-version').textContent=j.version||'--';
     $('ota-current-version').textContent=j.version||'--';
+    $('ota-running').textContent=((j.ota&&j.ota.running_partition)||'--')+' / boot '+((j.ota&&j.ota.boot_partition)||'--');
     $('i-runtime').textContent=j.cn105.transport==='real'?'真实 CN105':'Mock CN105';
     syncUptime(j);
     $('i-wifi-info').textContent=`${j.wifi.ssid||'--'} | ${j.wifi.ip||'0.0.0.0'} | ${signalIcon(j.wifi.rssi)} ${j.wifi.rssi} dBm | BSSID ${j.wifi.bssid||'--'}`;
@@ -230,11 +286,17 @@ async function maintenance(url,label,prompt){
 $('hk-modal-btn').addEventListener('click',openHomeKitModal);
 $('hk-modal-close').addEventListener('click',closeHomeKitModal);
 $('cfg-save-btn').addEventListener('click',saveConfig);
-$('ota-upload-btn').addEventListener('click',uploadOta);
+$('ota-file').addEventListener('change',uploadOta);
+$('ota-reboot-btn').addEventListener('click',rebootForOta);
+$('ota-modal-close').addEventListener('click',closeOtaModal);
+$('ota-modal-cancel').addEventListener('click',closeOtaModal);
+$('ota-modal-confirm').addEventListener('click',confirmOtaReboot);
 $('cfg-homekit-code').addEventListener('blur',()=>{$('cfg-homekit-code').value=normalizeHomeKitCodeInput($('cfg-homekit-code').value);});
 document.querySelectorAll('[data-close-modal="hk-modal"]').forEach(el=>el.addEventListener('click',closeHomeKitModal));
+document.querySelectorAll('[data-close-modal="ota-modal"]').forEach(el=>el.addEventListener('click',closeOtaModal));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&$('hk-modal').classList.contains('open'))closeHomeKitModal();
+  if(e.key==='Escape'&&$('ota-modal').classList.contains('open'))closeOtaModal();
 });
 
 loadInfo();

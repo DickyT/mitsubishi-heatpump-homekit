@@ -31,12 +31,12 @@
 </div>
 <div class="card">
 <h3>OTA 更新</h3>
-<div class="subtitle">上传 build 目录里的主 app bin：<code>mitsubishi_heatpump_homekit.bin</code>。</div>
+<div class="subtitle">选择 build 目录里的主 app bin 会自动上传：<code>mitsubishi_heatpump_homekit.bin</code>。</div>
 <div class="kvrow"><span class="kk">当前版本</span><span class="vv" id="ota-current-version">--</span></div>
-<label class="field"><span>固件文件</span><input id="ota-file" type="file" accept=".bin,application/octet-stream"></label>
+<div class="kvrow"><span class="kk">运行分区</span><span class="vv" id="ota-running">--</span></div>
+<label class="field ota-file-field"><span>固件文件</span><input id="ota-file" type="file" accept=".bin,application/octet-stream"></label>
 <div class="btns">
-<button class="btn-primary" id="ota-upload-btn" type="button">上传 OTA 固件</button>
-<button class="btn-secondary" onclick="reboot()">重启应用更新</button>
+<button class="btn-secondary" id="ota-reboot-btn" type="button">重启应用更新</button>
 </div>
 <progress id="ota-progress" value="0" max="100" style="display:none;width:100%;margin-top:12px"></progress>
 <div id="ota-msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
@@ -93,6 +93,35 @@
 <div id="hk-qr" class="qr-box">二维码加载中...</div>
 <div class="pairing-hint">Setup Payload: <code id="hk-modal-payload">--</code></div>
 <div class="pairing-hint">如果二维码没显示，可以直接在 Home App 手动输入上面的配对码。</div>
+</div>
+</div>
+</div>
+<div id="ota-modal" class="modal" aria-hidden="true">
+<div class="modal-backdrop" data-close-modal="ota-modal"></div>
+<div class="modal-panel">
+<div class="modal-header">
+<div>
+<h2>确认 OTA 更新</h2>
+<div class="subtitle modal-subtitle">固件已经上传完成。确认后设备会重启并切换到新的 OTA 分区。</div>
+</div>
+<button id="ota-modal-close" class="btn-secondary btn-compact" type="button">取消</button>
+</div>
+<div class="modal-grid">
+<div class="modal-card">
+<div class="section-label">版本</div>
+<div class="kvrow"><span class="kk">当前版本</span><span class="vv" id="ota-modal-current">--</span></div>
+<div class="kvrow"><span class="kk">新版本</span><span class="vv" id="ota-modal-new">--</span></div>
+<div id="ota-modal-warning" class="ota-warning" style="display:none"></div>
+</div>
+<div class="modal-card">
+<div class="section-label">分区</div>
+<div class="kvrow"><span class="kk">目标分区</span><span class="vv" id="ota-modal-partition">--</span></div>
+<div class="pairing-hint">取消不会清掉已上传固件，只是暂时不重启。确认重启后才会尝试启动新分区。</div>
+</div>
+</div>
+<div class="btns modal-actions">
+<button id="ota-modal-confirm" class="btn-primary" type="button">确认重启应用更新</button>
+<button id="ota-modal-cancel" class="btn-secondary" type="button">取消</button>
 </div>
 </div>
 </div>

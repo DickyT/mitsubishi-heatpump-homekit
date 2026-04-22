@@ -75,7 +75,46 @@ uint64_t compileStamp(const char* date, const char* time) {
            static_cast<uint64_t>(second);
 }
 
+uint64_t versionStamp(const char* version) {
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (std::sscanf(version == nullptr ? "" : version,
+                    "%4d.%2d%2d.%2d%2d%2d",
+                    &year,
+                    &month,
+                    &day,
+                    &hour,
+                    &minute,
+                    &second) != 6) {
+        return 0;
+    }
+    if (year < 2024 || month < 1 || month > 12 || day < 1 || day > 31 ||
+        hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+        return 0;
+    }
+    return static_cast<uint64_t>(year) * 10000000000ULL +
+           static_cast<uint64_t>(month) * 100000000ULL +
+           static_cast<uint64_t>(day) * 1000000ULL +
+           static_cast<uint64_t>(hour) * 10000ULL +
+           static_cast<uint64_t>(minute) * 100ULL +
+           static_cast<uint64_t>(second);
+}
+
+uint64_t appDescStamp(const esp_app_desc_t& desc) {
+    const uint64_t stamp_from_version = versionStamp(desc.version);
+    return stamp_from_version > 0 ? stamp_from_version : compileStamp(desc.date, desc.time);
+}
+
 void versionFromAppDesc(const esp_app_desc_t& desc, char* out, size_t out_len) {
+    if (desc.version[0] != '\0') {
+        std::snprintf(out, out_len, "%s", desc.version);
+        return;
+    }
+
     char month[4] = {};
     int day = 0;
     int year = 0;
@@ -281,6 +320,8 @@ esp_err_t statusHandler(httpd_req_t* req) {
     const homekit_bridge::Status homekit = homekit_bridge::getStatus();
     const cn105_transport::Status transport = cn105_transport::getStatus();
     const platform_log::Status log = platform_log::getStatus();
+    const esp_partition_t* running_partition = esp_ota_get_running_partition();
+    const esp_partition_t* boot_partition = esp_ota_get_boot_partition();
     bool server_time_valid = false;
     const uint64_t server_time_unix_ms = currentUnixMs(&server_time_valid);
     const uint64_t boot_time_unix_ms = server_time_valid && server_time_unix_ms >= uptimeMs()
@@ -331,6 +372,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"bssid\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
                   "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
+                  "\"ota\":{\"running_partition\":\"%s\",\"boot_partition\":\"%s\",\"running_address\":%u,\"boot_address\":%u},"
                   "\"log\":{\"active\":%s,\"current\":\"%s\",\"current_bytes\":%u,\"dropped_lines\":%u,\"level\":\"%s\"},"
                   "\"cn105\":{\"uart_initialized\":%s,\"uart\":%d,\"rx_pin\":%d,\"tx_pin\":%d,\"baud\":%d,\"format\":\"%s\",\"transport\":\"%s\","
                   "\"transport_status\":{\"running\":%s,\"connected\":%s,\"phase\":\"%s\",\"connect_attempts\":%lu,\"poll_cycles\":%lu,\"rx_packets\":%lu,\"rx_errors\":%lu,\"tx_packets\":%lu,\"sets_pending\":%lu,\"last_error\":\"%s\"},"
@@ -368,6 +410,10 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   static_cast<unsigned>(fs.totalBytes),
                   static_cast<unsigned>(fs.usedBytes),
                   static_cast<unsigned>(fs.freeBytes),
+                  running_partition == nullptr ? "" : running_partition->label,
+                  boot_partition == nullptr ? "" : boot_partition->label,
+                  static_cast<unsigned>(running_partition == nullptr ? 0 : running_partition->address),
+                  static_cast<unsigned>(boot_partition == nullptr ? 0 : boot_partition->address),
                   log.active ? "true" : "false",
                   esc_log_path,
                   static_cast<unsigned>(log.currentBytes),
@@ -950,15 +996,12 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
     char uploaded_version[32] = {};
     char current_version[32] = {};
     versionFromAppDesc(uploaded_desc, uploaded_version, sizeof(uploaded_version));
-    if (current_desc != nullptr) {
-        versionFromAppDesc(*current_desc, current_version, sizeof(current_version));
-    } else {
-        std::snprintf(current_version, sizeof(current_version), "%s", build_info::firmwareVersion());
-    }
+    std::snprintf(current_version, sizeof(current_version), "%s", build_info::firmwareVersion());
 
-    const uint64_t uploaded_stamp = compileStamp(uploaded_desc.date, uploaded_desc.time);
-    const uint64_t current_stamp = current_desc == nullptr ? 0 : compileStamp(current_desc->date, current_desc->time);
+    const uint64_t uploaded_stamp = appDescStamp(uploaded_desc);
+    const uint64_t current_stamp = current_desc == nullptr ? 0 : appDescStamp(*current_desc);
     const bool rollback = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp < current_stamp;
+    const bool same_or_older = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp <= current_stamp;
 
     char body[768] = {};
     std::snprintf(body,
@@ -970,13 +1013,15 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
                   "\"current_version\":\"%s\","
                   "\"uploaded_version\":\"%s\","
                   "\"rollback\":%s,"
+                  "\"same_or_older\":%s,"
                   "\"warning\":\"%s\"}",
                   static_cast<unsigned>(written_total),
                   update_partition->label,
                   current_version,
                   uploaded_version,
                   rollback ? "true" : "false",
-                  rollback ? "Uploaded firmware appears older than the running firmware. Rollback is allowed." : "");
+                  same_or_older ? "true" : "false",
+                  same_or_older ? "Uploaded firmware is not newer than the running firmware. Reboot is still allowed." : "");
     return web_http::sendText(req, "application/json", body);
 }
 
