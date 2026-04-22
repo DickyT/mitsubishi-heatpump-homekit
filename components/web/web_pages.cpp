@@ -14,7 +14,7 @@ esp_err_t sendShell(httpd_req_t* req, const char* page) {
                   sizeof(body),
                   "<!doctype html><html lang=\"zh-Hans\"><head>"
                   "<meta charset=\"utf-8\">"
-                  "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
+                  "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover\">"
                   "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
                   "<title>Mitsubishi AC</title>"
                   "</head><body data-page=\"%s\">"

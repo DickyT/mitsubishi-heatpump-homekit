@@ -43,8 +43,10 @@ body {
     linear-gradient(180deg, var(--bg), var(--bg2));
   color: var(--text);
   min-height: 100dvh;
-  padding-bottom: calc(94px + env(safe-area-inset-bottom));
+  padding-bottom: calc(86px + env(safe-area-inset-bottom));
   overflow-x: hidden;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
 }
 
 body::before {
@@ -240,7 +242,7 @@ textarea {
   color: var(--text);
   padding: 13px 14px;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   outline: none;
   box-shadow: inset 0 0 0 1px rgba(84, 241, 255, .04);
   -webkit-appearance: none;
@@ -399,17 +401,20 @@ pre {
 
 nav.tabs {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
   z-index: 99;
   display: flex;
-  gap: 6px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(6, 9, 20, .86);
-  border-top: 1px solid rgba(255, 66, 210, .22);
-  box-shadow: 0 -16px 44px rgba(0, 0, 0, .52), 0 0 28px rgba(255, 66, 210, .10);
-  backdrop-filter: blur(14px);
+  gap: 4px;
+  padding: 6px;
+  background: rgba(6, 9, 20, .78);
+  border: 1px solid rgba(255, 66, 210, .26);
+  border-radius: 999px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .58), 0 0 34px rgba(255, 66, 210, .14);
+  backdrop-filter: blur(18px) saturate(1.35);
 }
 
 nav.tabs a {
@@ -419,19 +424,21 @@ nav.tabs a {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 54px;
-  border-radius: 16px;
+  min-height: 48px;
+  border-radius: 999px;
   color: var(--muted);
   text-decoration: none;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
-  transition: color .15s ease, background .15s ease, box-shadow .15s ease;
+  letter-spacing: .04em;
+  transition: color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease;
+  touch-action: manipulation;
 }
 
 nav.tabs a.active {
-  color: var(--pink);
-  background: rgba(255, 66, 210, .10);
-  box-shadow: inset 0 0 0 1px rgba(255, 66, 210, .18), 0 0 22px rgba(255, 66, 210, .12);
+  color: #06101d;
+  background: linear-gradient(135deg, rgba(255, 66, 210, .96), rgba(84, 241, 255, .90));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .20), 0 0 24px rgba(255, 66, 210, .18);
 }
 
 nav.tabs svg {
@@ -684,6 +691,10 @@ nav.tabs svg {
   nav.tabs {
     position: sticky;
     top: 14px;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    transform: none;
     width: min(920px, calc(100vw - 28px));
     margin: 16px auto 14px;
     padding: 7px;
@@ -704,9 +715,14 @@ nav.tabs svg {
 }
 
 @media(max-width:720px) {
+  body {
+    padding-bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+
   main {
-    width: min(100vw - 18px, 100%);
-    padding-top: 16px
+    width: min(100vw - 24px, 100%);
+    padding-top: 14px;
+    padding-bottom: 18px
   }
 
   .card {
@@ -722,12 +738,19 @@ nav.tabs svg {
   }
 
   .modal {
-    padding: 10px
+    align-items: stretch;
+    justify-content: stretch;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
   }
 
   .modal-panel {
+    width: 100%;
+    max-height: none;
+    min-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
     padding: 18px;
-    border-radius: 20px
+    border-radius: 24px;
+    display: flex;
+    flex-direction: column
   }
 
   .modal-header {
@@ -736,6 +759,26 @@ nav.tabs svg {
 
   .modal-grid {
     grid-template-columns: 1fr
+  }
+
+  .modal-actions {
+    margin-top: auto;
+    padding-top: 18px;
+  }
+
+  nav.tabs {
+    width: min(430px, calc(100vw - 20px));
+    bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+
+  nav.tabs a {
+    min-height: 46px;
+    font-size: 10px;
+  }
+
+  nav.tabs svg {
+    width: 20px;
+    height: 20px;
   }
 
   h1 {
