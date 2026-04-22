@@ -1,6 +1,7 @@
 #include "cn105_uart.h"
 
 #include "app_config.h"
+#include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 
@@ -71,6 +72,15 @@ esp_err_t init() {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_driver_install failed: %s", esp_err_to_name(err));
         return err;
+    }
+
+    if (app_config::kCn105RxPullupEnabled) {
+        err = gpio_pullup_en(app_config::kCn105RxPin);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "gpio_pullup_en(rx) failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        ESP_LOGI(TAG, "CN105 RX pullup enabled on GPIO%d", static_cast<int>(app_config::kCn105RxPin));
     }
 
     initialized = true;

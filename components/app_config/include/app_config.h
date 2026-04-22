@@ -21,7 +21,7 @@ namespace app_config {
 inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump HomeKit";
 inline constexpr char kPhaseName[] = "ESP-IDF stable baseline";
 
-inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_INFO;
+inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_VERBOSE;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
 inline constexpr uint16_t kWebServerPort = 8080;
 inline constexpr uint32_t kWebServerStackBytes = 12288;
@@ -69,6 +69,7 @@ inline constexpr uint32_t kWifiReconnectIntervalMs = 10000;
 inline constexpr uart_port_t kCn105UartPort = UART_NUM_1;
 inline constexpr gpio_num_t kCn105RxPin = GPIO_NUM_26;
 inline constexpr gpio_num_t kCn105TxPin = GPIO_NUM_32;
+inline constexpr bool kCn105RxPullupEnabled = true;
 inline constexpr int kCn105BaudRate = 2400;
 inline constexpr uart_word_length_t kCn105DataBits = UART_DATA_8_BITS;
 inline constexpr uart_parity_t kCn105Parity = UART_PARITY_EVEN;

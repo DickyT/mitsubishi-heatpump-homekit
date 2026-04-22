@@ -129,9 +129,9 @@ void sendSetPacket(const cn105_core::SetCommand& command) {
 }
 
 size_t expectedLenForCommand(uint8_t command) {
-    if (command == 0x7A || command == 0x7B) {
-        return cn105_core::kConnectLen;
-    }
+    // CONNECT ACK packets can be 7 bytes long (payload length 0x01), so ACKs
+    // must be parsed using the standard "payload length + 6" framing logic.
+    (void) command;
     return 0;
 }
 
