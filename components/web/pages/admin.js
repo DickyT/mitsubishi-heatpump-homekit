@@ -80,6 +80,54 @@ async function saveConfig(){
   }
 }
 
+function setOtaMessage(text,isError=false){
+  const el=$('ota-msg');
+  el.style.color=isError?'var(--red)':'var(--orange)';
+  el.textContent=text;
+}
+
+function uploadOta(){
+  const fileInput=$('ota-file');
+  const file=fileInput&&fileInput.files&&fileInput.files[0];
+  if(!file){
+    setOtaMessage('请选择一个 .bin 固件文件。',true);
+    return;
+  }
+  if(!file.name.endsWith('.bin')){
+    if(!confirm('这个文件名不是 .bin，仍然继续上传吗？'))return;
+  }
+  if(!confirm('确定上传 OTA 固件吗？上传成功后需要重启才会切换到新固件。'))return;
+
+  const progress=$('ota-progress');
+  progress.style.display='block';
+  progress.value=0;
+  setOtaMessage('OTA 上传中...');
+
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/ota/upload');
+  xhr.setRequestHeader('Content-Type','application/octet-stream');
+  xhr.upload.onprogress=e=>{
+    if(e.lengthComputable){
+      progress.value=Math.round((e.loaded/e.total)*100);
+    }
+  };
+  xhr.onload=()=>{
+    let result=null;
+    try{result=JSON.parse(xhr.responseText||'{}');}catch(e){}
+    if(xhr.status>=200&&xhr.status<300&&result&&result.ok){
+      progress.value=100;
+      const warning=result.rollback?`\n提醒: ${result.warning}`:'';
+      setOtaMessage(`上传完成: ${result.uploaded_version||'unknown'} -> ${result.partition||'OTA'}。点击“重启应用更新”后生效。${warning}`,false);
+    }else{
+      const err=(result&&result.error)||xhr.responseText||`HTTP ${xhr.status}`;
+      setOtaMessage('OTA 上传失败: '+err,true);
+    }
+  };
+  xhr.onerror=()=>setOtaMessage('OTA 上传失败: 网络错误',true);
+  xhr.send(file);
+}
+
+
 function ensureQrLibrary(){
   if(window.QRCode)return Promise.resolve();
   if(qrLibraryPromise)return qrLibraryPromise;
@@ -141,6 +189,7 @@ async function loadInfo(){
     homekitStatus=j.homekit||null;
     $('i-device').textContent=j.device;
     $('i-version').textContent=j.version||'--';
+    $('ota-current-version').textContent=j.version||'--';
     $('i-runtime').textContent=j.cn105.transport==='real'?'真实 CN105':'Mock CN105';
     syncUptime(j);
     $('i-wifi-info').textContent=`${j.wifi.ssid||'--'} | ${j.wifi.ip||'0.0.0.0'} | ${signalIcon(j.wifi.rssi)} ${j.wifi.rssi} dBm | BSSID ${j.wifi.bssid||'--'}`;
@@ -181,6 +230,7 @@ async function maintenance(url,label,prompt){
 $('hk-modal-btn').addEventListener('click',openHomeKitModal);
 $('hk-modal-close').addEventListener('click',closeHomeKitModal);
 $('cfg-save-btn').addEventListener('click',saveConfig);
+$('ota-upload-btn').addEventListener('click',uploadOta);
 $('cfg-homekit-code').addEventListener('blur',()=>{$('cfg-homekit-code').value=normalizeHomeKitCodeInput($('cfg-homekit-code').value);});
 document.querySelectorAll('[data-close-modal="hk-modal"]').forEach(el=>el.addEventListener('click',closeHomeKitModal));
 document.addEventListener('keydown',e=>{

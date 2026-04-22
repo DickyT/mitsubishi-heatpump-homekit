@@ -6,6 +6,8 @@
 #include "cn105_transport.h"
 #include "cn105_uart.h"
 #include "device_settings.h"
+#include "esp_app_desc.h"
+#include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -29,6 +31,74 @@ namespace {
 
 uint64_t uptimeMs() {
     return static_cast<uint64_t>(esp_timer_get_time() / 1000);
+}
+
+int monthNumber(const char* month) {
+    if (month == nullptr) {
+        return 0;
+    }
+    if (std::strcmp(month, "Jan") == 0) return 1;
+    if (std::strcmp(month, "Feb") == 0) return 2;
+    if (std::strcmp(month, "Mar") == 0) return 3;
+    if (std::strcmp(month, "Apr") == 0) return 4;
+    if (std::strcmp(month, "May") == 0) return 5;
+    if (std::strcmp(month, "Jun") == 0) return 6;
+    if (std::strcmp(month, "Jul") == 0) return 7;
+    if (std::strcmp(month, "Aug") == 0) return 8;
+    if (std::strcmp(month, "Sep") == 0) return 9;
+    if (std::strcmp(month, "Oct") == 0) return 10;
+    if (std::strcmp(month, "Nov") == 0) return 11;
+    if (std::strcmp(month, "Dec") == 0) return 12;
+    return 0;
+}
+
+uint64_t compileStamp(const char* date, const char* time) {
+    char month[4] = {};
+    int day = 0;
+    int year = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (std::sscanf(date == nullptr ? "" : date, "%3s %d %d", month, &day, &year) != 3 ||
+        std::sscanf(time == nullptr ? "" : time, "%d:%d:%d", &hour, &minute, &second) != 3) {
+        return 0;
+    }
+    const int month_num = monthNumber(month);
+    if (month_num <= 0) {
+        return 0;
+    }
+    return static_cast<uint64_t>(year) * 10000000000ULL +
+           static_cast<uint64_t>(month_num) * 100000000ULL +
+           static_cast<uint64_t>(day) * 1000000ULL +
+           static_cast<uint64_t>(hour) * 10000ULL +
+           static_cast<uint64_t>(minute) * 100ULL +
+           static_cast<uint64_t>(second);
+}
+
+void versionFromAppDesc(const esp_app_desc_t& desc, char* out, size_t out_len) {
+    char month[4] = {};
+    int day = 0;
+    int year = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (std::sscanf(desc.date, "%3s %d %d", month, &day, &year) == 3 &&
+        std::sscanf(desc.time, "%d:%d:%d", &hour, &minute, &second) == 3) {
+        const int month_num = monthNumber(month);
+        if (month_num > 0) {
+            std::snprintf(out,
+                          out_len,
+                          "%04d.%02d%02d.%02d%02d%02d",
+                          year,
+                          month_num,
+                          day,
+                          hour,
+                          minute,
+                          second);
+            return;
+        }
+    }
+    std::snprintf(out, out_len, "%s", desc.version);
 }
 
 uint64_t currentUnixMs(bool* valid) {
@@ -797,6 +867,119 @@ esp_err_t clearAllNvsHandler(httpd_req_t* req) {
     return sendMaintenanceResult(req, platform_maintenance::clearAllNvs());
 }
 
+esp_err_t otaUploadHandler(httpd_req_t* req) {
+    if (req->content_len <= 0) {
+        return web_http::sendJsonError(req, "empty OTA upload");
+    }
+
+    const esp_partition_t* running_partition = esp_ota_get_running_partition();
+    const esp_partition_t* update_partition = esp_ota_get_next_update_partition(nullptr);
+    if (update_partition == nullptr) {
+        return web_http::sendJsonError(req, "no OTA update partition available");
+    }
+    if (running_partition != nullptr && update_partition->address == running_partition->address) {
+        return web_http::sendJsonError(req, "OTA update partition matches running partition");
+    }
+    if (static_cast<size_t>(req->content_len) > update_partition->size) {
+        return web_http::sendJsonError(req, "uploaded app is larger than OTA partition");
+    }
+
+    esp_ota_handle_t ota_handle = 0;
+    esp_err_t err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &ota_handle);
+    if (err != ESP_OK) {
+        char message[128] = {};
+        std::snprintf(message, sizeof(message), "esp_ota_begin failed: %s", esp_err_to_name(err));
+        return web_http::sendJsonError(req, message);
+    }
+
+    uint8_t buffer[app_config::kPersistentLogReadChunkBytes] = {};
+    int remaining = req->content_len;
+    size_t written_total = 0;
+    while (remaining > 0) {
+        const int recv = httpd_req_recv(req, reinterpret_cast<char*>(buffer), std::min<int>(remaining, sizeof(buffer)));
+        if (recv <= 0) {
+            esp_ota_abort(ota_handle);
+            return web_http::sendJsonError(req, "OTA upload receive failed");
+        }
+
+        err = esp_ota_write(ota_handle, buffer, static_cast<size_t>(recv));
+        if (err != ESP_OK) {
+            esp_ota_abort(ota_handle);
+            char message[128] = {};
+            std::snprintf(message, sizeof(message), "esp_ota_write failed: %s", esp_err_to_name(err));
+            return web_http::sendJsonError(req, message);
+        }
+
+        written_total += static_cast<size_t>(recv);
+        remaining -= recv;
+    }
+
+    err = esp_ota_end(ota_handle);
+    if (err != ESP_OK) {
+        char message[128] = {};
+        std::snprintf(message, sizeof(message), "esp_ota_end failed: %s", esp_err_to_name(err));
+        return web_http::sendJsonError(req, message);
+    }
+
+    esp_app_desc_t uploaded_desc = {};
+    err = esp_ota_get_partition_description(update_partition, &uploaded_desc);
+    if (err != ESP_OK) {
+        char message[128] = {};
+        std::snprintf(message, sizeof(message), "app description read failed: %s", esp_err_to_name(err));
+        return web_http::sendJsonError(req, message);
+    }
+
+    const esp_app_desc_t* current_desc = esp_app_get_description();
+    if (current_desc != nullptr && std::strcmp(uploaded_desc.project_name, current_desc->project_name) != 0) {
+        char message[192] = {};
+        std::snprintf(message,
+                      sizeof(message),
+                      "project mismatch: uploaded=%s current=%s",
+                      uploaded_desc.project_name,
+                      current_desc->project_name);
+        return web_http::sendJsonError(req, message);
+    }
+
+    err = esp_ota_set_boot_partition(update_partition);
+    if (err != ESP_OK) {
+        char message[128] = {};
+        std::snprintf(message, sizeof(message), "set boot partition failed: %s", esp_err_to_name(err));
+        return web_http::sendJsonError(req, message);
+    }
+
+    char uploaded_version[32] = {};
+    char current_version[32] = {};
+    versionFromAppDesc(uploaded_desc, uploaded_version, sizeof(uploaded_version));
+    if (current_desc != nullptr) {
+        versionFromAppDesc(*current_desc, current_version, sizeof(current_version));
+    } else {
+        std::snprintf(current_version, sizeof(current_version), "%s", build_info::firmwareVersion());
+    }
+
+    const uint64_t uploaded_stamp = compileStamp(uploaded_desc.date, uploaded_desc.time);
+    const uint64_t current_stamp = current_desc == nullptr ? 0 : compileStamp(current_desc->date, current_desc->time);
+    const bool rollback = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp < current_stamp;
+
+    char body[768] = {};
+    std::snprintf(body,
+                  sizeof(body),
+                  "{\"ok\":true,"
+                  "\"message\":\"OTA image written. Reboot to boot the uploaded firmware.\","
+                  "\"bytes\":%u,"
+                  "\"partition\":\"%s\","
+                  "\"current_version\":\"%s\","
+                  "\"uploaded_version\":\"%s\","
+                  "\"rollback\":%s,"
+                  "\"warning\":\"%s\"}",
+                  static_cast<unsigned>(written_total),
+                  update_partition->label,
+                  current_version,
+                  uploaded_version,
+                  rollback ? "true" : "false",
+                  rollback ? "Uploaded firmware appears older than the running firmware. Rollback is allowed." : "");
+    return web_http::sendText(req, "application/json", body);
+}
+
 const web_http::Route ROUTES[] = {
     { "/", HTTP_GET, rootHandler },
     { "/debug", HTTP_GET, debugHandler },
@@ -812,6 +995,7 @@ const web_http::Route ROUTES[] = {
     { "/api/maintenance/clear-logs", HTTP_POST, clearLogsHandler },
     { "/api/maintenance/clear-spiffs", HTTP_POST, clearSpiffsHandler },
     { "/api/maintenance/clear-all-nvs", HTTP_POST, clearAllNvsHandler },
+    { "/api/ota/upload", HTTP_POST, otaUploadHandler },
     { "/api/logs", HTTP_GET, logsListHandler },
     { "/api/log/file", HTTP_GET, logFileHandler },
     { "/api/log/live", HTTP_GET, liveLogHandler },
