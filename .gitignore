@@ -43,3 +43,5 @@ __pycache__/
 *.local
 components/build_info/include/build_info_generated.h
 build_version.cmake
+debug_apps/*/build_version.cmake
+firmware_exports/

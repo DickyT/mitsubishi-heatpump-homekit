@@ -31,6 +31,18 @@ From the repository root:
 ./build.py --app installer flash-auto --monitor
 ```
 
+Every successful build also exports a packaged firmware set into:
+
+```text
+firmware_exports/<version>/
+```
+
+The four flash images are renamed as:
+
+```text
+<project_name>_<version>_<0xOFFSET>.bin
+```
+
 The legacy app alias still works:
 
 ```bash
@@ -47,9 +59,9 @@ The legacy app alias still works:
 5. Open `http://<installer-ip>/`.
 6. Run CN105 auto-probe with the physical RX/TX GPIO pins.
 7. Test the status LED GPIO if needed.
-8. Confirm all settings and click `保存配置到 NVS`.
-9. Upload the formal firmware app binary:
-   `build/mitsubishi_heatpump_homekit.bin`
+8. Save step 1, then save step 2 so the installer writes NVS explicitly twice.
+9. Upload the formal firmware app binary from the exported package:
+   `firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin`
 10. Click `重启应用 OTA`.
 
 After reboot, the formal firmware reads the NVS values written by the installer

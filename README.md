@@ -184,13 +184,25 @@ For the standalone installer/probe firmware, use:
 ./build.py --app installer flash-auto --monitor
 ```
 
+Each successful build exports a flash-ready package into:
+
+```text
+firmware_exports/<version>/
+```
+
+with four images named like:
+
+```text
+<project_name>_<version>_<0xOFFSET>.bin
+```
+
 The installer/probe firmware has its own port-80 WebUI after BLE Wi-Fi
 provisioning and uses the same OTA partition table as the formal firmware. Its
 job is to detect CN105 hardware settings, write `device_cfg` NVS with a full
 overwrite strategy, then OTA-upload the formal app binary:
 
 ```text
-build/mitsubishi_heatpump_homekit.bin
+firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin
 ```
 
 Or use the project-specific auto-flash helper:
@@ -198,6 +210,7 @@ Or use the project-specific auto-flash helper:
 ```bash
 ./build.py flash-auto --monitor
 ./build.py flash-auto --port /dev/cu.usbserial-xxxx --monitor
+./build.py flash-auto --no-build
 ./build.py serial-log --seconds 15
 ```
 
@@ -207,6 +220,9 @@ For quieter Codex/tool runs, use `--quiet-first`. It captures the first `idf.py`
 ./build.py --quiet-first build
 ./build.py --quiet-first flash-auto --no-build
 ```
+
+`flash-auto --no-build` flashes the latest exported package for the selected app
+instead of reading directly from the live `build/` directory.
 
 The project default flash baud is `115200` for the current M5Stack/ESP32 board.
 `serial-log` also overwrites an ignored local copy at `serial_logs/latest-serial.log` by default.
