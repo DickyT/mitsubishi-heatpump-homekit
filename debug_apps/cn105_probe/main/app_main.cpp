@@ -941,7 +941,7 @@ void startWebServer() {
         return;
     }
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
+    config.server_port = 8080;
     config.stack_size = 12288;
     config.max_uri_handlers = 12;
     config.max_open_sockets = 4;
@@ -958,7 +958,7 @@ void startWebServer() {
     for (const auto& route : routes) {
         ESP_ERROR_CHECK(httpd_register_uri_handler(server, &route));
     }
-    ESP_LOGI(TAG, "Installer WebUI ready: http://%s/", wifi_ip);
+    ESP_LOGI(TAG, "Installer WebUI ready: http://%s:%u/", wifi_ip, static_cast<unsigned>(config.server_port));
 }
 
 void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* event_data) {
@@ -1021,6 +1021,7 @@ void startWifiProvisioning() {
     wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     wifi_prov_mgr_config_t prov_config = {};
     prov_config.scheme = wifi_prov_scheme_ble;
