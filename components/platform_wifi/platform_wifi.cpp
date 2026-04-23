@@ -19,6 +19,7 @@
 namespace {
 
 const char* TAG = "platform_wifi";
+constexpr size_t kHostnameLen = 64;
 
 bool initialized = false;
 bool sta_connected = false;
@@ -30,9 +31,50 @@ int64_t last_reconnect_us = 0;
 char current_ip[16] = "0.0.0.0";
 char last_event[32] = "boot";
 esp_netif_t* sta_netif = nullptr;
+char sta_hostname[kHostnameLen] = "mitsubishi-ac";
 
 bool hasConfiguredStaCredentials() {
     return std::strcmp(device_settings::wifiSsid(), "YOUR_WIFI_SSID") != 0 && device_settings::wifiSsid()[0] != '\0';
+}
+
+void buildHostname(char* out, size_t out_len, const char* source) {
+    if (out == nullptr || out_len == 0) {
+        return;
+    }
+
+    size_t written = 0;
+    bool previous_dash = false;
+    for (size_t i = 0; source != nullptr && source[i] != '\0' && written + 1 < out_len; ++i) {
+        char c = source[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+
+        const bool is_alpha_num = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if (is_alpha_num) {
+            out[written++] = c;
+            previous_dash = false;
+            continue;
+        }
+
+        if (written == 0 || previous_dash) {
+            continue;
+        }
+
+        out[written++] = '-';
+        previous_dash = true;
+    }
+
+    while (written > 0 && out[written - 1] == '-') {
+        --written;
+    }
+
+    if (written == 0) {
+        std::snprintf(out, out_len, "mitsubishi-ac");
+        return;
+    }
+
+    out[written] = '\0';
 }
 
 void setLastEvent(const char* name) {
@@ -149,6 +191,9 @@ esp_err_t startSta() {
         sta_netif = esp_netif_create_default_wifi_sta();
     }
 
+    buildHostname(sta_hostname, sizeof(sta_hostname), device_settings::deviceName());
+    ESP_RETURN_ON_ERROR(esp_netif_set_hostname(sta_netif, sta_hostname), TAG, "esp_netif_set_hostname failed");
+
     wifi_config_t sta_config = {};
     std::strncpy(reinterpret_cast<char*>(sta_config.sta.ssid), device_settings::wifiSsid(), sizeof(sta_config.sta.ssid));
     std::strncpy(reinterpret_cast<char*>(sta_config.sta.password),
@@ -162,7 +207,7 @@ esp_err_t startSta() {
     disablePowerSave("sta-start");
 
     sta_mode_active = true;
-    ESP_LOGI(TAG, "Connecting to WiFi SSID: %s", device_settings::wifiSsid());
+    ESP_LOGI(TAG, "Connecting to WiFi SSID: %s hostname=%s", device_settings::wifiSsid(), sta_hostname);
     return ESP_OK;
 }
 

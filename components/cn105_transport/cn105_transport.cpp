@@ -130,6 +130,12 @@ void sendSetPacket(const cn105_core::SetCommand& command) {
         if (command.hasPower && command.power != nullptr && std::strcmp(command.power, "ON") == 0) {
             ts.forceFastPolling = true;
         }
+        // Optimistically mirror the requested state locally so WebUI and
+        // HomeKit don't snap back to stale values while waiting for the next
+        // CN105 INFO poll to come around.
+        if (!cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
+            ESP_LOGW(TAG, "SET optimistic state apply failed: %s", error);
+        }
         ESP_LOGI(TAG, "SET sent");
     }
 }
@@ -195,6 +201,7 @@ void handlePacket(const uint8_t* bytes, size_t len) {
         case 0x61:
             if (ts.phase == Phase::kAwaitingSetAck) {
                 ts.phase = Phase::kIdle;
+                ts.lastPollUs = 0;
                 ESP_LOGI(TAG, "SET acknowledged");
             }
             break;
