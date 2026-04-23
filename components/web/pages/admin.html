@@ -13,6 +13,15 @@
 <div class="kvrow"><span class="kk">存储</span><span class="vv" id="i-fs">--</span></div>
 </div>
 <div class="card">
+<h3>蓝牙配网</h3>
+<div class="subtitle">长按 M5Stack Atom Lite 按钮 3 秒会打开 Espressif BLE 配网，窗口持续 5 分钟。Atom Lite 按钮固定使用 GPIO39。</div>
+<div class="kvrow"><span class="kk">状态</span><span class="vv" id="i-prov-state">--</span></div>
+<div class="kvrow"><span class="kk">配网名</span><span class="vv" id="i-prov-service">--</span></div>
+<div class="kvrow"><span class="kk">剩余时间</span><span class="vv" id="i-prov-remaining">--</span></div>
+<div class="kvrow"><span class="kk">最近结果</span><span class="vv" id="i-prov-result">--</span></div>
+<div class="kvrow"><span class="kk">待写入 WiFi</span><span class="vv" id="i-prov-pending">--</span></div>
+</div>
+<div class="card">
 <h3>设备设置</h3>
 <div class="subtitle">保存后设备会自动重启，让设备名、HomeKit、CN105 和运行参数全部按同一套新设置启动。</div>
 <div class="grid2">
@@ -45,6 +54,7 @@
 </div>
 <div class="card">
 <h3>OTA 更新</h3>
+<div class="subtitle" style="margin-bottom:10px">请选择 `firmware_exports/&lt;version&gt;/` 目录里地址为 <code>0x20000</code> 的 app 固件。</div>
 <input id="ota-file" class="ota-file-field" type="file" accept=".bin,application/octet-stream">
 <progress id="ota-progress" value="0" max="100" style="display:none;width:100%;margin-top:12px"></progress>
 <div id="ota-msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>

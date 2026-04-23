@@ -41,6 +41,12 @@ inline constexpr char kPersistentLogTimezone[] = "PST8PDT,M3.2.0,M11.1.0";
 inline constexpr bool kWifiDisablePowerSave = true;
 inline constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 inline constexpr uint32_t kWifiReconnectIntervalMs = 10000;
+inline constexpr int kProvisioningButtonPin = 39;
+inline constexpr uint32_t kProvisioningButtonLongPressMs = 3000;
+inline constexpr uint32_t kProvisioningSessionMs = 5 * 60 * 1000;
+inline constexpr uint32_t kProvisioningLoopIntervalMs = 50;
+inline constexpr uint32_t kProvisioningRebootDelayMs = 1500;
+inline constexpr size_t kProvisioningTaskStackBytes = 4096;
 
 inline constexpr uart_port_t kCn105UartPort = UART_NUM_1;
 inline constexpr int kCn105RxBufferBytes = 256;

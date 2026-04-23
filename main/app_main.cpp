@@ -16,6 +16,7 @@
 #include "platform_fs.h"
 #include "platform_led.h"
 #include "platform_log.h"
+#include "platform_provisioning.h"
 #include "platform_wifi.h"
 #include "web_server.h"
 
@@ -84,6 +85,11 @@ extern "C" void app_main(void) {
     const esp_err_t wifi_err = platform_wifi::init();
     if (wifi_err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(wifi_err));
+    }
+
+    const esp_err_t provisioning_err = platform_provisioning::init();
+    if (provisioning_err != ESP_OK) {
+        ESP_LOGE(TAG, "BLE provisioning init failed: %s", esp_err_to_name(provisioning_err));
     }
 
     const esp_err_t homekit_err = homekit_bridge::start();

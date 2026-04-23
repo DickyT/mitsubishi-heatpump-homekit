@@ -16,6 +16,7 @@
 #include "platform_fs.h"
 #include "platform_log.h"
 #include "platform_maintenance.h"
+#include "platform_provisioning.h"
 #include "platform_wifi.h"
 #include "web_http.h"
 #include "web_pages.h"
@@ -346,6 +347,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
     const homekit_bridge::Status homekit = homekit_bridge::getStatus();
     const cn105_transport::Status transport = cn105_transport::getStatus();
     const platform_log::Status log = platform_log::getStatus();
+    const platform_provisioning::Status provisioning = platform_provisioning::getStatus();
     const esp_partition_t* running_partition = esp_ota_get_running_partition();
     const esp_partition_t* boot_partition = esp_ota_get_boot_partition();
     bool server_time_valid = false;
@@ -357,7 +359,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
     char mock_json[768] = {};
     writeMockStateJson(mock, mock_json, sizeof(mock_json));
 
-    char homekit_json[512] = {};
+    char homekit_json[1024] = {};
     writeHomeKitJson(homekit, homekit_json, sizeof(homekit_json));
 
     const device_settings::Settings& config = device_settings::get();
@@ -375,6 +377,10 @@ esp_err_t statusHandler(httpd_req_t* req) {
     char esc_config_hk_serial[128] = {};
     char esc_config_hk_setup_id[16] = {};
     char esc_homekit_code[32] = {};
+    char esc_prov_stage[32] = {};
+    char esc_prov_result[32] = {};
+    char esc_prov_service[64] = {};
+    char esc_prov_ssid[96] = {};
     web_http::jsonEscape(device_settings::deviceName(), esc_device_name, sizeof(esc_device_name));
     web_http::jsonEscape(build_info::firmwareVersion(), esc_version, sizeof(esc_version));
     web_http::jsonEscape(config.deviceName, esc_config_name, sizeof(esc_config_name));
@@ -384,8 +390,12 @@ esp_err_t statusHandler(httpd_req_t* req) {
     web_http::jsonEscape(config.homeKitSerial, esc_config_hk_serial, sizeof(esc_config_hk_serial));
     web_http::jsonEscape(config.homeKitSetupId, esc_config_hk_setup_id, sizeof(esc_config_hk_setup_id));
     web_http::jsonEscape(device_settings::homeKitDisplayCode(), esc_homekit_code, sizeof(esc_homekit_code));
+    web_http::jsonEscape(provisioning.stage, esc_prov_stage, sizeof(esc_prov_stage));
+    web_http::jsonEscape(provisioning.lastResult, esc_prov_result, sizeof(esc_prov_result));
+    web_http::jsonEscape(provisioning.serviceName, esc_prov_service, sizeof(esc_prov_service));
+    web_http::jsonEscape(provisioning.pendingSsid, esc_prov_ssid, sizeof(esc_prov_ssid));
 
-    constexpr size_t kStatusBodyLen = 8192;
+    constexpr size_t kStatusBodyLen = 10240;
     char* body = static_cast<char*>(std::calloc(kStatusBodyLen, sizeof(char)));
     if (body == nullptr) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "response allocation failed");
@@ -428,6 +438,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"poll_off_ms\":%lu,"
                   "\"log_level\":\"%s\"},"
                   "\"wifi\":{\"initialized\":%s,\"connected\":%s,\"mode\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"channel\":%d,\"mac\":\"%s\",\"bssid\":\"%s\",\"last_event\":\"%s\",\"last_event_age_ms\":%lu},"
+                  "\"provisioning\":{\"initialized\":%s,\"active\":%s,\"credentials_received\":%s,\"reboot_pending\":%s,\"remaining_ms\":%lu,\"button_gpio\":%d,\"stage\":\"%s\",\"last_result\":\"%s\",\"service_name\":\"%s\",\"pending_ssid\":\"%s\"},"
                   "%s,"
                   "\"filesystem\":{\"mounted\":%s,\"base_path\":\"%s\",\"total_bytes\":%u,\"used_bytes\":%u,\"free_bytes\":%u},"
                   "\"ota\":{\"running_partition\":\"%s\",\"boot_partition\":\"%s\",\"running_address\":%u,\"boot_address\":%u},"
@@ -476,6 +487,16 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   wifi.bssid,
                   wifi.lastEvent,
                   static_cast<unsigned long>(wifi.lastEventAgeMs),
+                  provisioning.initialized ? "true" : "false",
+                  provisioning.active ? "true" : "false",
+                  provisioning.credentialsReceived ? "true" : "false",
+                  provisioning.rebootPending ? "true" : "false",
+                  static_cast<unsigned long>(provisioning.remainingMs),
+                  provisioning.buttonGpio,
+                  esc_prov_stage,
+                  esc_prov_result,
+                  esc_prov_service,
+                  esc_prov_ssid,
                   homekit_json,
                   fs.mounted ? "true" : "false",
                   platform_fs::basePath(),

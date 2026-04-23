@@ -5,6 +5,7 @@ let qrLibraryPromise=null;
 let uptimeAnchorMs=0;
 let uptimeAnchorClientMs=0;
 let uptimeTimer=null;
+let settingsLoaded=false;
 let otaUploading=false;
 let otaUploadResult=null;
 let otaApplying=false;
@@ -36,6 +37,28 @@ function formatBootTime(unixMs,valid){
   const d=new Date(unixMs);
   if(Number.isNaN(d.getTime()))return '--';
   return d.toLocaleString();
+}
+
+function formatDuration(ms){
+  const totalSeconds=Math.max(0,Math.ceil((ms||0)/1000));
+  const minutes=Math.floor(totalSeconds/60);
+  const seconds=totalSeconds%60;
+  return `${minutes}m ${String(seconds).padStart(2,'0')}s`;
+}
+
+function formatProvisioningStage(prov){
+  if(!prov)return '未启用';
+  const stage=prov.stage||'idle';
+  if(stage==='starting')return '正在打开 BLE 配网';
+  if(stage==='waiting')return '等待手机配网';
+  if(stage==='connecting')return '正在连接新 WiFi';
+  if(stage==='connected')return '已联网，即将重启';
+  if(stage==='failed')return '新 WiFi 连接失败';
+  if(stage==='timed-out')return '配网窗口已超时关闭';
+  if(stage==='save-failed')return '新 WiFi 保存失败';
+  if(stage==='start-failed')return 'BLE 配网启动失败';
+  if(stage==='init-failed')return 'BLE 配网初始化失败';
+  return prov.active?'BLE 配网进行中':'未激活';
 }
 
 function signalIcon(rssi){
@@ -212,8 +235,16 @@ function uploadOta(){
     setOtaMessage('请选择一个 .bin 固件文件。',true);
     return;
   }
-  if(!file.name.endsWith('.bin')){
-    if(!confirm('这个文件名不是 .bin，仍然继续上传吗？'))return;
+  const lowerName=(file.name||'').toLowerCase();
+  if(!lowerName.endsWith('.bin')){
+    setOtaMessage('只允许上传 .bin 固件文件。',true);
+    fileInput.value='';
+    return;
+  }
+  if(!lowerName.endsWith('_0x20000.bin')){
+    setOtaMessage('请选择地址为 0x20000 的 app 固件。',true);
+    fileInput.value='';
+    return;
   }
 
   const progress=$('ota-progress');
@@ -343,6 +374,7 @@ async function loadInfo(){
   try{
     const r=await fetch('/api/status');const j=await r.json();
     homekitStatus=j.homekit||null;
+    const prov=j.provisioning||{};
     $('i-device').textContent=j.device;
     $('i-version').textContent=j.version||'--';
     $('i-runtime').textContent=j.cn105.transport==='real'?'真实 CN105':'Mock CN105';
@@ -357,29 +389,37 @@ async function loadInfo(){
     $('i-hk-fw').textContent=j.homekit.firmware_revision||'--';
     $('i-log-current').textContent=j.log.current||'-';
     $('i-log-level').textContent=j.log.level||'-';
-    $('cfg-device-name').value=(j.config&&j.config.device_name)||j.device||'';
-    $('cfg-wifi-ssid').value=(j.config&&j.config.wifi_ssid)||'';
-    $('cfg-wifi-password').value='';
-    $('cfg-wifi-password').placeholder=(j.config&&j.config.wifi_password_set)?'已设置，留空则不修改':'未设置';
-    $('cfg-homekit-code').value=formatHomeKitCode(j.config&&j.config.homekit_code);
-    $('cfg-homekit-manufacturer').value=(j.config&&j.config.homekit_manufacturer)||'';
-    $('cfg-homekit-model').value=(j.config&&j.config.homekit_model)||'';
-    $('cfg-homekit-serial').value=(j.config&&j.config.homekit_serial)||'';
-    $('cfg-homekit-setup-id').value=(j.config&&j.config.homekit_setup_id)||'';
-    $('cfg-led-enabled').value=(j.config&&j.config.led_enabled)===false?'0':'1';
-    $('cfg-led-pin').value=(j.config&&j.config.led_pin)||27;
-    $('cfg-cn105-mode').value=(j.config&&j.config.cn105_mode)||'real';
-    $('cfg-cn105-rx-pin').value=(j.config&&j.config.cn105_rx_pin)||26;
-    $('cfg-cn105-tx-pin').value=(j.config&&j.config.cn105_tx_pin)||32;
-    $('cfg-cn105-baud').value=String((j.config&&j.config.cn105_baud)||2400);
-    $('cfg-cn105-data-bits').value=String((j.config&&j.config.cn105_data_bits)||8);
-    $('cfg-cn105-parity').value=(j.config&&j.config.cn105_parity)||'E';
-    $('cfg-cn105-stop-bits').value=String((j.config&&j.config.cn105_stop_bits)||1);
-    $('cfg-cn105-rx-pullup').value=(j.config&&j.config.cn105_rx_pullup)===false?'0':'1';
-    $('cfg-cn105-tx-open-drain').value=(j.config&&j.config.cn105_tx_open_drain)?'1':'0';
-    $('cfg-log-level').value=(j.config&&j.config.log_level)||'info';
-    $('cfg-poll-active').value=(j.config&&j.config.poll_active_ms)||15000;
-    $('cfg-poll-off').value=(j.config&&j.config.poll_off_ms)||60000;
+    $('i-prov-state').textContent=formatProvisioningStage(prov);
+    $('i-prov-service').textContent=prov.service_name||`GPIO${prov.button_gpio||39}`;
+    $('i-prov-remaining').textContent=prov.active?formatDuration(prov.remaining_ms||0):'--';
+    $('i-prov-result').textContent=prov.last_result||'--';
+    $('i-prov-pending').textContent=prov.pending_ssid||'--';
+    if(!settingsLoaded){
+      $('cfg-device-name').value=(j.config&&j.config.device_name)||j.device||'';
+      $('cfg-wifi-ssid').value=(j.config&&j.config.wifi_ssid)||'';
+      $('cfg-wifi-password').value='';
+      $('cfg-wifi-password').placeholder=(j.config&&j.config.wifi_password_set)?'已设置，留空则不修改':'未设置';
+      $('cfg-homekit-code').value=formatHomeKitCode(j.config&&j.config.homekit_code);
+      $('cfg-homekit-manufacturer').value=(j.config&&j.config.homekit_manufacturer)||'';
+      $('cfg-homekit-model').value=(j.config&&j.config.homekit_model)||'';
+      $('cfg-homekit-serial').value=(j.config&&j.config.homekit_serial)||'';
+      $('cfg-homekit-setup-id').value=(j.config&&j.config.homekit_setup_id)||'';
+      $('cfg-led-enabled').value=(j.config&&j.config.led_enabled)===false?'0':'1';
+      $('cfg-led-pin').value=(j.config&&j.config.led_pin)||27;
+      $('cfg-cn105-mode').value=(j.config&&j.config.cn105_mode)||'real';
+      $('cfg-cn105-rx-pin').value=(j.config&&j.config.cn105_rx_pin)||26;
+      $('cfg-cn105-tx-pin').value=(j.config&&j.config.cn105_tx_pin)||32;
+      $('cfg-cn105-baud').value=String((j.config&&j.config.cn105_baud)||2400);
+      $('cfg-cn105-data-bits').value=String((j.config&&j.config.cn105_data_bits)||8);
+      $('cfg-cn105-parity').value=(j.config&&j.config.cn105_parity)||'E';
+      $('cfg-cn105-stop-bits').value=String((j.config&&j.config.cn105_stop_bits)||1);
+      $('cfg-cn105-rx-pullup').value=(j.config&&j.config.cn105_rx_pullup)===false?'0':'1';
+      $('cfg-cn105-tx-open-drain').value=(j.config&&j.config.cn105_tx_open_drain)?'1':'0';
+      $('cfg-log-level').value=(j.config&&j.config.log_level)||'info';
+      $('cfg-poll-active').value=(j.config&&j.config.poll_active_ms)||15000;
+      $('cfg-poll-off').value=(j.config&&j.config.poll_off_ms)||60000;
+      settingsLoaded=true;
+    }
   }catch(e){$('msg').textContent='\u52a0\u8f7d\u5931\u8d25: '+e;}
 }
 async function reboot(){
@@ -416,3 +456,4 @@ document.addEventListener('keydown',e=>{
 });
 
 loadInfo();
+setInterval(loadInfo,3000);

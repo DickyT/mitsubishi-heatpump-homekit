@@ -55,6 +55,7 @@ bool wifi_connected = false;
 const esp_partition_t* pending_ota_partition = nullptr;
 led_strip_handle_t test_led = nullptr;
 int test_led_pin = -1;
+char provisioning_service_name[40] = "";
 
 struct InstallerSettings {
     char device_name[64] = "Mitsubishi AC";
@@ -208,6 +209,20 @@ std::string jsonEscape(const char* src) {
         }
     }
     return out;
+}
+
+void buildProvisioningServiceName(char* out, size_t out_len) {
+    uint8_t mac[6] = {};
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    std::snprintf(out,
+                  out_len,
+                  "PROV_MITSUBISHI_%02X%02X%02X%02X%02X%02X",
+                  mac[0],
+                  mac[1],
+                  mac[2],
+                  mac[3],
+                  mac[4],
+                  mac[5]);
 }
 
 esp_err_t sendText(httpd_req_t* req, const char* type, const char* body) {
@@ -767,11 +782,7 @@ esp_err_t statusHandler(httpd_req_t* req) {
     body += wifi_connected ? "true" : "false";
     body += ",\"ssid\":\"" + jsonEscape(wifi_ssid) + "\",\"ip\":\"" + jsonEscape(wifi_ip) + "\"}";
     body += ",\"provisioning\":{\"service_name\":\"";
-    char service_name[32] = {};
-    uint8_t mac[6] = {};
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    std::snprintf(service_name, sizeof(service_name), "PROV_MITSUBISHI_%02X%02X%02X", mac[3], mac[4], mac[5]);
-    body += service_name;
+    body += provisioning_service_name;
     body += "\",\"security\":\"Security 1\",\"pop\":\"";
     body += kProvisioningPop;
     body += "\"},\"defaults\":";
@@ -983,12 +994,6 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
     }
 }
 
-void serviceName(char* out, size_t out_len) {
-    uint8_t mac[6] = {};
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    std::snprintf(out, out_len, "PROV_MITSUBISHI_%02X%02X%02X", mac[3], mac[4], mac[5]);
-}
-
 void startWifiProvisioning() {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -1013,18 +1018,17 @@ void startWifiProvisioning() {
     // even if this board has stale Wi-Fi provisioning data from an older test.
     wifi_prov_mgr_reset_provisioning();
 
-    char name[32] = {};
-    serviceName(name, sizeof(name));
+    buildProvisioningServiceName(provisioning_service_name, sizeof(provisioning_service_name));
     const wifi_prov_security1_params_t* security_params = kProvisioningPop;
     uint8_t custom_service_uuid[] = {
         0xb4, 0xdf, 0x5a, 0x1c, 0x3f, 0x6b, 0xf4, 0xbf,
         0xea, 0x4a, 0x82, 0x03, 0x04, 0x90, 0x1a, 0x02,
     };
     wifi_prov_scheme_ble_set_service_uuid(custom_service_uuid);
-    ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, security_params, name, nullptr));
+    ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, security_params, provisioning_service_name, nullptr));
     ESP_LOGI(TAG,
              "BLE provisioning started. Use Espressif app, service name: %s security=1 pop=%s",
-             name,
+             provisioning_service_name,
              kProvisioningPop);
 }
 

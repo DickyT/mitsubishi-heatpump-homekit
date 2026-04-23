@@ -4,10 +4,14 @@
 #include "cn105_transport.h"
 #include "device_settings.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
+#include "platform_provisioning.h"
 #include "platform_wifi.h"
+
+#include <cstring>
 
 namespace {
 
@@ -30,6 +34,7 @@ State state;
 constexpr Color kOff = {0, 0, 0};
 constexpr Color kGreen = {0, 255, 0};
 constexpr Color kBlue = {0, 0, 255};
+constexpr Color kCyan = {0, 190, 255};
 constexpr Color kOrange = {255, 40, 0};
 constexpr Color kRed = {255, 0, 0};
 
@@ -71,6 +76,26 @@ bool isCn105Healthy(const cn105_transport::Status& transport) {
 Color selectColor() {
     if (!device_settings::statusLedEnabled()) {
         return kOff;
+    }
+
+    const platform_provisioning::Status provisioning = platform_provisioning::getStatus();
+    const bool blink_on =
+        ((esp_timer_get_time() / 1000) / app_config::kStatusLedBlinkPeriodMs) % 2 == 0;
+    if (std::strcmp(provisioning.stage, "waiting") == 0 ||
+        std::strcmp(provisioning.stage, "starting") == 0 ||
+        std::strcmp(provisioning.stage, "connecting") == 0) {
+        return blink_on ? kCyan : kOff;
+    }
+    if (std::strcmp(provisioning.stage, "connected") == 0 ||
+        std::strcmp(provisioning.stage, "rebooting") == 0) {
+        return blink_on ? kGreen : kOff;
+    }
+    if (std::strcmp(provisioning.stage, "failed") == 0 ||
+        std::strcmp(provisioning.stage, "timed-out") == 0 ||
+        std::strcmp(provisioning.stage, "save-failed") == 0 ||
+        std::strcmp(provisioning.stage, "start-failed") == 0 ||
+        std::strcmp(provisioning.stage, "init-failed") == 0) {
+        return blink_on ? kRed : kOff;
     }
 
     const platform_wifi::Status wifi = platform_wifi::getStatus();
