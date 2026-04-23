@@ -96,17 +96,6 @@ esp_err_t init() {
         return err;
     }
 
-    if (device_settings::cn105TxOpenDrain()) {
-        err = gpio_set_direction(tx_pin, GPIO_MODE_OUTPUT_OD);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "gpio_set_direction(tx open-drain) failed: %s", esp_err_to_name(err));
-            return err;
-        }
-        ESP_LOGI(TAG, "CN105 TX open-drain enabled on GPIO%d", static_cast<int>(tx_pin));
-    } else {
-        gpio_set_direction(tx_pin, GPIO_MODE_OUTPUT);
-    }
-
     if (device_settings::cn105RxPullupEnabled()) {
         err = gpio_pullup_en(rx_pin);
         if (err != ESP_OK) {
@@ -114,8 +103,6 @@ esp_err_t init() {
             return err;
         }
         ESP_LOGI(TAG, "CN105 RX pullup enabled on GPIO%d", static_cast<int>(rx_pin));
-    } else {
-        gpio_pullup_dis(rx_pin);
     }
 
     initialized = true;
