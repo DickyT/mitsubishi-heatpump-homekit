@@ -32,6 +32,11 @@ constexpr uart_port_t kCn105Uart = UART_NUM_1;
 constexpr int kCn105RxBufferBytes = 256;
 constexpr int kCn105TxBufferBytes = 256;
 constexpr int kBaudOptions[] = {2400, 4800, 9600};
+constexpr int kStableCn105DataBits = 8;
+constexpr char kStableCn105Parity = 'E';
+constexpr int kStableCn105StopBits = 1;
+constexpr bool kStableCn105RxPull = true;
+constexpr bool kStableCn105TxOpenDrain = false;
 constexpr size_t kPacketLen = 22;
 constexpr TickType_t kProbeWindowTicks = pdMS_TO_TICKS(900);
 constexpr TickType_t kProbeSettleTicks = pdMS_TO_TICKS(120);
@@ -66,11 +71,11 @@ struct InstallerSettings {
     int rx_pin = 26;
     int tx_pin = 32;
     int baud = 2400;
-    int data_bits = 8;
-    char parity = 'E';
-    int stop_bits = 1;
-    bool rx_pull = true;
-    bool tx_od = false;
+    int data_bits = kStableCn105DataBits;
+    char parity = kStableCn105Parity;
+    int stop_bits = kStableCn105StopBits;
+    bool rx_pull = kStableCn105RxPull;
+    bool tx_od = kStableCn105TxOpenDrain;
     uint32_t poll_on = 15000;
     uint32_t poll_off = 60000;
     uint8_t log_level = ESP_LOG_ERROR;
@@ -277,34 +282,18 @@ const char* profileName(uint8_t profile) {
     switch (profile) {
         case 0: return "push-pull";
         case 1: return "push-pull+rx-pullup";
-        case 2: return "open-drain+rx-pullup";
-        case 3: return "open-drain+tx-rx-pullup";
         default: return "unknown";
     }
 }
 
-void configureCn105Pins(int rx_pin, int tx_pin, uint8_t profile) {
+void configureCn105RxPullup(int rx_pin, uint8_t profile) {
     const gpio_num_t rx = static_cast<gpio_num_t>(rx_pin);
-    const gpio_num_t tx = static_cast<gpio_num_t>(tx_pin);
-    const bool tx_open_drain = profile >= 2;
     const bool rx_pullup = profile >= 1;
-    const bool tx_pullup = profile >= 3;
-
-    if (tx_open_drain) {
-        gpio_set_direction(tx, GPIO_MODE_OUTPUT_OD);
-    } else {
-        gpio_set_direction(tx, GPIO_MODE_OUTPUT);
-    }
 
     if (rx_pullup) {
         gpio_pullup_en(rx);
     } else {
         gpio_pullup_dis(rx);
-    }
-    if (tx_pullup) {
-        gpio_pullup_en(tx);
-    } else {
-        gpio_pullup_dis(tx);
     }
 }
 
@@ -331,7 +320,7 @@ esp_err_t reopenCn105Uart(int rx_pin, int tx_pin, int baud, uint8_t profile, cha
     ESP_RETURN_ON_ERROR(uart_driver_install(kCn105Uart, kCn105RxBufferBytes, kCn105TxBufferBytes, 0, nullptr, 0),
                         TAG,
                         "uart_driver_install failed");
-    configureCn105Pins(rx_pin, tx_pin, profile);
+    configureCn105RxPullup(rx_pin, profile);
     uart_flush_input(kCn105Uart);
     return ESP_OK;
 }
@@ -430,7 +419,7 @@ void sendInfo(uint8_t info_code) {
     uart_wait_tx_done(kCn105Uart, pdMS_TO_TICKS(200));
 }
 
-ProbeResult runProbe(int rx_pin, int tx_pin, char parity, int stop_bits) {
+ProbeResult runProbe(int rx_pin, int tx_pin) {
     ProbeResult best{};
     best.ran = true;
     best.rx_pin = rx_pin;
@@ -438,12 +427,12 @@ ProbeResult runProbe(int rx_pin, int tx_pin, char parity, int stop_bits) {
     copyString(best.summary, sizeof(best.summary), "No legal CN105 response detected");
 
     uint32_t best_score = 0;
-    static constexpr uint8_t profiles[] = {0, 1, 2, 3};
+    static constexpr uint8_t profiles[] = {0, 1};
     static constexpr uint8_t connects[] = {0x5A, 0x5B};
 
     for (int baud : kBaudOptions) {
         for (uint8_t profile : profiles) {
-            if (reopenCn105Uart(rx_pin, tx_pin, baud, profile, parity, stop_bits) != ESP_OK) {
+            if (reopenCn105Uart(rx_pin, tx_pin, baud, profile, kStableCn105Parity, kStableCn105StopBits) != ESP_OK) {
                 continue;
             }
             ProbeRuntime settle_runtime{};
@@ -495,7 +484,7 @@ ProbeResult runProbe(int rx_pin, int tx_pin, char parity, int stop_bits) {
         best.profile = 1;
         best.connect = 0x5A;
     }
-    reopenCn105Uart(best.rx_pin, best.tx_pin, best.baud, best.profile, parity, stop_bits);
+    reopenCn105Uart(best.rx_pin, best.tx_pin, best.baud, best.profile, kStableCn105Parity, kStableCn105StopBits);
     last_probe = best;
     return best;
 }
@@ -521,12 +510,12 @@ void writeSettingsToNvs(const InstallerSettings& s) {
     ESP_ERROR_CHECK(nvs_set_i32(handle, "rx_pin", s.rx_pin));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "tx_pin", s.tx_pin));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "baud", s.baud));
-    ESP_ERROR_CHECK(nvs_set_i32(handle, "data_bits", s.data_bits));
-    char parity_value[2] = {s.parity, '\0'};
+    ESP_ERROR_CHECK(nvs_set_i32(handle, "data_bits", kStableCn105DataBits));
+    char parity_value[2] = {kStableCn105Parity, '\0'};
     writeString(handle, "parity", parity_value);
-    ESP_ERROR_CHECK(nvs_set_i32(handle, "stop_bits", s.stop_bits));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "rx_pull", s.rx_pull ? 1 : 0));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "tx_od", s.tx_od ? 1 : 0));
+    ESP_ERROR_CHECK(nvs_set_i32(handle, "stop_bits", kStableCn105StopBits));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "rx_pull", kStableCn105RxPull ? 1 : 0));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "tx_od", kStableCn105TxOpenDrain ? 1 : 0));
     ESP_ERROR_CHECK(nvs_set_u32(handle, "poll_on", s.poll_on));
     ESP_ERROR_CHECK(nvs_set_u32(handle, "poll_off", s.poll_off));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "log_level", s.log_level));
@@ -600,18 +589,18 @@ bool parseSettingsFromBody(const char* body, InstallerSettings& s, char* error, 
     if (formValue(body, "rx_pin", value, sizeof(value))) s.rx_pin = std::atoi(value);
     if (formValue(body, "tx_pin", value, sizeof(value))) s.tx_pin = std::atoi(value);
     if (formValue(body, "baud", value, sizeof(value))) s.baud = std::atoi(value);
-    if (formValue(body, "data_bits", value, sizeof(value))) s.data_bits = std::atoi(value);
-    if (formValue(body, "parity", value, sizeof(value)) && value[0] != '\0') s.parity = value[0];
-    if (s.parity >= 'a' && s.parity <= 'z') s.parity = static_cast<char>(s.parity - 'a' + 'A');
-    if (formValue(body, "stop_bits", value, sizeof(value))) s.stop_bits = std::atoi(value);
-    if (formValue(body, "rx_pull", value, sizeof(value))) s.rx_pull = !falseLike(value);
-    if (formValue(body, "tx_od", value, sizeof(value))) s.tx_od = !falseLike(value);
     if (formValue(body, "poll_on", value, sizeof(value))) s.poll_on = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
     if (formValue(body, "poll_off", value, sizeof(value))) s.poll_off = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
     if (formValue(body, "log_level", value, sizeof(value)) && !parseLogLevel(value, &s.log_level)) {
         copyString(error, error_len, "invalid log level");
         return false;
     }
+
+    s.data_bits = kStableCn105DataBits;
+    s.parity = kStableCn105Parity;
+    s.stop_bits = kStableCn105StopBits;
+    s.rx_pull = kStableCn105RxPull;
+    s.tx_od = kStableCn105TxOpenDrain;
 
     if (s.device_name[0] == '\0') {
         copyString(error, error_len, "device name is required");
@@ -625,9 +614,8 @@ bool parseSettingsFromBody(const char* body, InstallerSettings& s, char* error, 
         copyString(error, error_len, "invalid GPIO pin");
         return false;
     }
-    if (!validBaud(s.baud) || s.data_bits != 8 || !(s.parity == 'N' || s.parity == 'E' || s.parity == 'O') ||
-        !(s.stop_bits == 1 || s.stop_bits == 2)) {
-        copyString(error, error_len, "invalid CN105 serial settings");
+    if (!validBaud(s.baud)) {
+        copyString(error, error_len, "invalid CN105 baud rate");
         return false;
     }
     if (s.poll_on < 1000 || s.poll_off < 5000) {
@@ -683,8 +671,6 @@ InstallerSettings defaultSettings() {
         s.rx_pin = last_probe.rx_pin;
         s.tx_pin = last_probe.tx_pin;
         s.baud = last_probe.baud;
-        s.rx_pull = last_probe.profile >= 1;
-        s.tx_od = last_probe.profile >= 2;
     }
     return s;
 }
@@ -733,12 +719,11 @@ main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px
 </style></head><body><main>
 <h1>Installer / Probe</h1><div class="subtitle">1. 用 Espressif 手机 App 通过 BLE 配网。2. 打开本页检测 CN105。3. 保存配置到 NVS。4. 上传正式固件 OTA。</div>
 <section class="card"><h2>连接状态</h2><div id="status">加载中...</div></section>
-<section class="card" id="step1"><h2>第一步：CN105 硬件探测</h2><div class="step-note">先确认 RX/TX、波特率、电气参数、状态灯和正式固件 CN105 模式，然后显式保存一次到 NVS。</div><div class="grid">
+<section class="card" id="step1"><h2>第一步：CN105 硬件探测</h2><div class="step-note">先确认 RX/TX、波特率、状态灯和正式固件 CN105 模式。正式固件会固定使用稳定串口配置：26/32 思路、8E1、RX 上拉开启、TX 推挽。</div><div class="grid">
 <label class="field">CN105 RX GPIO<input id="rx_pin" type="number" value="26"></label><label class="field">CN105 TX GPIO<input id="tx_pin" type="number" value="32"></label>
-<label class="field">串口校验<select id="parity"><option value="E">8E1</option><option value="N">8N1</option><option value="O">8O1</option></select></label><label class="field">停止位<select id="stop_bits"><option value="1">1</option><option value="2">2</option></select></label>
-<label class="field">CN105 波特率<select id="baud"><option>2400</option><option>4800</option><option>9600</option></select></label><label class="field">CN105 RX 上拉<select id="rx_pull"><option value="1">开启</option><option value="0">关闭</option></select></label>
-<label class="field">CN105 TX 开漏<select id="tx_od"><option value="0">关闭</option><option value="1">开启</option></select></label><label class="field">状态灯 GPIO<input id="led_pin" type="number" value="27"></label>
-<label class="field">状态灯<select id="led_on"><option value="1">开启</option><option value="0">关闭</option></select></label><label class="field">正式固件 CN105 模式<select id="use_real"><option value="1">真实 CN105</option><option value="0">Mock</option></select></label>
+<label class="field">CN105 波特率<select id="baud"><option>2400</option><option>4800</option><option>9600</option></select></label><label class="field">正式固件串口配置<input value="8E1 / RX 上拉 / TX 推挽" disabled></label>
+<label class="field">状态灯 GPIO<input id="led_pin" type="number" value="27"></label><label class="field">状态灯<select id="led_on"><option value="1">开启</option><option value="0">关闭</option></select></label>
+<label class="field">正式固件 CN105 模式<select id="use_real"><option value="1">真实 CN105</option><option value="0">Mock</option></select></label>
 </div><div class="btns"><button onclick="probe()">自动探测 CN105</button><button onclick="ledTest()">LED 五颜六色测试</button><button class="primary" onclick="saveStep1()">保存第一步并进入第二步</button></div><pre id="probe_out">还没有探测。</pre></section>
 <section class="card locked" id="step2"><h2>第二步：确认并写入正式固件 NVS</h2><div class="step-note">第一步保存后才能编辑这里。确认 WiFi、HomeKit 和运行参数后，再保存一次完整配置到 NVS。</div><div class="grid">
 <label class="field">设备名称<input id="device_name" value="Mitsubishi AC" autocomplete="off"></label><label class="field">WiFi SSID<input id="wifi_ssid" value="YOUR_WIFI_SSID" autocomplete="off" autocapitalize="none" spellcheck="false"></label><label class="field">WiFi 密码<input id="wifi_pass" type="text" value="YOUR_WIFI_PASSWORD" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
@@ -758,9 +743,9 @@ function initSteps(){setStepEnabled(2,false);setStepEnabled(3,false)}
 function placeholderWifi(value,placeholder){return !value||value===placeholder}
 function randomHomeKitCode(){const b=new Uint8Array(8);crypto.getRandomValues(b);const d=[...b].map(x=>String(x%10));return d.slice(0,4).join('')+'-'+d.slice(4).join('')}
 function randomizeHomeKitCode(){$('hk_code').value=randomHomeKitCode()}
-function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','parity','stop_bits','rx_pull','tx_od','led_on','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));p.set('data_bits','8');return p}
-async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'已连接':'未连接'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>BLE 配网名</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div><div class="status-tile"><b>探测结果</b><span class="${j.probe&&j.probe.found?'ok':'bad'}">${j.probe&&j.probe.found?'已找到':'未找到'}</span><div>${esc((j.probe&&j.probe.summary)||'Not run yet')}</div></div></div><div class="json-grid"><div class="json-card"><h3>NVS 默认值</h3><pre>${pretty(j.defaults)}</pre></div><div class="json-card"><h3>上次 CN105 探测</h3><pre>${pretty(j.probe)}</pre></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0';$('led_on').value=j.defaults.led_on?'1':'0';$('rx_pull').value=j.defaults.rx_pull?'1':'0';$('tx_od').value=j.defaults.tx_od?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud;$('rx_pull').value=j.probe.profile>=1?'1':'0';$('tx_od').value=j.probe.profile>=2?'1':'0'}}
-async function probe(){set('probe_out','探测中，大概几十秒...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin'),parity:val('parity'),stop_bits:val('stop_bits')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud;$('rx_pull').value=j.result.profile>=1?'1':'0';$('tx_od').value=j.result.profile>=2?'1':'0'}}
+function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','led_on','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
+async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'已连接':'未连接'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>BLE 配网名</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div><div class="status-tile"><b>探测结果</b><span class="${j.probe&&j.probe.found?'ok':'bad'}">${j.probe&&j.probe.found?'已找到':'未找到'}</span><div>${esc((j.probe&&j.probe.summary)||'Not run yet')}</div></div></div><div class="json-grid"><div class="json-card"><h3>NVS 默认值</h3><pre>${pretty(j.defaults)}</pre></div><div class="json-card"><h3>上次 CN105 探测</h3><pre>${pretty(j.probe)}</pre></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0';$('led_on').value=j.defaults.led_on?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}}
+async function probe(){set('probe_out','探测中，大概几十秒...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud}}
 async function ledTest(){const j=await (await fetch('/api/led-test',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({led_pin:val('led_pin')})})).json();set('probe_out',JSON.stringify(j,null,2))}
 async function writeSettings(outId,pending){set(outId,pending);try{const j=await (await fetch('/api/write-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params()})).json();set(outId,JSON.stringify(j,null,2));return !!j.ok}catch(e){set(outId,'保存失败: '+e);return false}}
 async function saveStep1(){if(await writeSettings('probe_out','正在保存第一步硬件配置到 NVS...')){setStepEnabled(2,true);set('nvs_out','第一步已保存。请确认第二步配置，然后再次保存到 NVS。');$('step2').scrollIntoView({behavior:'smooth',block:'start'})}}
@@ -811,17 +796,12 @@ esp_err_t probeHandler(httpd_req_t* req) {
     char value[32] = {};
     int rx_pin = 26;
     int tx_pin = 32;
-    char parity = 'E';
-    int stop_bits = 1;
     if (formValue(body, "rx_pin", value, sizeof(value))) rx_pin = std::atoi(value);
     if (formValue(body, "tx_pin", value, sizeof(value))) tx_pin = std::atoi(value);
-    if (formValue(body, "parity", value, sizeof(value)) && value[0] != '\0') parity = value[0];
-    if (parity >= 'a' && parity <= 'z') parity = static_cast<char>(parity - 'a' + 'A');
-    if (formValue(body, "stop_bits", value, sizeof(value))) stop_bits = std::atoi(value);
     if (!validGpio(rx_pin) || !validOutputGpio(tx_pin)) {
         return sendJsonError(req, "invalid GPIO pin");
     }
-    ProbeResult result = runProbe(rx_pin, tx_pin, parity, stop_bits);
+    ProbeResult result = runProbe(rx_pin, tx_pin);
     char out[512] = {};
     std::snprintf(out,
                   sizeof(out),
