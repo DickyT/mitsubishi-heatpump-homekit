@@ -47,6 +47,7 @@ constexpr uint32_t kRxByteTimeoutMs = 140;
 constexpr int WIFI_CONNECTED_BIT = BIT0;
 constexpr const char* kDeviceCfgNamespace = "device_cfg";
 constexpr const char* kProvisioningPop = "abcd1234";
+constexpr int kAtomLiteStatusLedGpio = 27;
 constexpr uint16_t kHttpPrimaryPort = 80;
 constexpr uint16_t kDnsPort = 53;
 constexpr char kApIp[] = "192.168.4.1";
@@ -64,6 +65,14 @@ const esp_partition_t* pending_ota_partition = nullptr;
 led_strip_handle_t test_led = nullptr;
 int test_led_pin = -1;
 char provisioning_service_name[40] = "";
+
+enum class InstallerLedMode : uint8_t {
+    Pairing,
+    Provisioned,
+};
+
+volatile InstallerLedMode installer_led_mode = InstallerLedMode::Pairing;
+TaskHandle_t installer_led_task = nullptr;
 
 struct InstallerSettings {
     char device_name[64] = "Mitsubishi AC";
@@ -820,6 +829,32 @@ void ledTestTask(void* arg) {
     vTaskDelete(nullptr);
 }
 
+void setInstallerLedMode(InstallerLedMode mode) {
+    installer_led_mode = mode;
+}
+
+void installerLedTask(void*) {
+    bool blink_on = false;
+    while (true) {
+        if (installer_led_mode == InstallerLedMode::Provisioned) {
+            setLedColor(kAtomLiteStatusLedGpio, 0, 255, 0);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+        blink_on = !blink_on;
+        setLedColor(kAtomLiteStatusLedGpio, 0, 0, blink_on ? 255 : 0);
+        vTaskDelay(pdMS_TO_TICKS(450));
+    }
+}
+
+void startInstallerStatusLed() {
+    if (installer_led_task != nullptr) {
+        return;
+    }
+    setInstallerLedMode(InstallerLedMode::Pairing);
+    xTaskCreate(installerLedTask, "installer_led", 3072, nullptr, 3, &installer_led_task);
+}
+
 const char kIndexHtml[] = R"HTML(
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mitsubishi Installer</title>
@@ -969,12 +1004,7 @@ esp_err_t ledTestHandler(httpd_req_t* req) {
     if (!readBody(req, body, sizeof(body))) {
         return sendJsonError(req, "failed to read body");
     }
-    char value[32] = {};
-    int pin = 27;
-    if (formValue(body, "led_pin", value, sizeof(value))) pin = std::atoi(value);
-    if (!validOutputGpio(pin)) {
-        return sendJsonError(req, "invalid LED GPIO");
-    }
+    const int pin = kAtomLiteStatusLedGpio;
     xTaskCreate(ledTestTask, "led_test", 3072, reinterpret_cast<void*>(static_cast<intptr_t>(pin)), 3, nullptr);
     return sendText(req, "application/json", "{\"ok\":true,\"message\":\"LED test started\"}");
 }
@@ -1199,13 +1229,16 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
             auto* cfg = static_cast<wifi_sta_config_t*>(event_data);
             copyString(wifi_ssid, sizeof(wifi_ssid), reinterpret_cast<const char*>(cfg->ssid));
             copyString(wifi_password, sizeof(wifi_password), reinterpret_cast<const char*>(cfg->password));
+            setInstallerLedMode(InstallerLedMode::Pairing);
             ESP_LOGI(TAG, "Provisioning received SSID=%s", wifi_ssid);
         } else if (event_id == WIFI_PROV_CRED_SUCCESS) {
+            setInstallerLedMode(InstallerLedMode::Provisioned);
             ESP_LOGI(TAG, "Provisioning successful");
         } else if (event_id == WIFI_PROV_CRED_FAIL) {
+            setInstallerLedMode(InstallerLedMode::Pairing);
             ESP_LOGW(TAG, "Provisioning failed");
         } else if (event_id == WIFI_PROV_END) {
-            wifi_prov_mgr_deinit();
+            ESP_LOGI(TAG, "Provisioning end event ignored; BLE provisioning remains available");
         }
         return;
     }
@@ -1235,6 +1268,7 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
             copyString(wifi_password, sizeof(wifi_password), reinterpret_cast<const char*>(cfg.sta.password));
         }
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        setInstallerLedMode(InstallerLedMode::Provisioned);
         ESP_LOGI(TAG, "WiFi connected: ssid=%s ip=%s", wifi_ssid, wifi_ip);
         startWebServer();
     }
@@ -1264,9 +1298,10 @@ void startWifiProvisioning() {
     wifi_prov_scheme_t ble_apsta_scheme = wifi_prov_scheme_ble;
     ble_apsta_scheme.wifi_mode = WIFI_MODE_APSTA;
     prov_config.scheme = ble_apsta_scheme;
-    prov_config.scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM;
+    prov_config.scheme_event_handler = WIFI_PROV_EVENT_HANDLER_NONE;
     prov_config.app_event_handler = WIFI_PROV_EVENT_HANDLER_NONE;
     ESP_ERROR_CHECK(wifi_prov_mgr_init(prov_config));
+    ESP_ERROR_CHECK(wifi_prov_mgr_disable_auto_stop(1000));
 
     // Installer firmware should always be discoverable from Espressif's BLE provisioning app,
     // even if this board has stale Wi-Fi provisioning data from an older test.
@@ -1298,6 +1333,7 @@ extern "C" void app_main(void) {
         ESP_ERROR_CHECK(nvs_flash_init());
     }
 
+    startInstallerStatusLed();
     startWifiProvisioning();
     ESP_LOGI(TAG, "Installer WebUI is available on SoftAP %s at http://%s/", provisioning_service_name, kApIp);
 }
