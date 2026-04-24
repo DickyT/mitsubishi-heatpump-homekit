@@ -162,6 +162,7 @@ button:disabled{opacity:.48;cursor:not-allowed;transform:none}
   border:1px solid rgba(255,66,210,.22);
 }
 .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
+.step-hidden{display:none}
 .status{
   display:grid;
   gap:10px;
@@ -237,9 +238,9 @@ a:hover{text-decoration:underline}
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="step-serial">
     <h2>1. Select Serial Port</h2>
-    <p class="subtitle">Choose the USB serial device first. The page will briefly open and close the port to confirm it is available.</p>
+    <p class="subtitle">Choose the USB serial device first. The page keeps the port open so it stays reserved for this installer flow.</p>
     <div class="grid">
       <label class="field">
         <span>Flash baud rate</span>
@@ -254,20 +255,24 @@ a:hover{text-decoration:underline}
     </div>
   </section>
 
-  <section class="card">
+  <section class="card step-hidden" id="step-package">
     <h2>2. Select Package</h2>
     <label class="field">
       <span>Kiri package</span>
-      <input id="package-file" type="file" accept=".kiri,application/zip,application/octet-stream" disabled>
+      <input id="package-file" type="file" accept=".kiri,application/zip,application/octet-stream">
     </label>
     <div id="package-details"></div>
+    <div class="actions">
+      <button id="back-serial-btn" class="secondary">Change Serial Port</button>
+    </div>
   </section>
 
-  <section class="card">
+  <section class="card step-hidden" id="step-flash">
     <h2>3. Flash Device</h2>
     <p class="subtitle">The page validates checksums before writing anything. Your Kiri hardware handles automatic flashing mode for you.</p>
     <div class="actions">
       <button id="flash-btn" class="primary" disabled>Flash Firmware</button>
+      <button id="back-package-btn" class="secondary">Change Package</button>
       <button id="clear-log-btn" class="secondary">Clear Log</button>
     </div>
   </section>
@@ -288,6 +293,7 @@ const kiriProjectId='kiri-bridge';
 const $=id=>document.getElementById(id);
 let selectedPackage=null;
 let selectedPort=null;
+let currentStep=1;
 
 function log(line=''){
   const box=$('log');
@@ -305,11 +311,50 @@ function setSerialState(){
   $('serial-state').className=ok?'ok':'bad';
   $('serial-state').textContent=ok?'Web Serial: available, no port selected':'Web Serial: unavailable. Use Chrome or Edge over HTTPS.';
   $('serial-btn').disabled=!ok;
+  $('baud').disabled=false;
 }
 
-function updateFlashReadiness(){
-  $('package-file').disabled=!selectedPort;
-  $('flash-btn').disabled=!selectedPort||!selectedPackage;
+function showStep(step){
+  currentStep=step;
+  $('step-serial').classList.toggle('step-hidden',step!==1);
+  $('step-package').classList.toggle('step-hidden',step!==2);
+  $('step-flash').classList.toggle('step-hidden',step!==3);
+  $('baud').disabled=step!==1;
+  $('package-file').disabled=step!==2;
+  $('flash-btn').disabled=step!==3||!selectedPort||!selectedPackage;
+}
+
+async function closeReservedPort(){
+  if(!selectedPort)return;
+  try{
+    if(selectedPort.readable||selectedPort.writable){
+      await selectedPort.close();
+    }
+  }catch(e){
+    log('Serial close warning: '+(e&&e.message?e.message:e));
+  }
+}
+
+async function resetToSerialStep(){
+  await closeReservedPort();
+  selectedPort=null;
+  selectedPackage=null;
+  $('package-file').value='';
+  $('package-details').innerHTML='';
+  setPackageState('not selected');
+  setSerialState();
+  $('serial-btn').textContent='Select Serial Port';
+  log('Serial port released. Back to step 1.');
+  showStep(1);
+}
+
+function resetToPackageStep(){
+  selectedPackage=null;
+  $('package-file').value='';
+  $('package-details').innerHTML='';
+  setPackageState('not selected');
+  log('Back to step 2. Select a package again.');
+  showStep(2);
 }
 
 async function selectSerialPort(){
@@ -318,22 +363,21 @@ async function selectSerialPort(){
     return;
   }
   try{
+    await closeReservedPort();
     const port=await navigator.serial.requestPort();
     const baudRate=Number($('baud').value);
     await port.open({baudRate});
-    await port.close();
     selectedPort=port;
     $('serial-state').className='ok';
-    $('serial-state').textContent=`Serial: selected and available at ${baudRate} baud`;
-    $('serial-btn').textContent='Change Serial Port';
-    log(`Serial port selected and verified at ${baudRate} baud.`);
-    updateFlashReadiness();
+    $('serial-state').textContent=`Serial: selected and reserved at ${baudRate} baud`;
+    log(`Serial port selected and reserved at ${baudRate} baud.`);
+    showStep(2);
   }catch(e){
     selectedPort=null;
     $('serial-state').className='bad';
     $('serial-state').textContent='Serial: not selected or currently busy';
     log('Serial selection failed: '+(e&&e.message?e.message:e));
-    updateFlashReadiness();
+    showStep(1);
   }
 }
 
@@ -416,10 +460,10 @@ function renderPackageDetails(pkg){
 async function handlePackageSelection(){
   const file=$('package-file').files&&$('package-file').files[0];
   selectedPackage=null;
-  updateFlashReadiness();
   $('package-details').innerHTML='';
   if(!file){
     setPackageState('not selected');
+    showStep(2);
     return;
   }
   try{
@@ -428,12 +472,12 @@ async function handlePackageSelection(){
     renderPackageDetails(selectedPackage);
     setPackageState(`${file.name} ready`,'ok');
     log(`Loaded ${file.name}`);
-    updateFlashReadiness();
+    showStep(3);
   }catch(e){
     selectedPackage=null;
     setPackageState(e.message,'bad');
     log('Package error: '+e.message);
-    updateFlashReadiness();
+    showStep(2);
   }
 }
 
@@ -459,6 +503,8 @@ async function flashSelectedPackage(){
   try{
     log('Loading esptool-js...');
     const {ESPLoader,Transport}=await import('https://cdn.jsdelivr.net/npm/esptool-js@0.5.7/+esm');
+    await closeReservedPort();
+    log('Reserved serial port handed to esptool-js.');
     const transport=new Transport(selectedPort,true);
     const esploader=new ESPLoader({
       transport,
@@ -496,7 +542,7 @@ async function flashSelectedPackage(){
   }catch(e){
     log('Flash failed: '+(e&&e.message?e.message:e));
   }finally{
-    updateFlashReadiness();
+    showStep(currentStep);
   }
 }
 
@@ -504,12 +550,10 @@ setSerialState();
 $('serial-btn').addEventListener('click',selectSerialPort);
 $('baud').addEventListener('change',()=>{
   if(!selectedPort)return;
-  selectedPort=null;
-  $('serial-state').className='warn';
-  $('serial-state').textContent='Serial: baud changed, select the port again to verify availability';
-  log('Baud rate changed. Select the serial port again before flashing.');
-  updateFlashReadiness();
+  resetToSerialStep();
 });
+$('back-serial-btn').addEventListener('click',resetToSerialStep);
+$('back-package-btn').addEventListener('click',resetToPackageStep);
 $('package-file').addEventListener('change',handlePackageSelection);
 $('flash-btn').addEventListener('click',flashSelectedPackage);
 $('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
