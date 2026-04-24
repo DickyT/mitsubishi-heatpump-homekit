@@ -19,6 +19,8 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "led_strip.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "wifi_provisioning/manager.h"
@@ -45,9 +47,17 @@ constexpr uint32_t kRxByteTimeoutMs = 140;
 constexpr int WIFI_CONNECTED_BIT = BIT0;
 constexpr const char* kDeviceCfgNamespace = "device_cfg";
 constexpr const char* kProvisioningPop = "abcd1234";
+constexpr uint16_t kHttpPrimaryPort = 80;
+constexpr uint16_t kHttpSecondaryPort = 8080;
+constexpr uint16_t kDnsPort = 53;
+constexpr char kApIp[] = "192.168.4.1";
+constexpr char kCaptivePortalUrl[] = "http://192.168.4.1/";
 
 EventGroupHandle_t wifi_event_group = nullptr;
-httpd_handle_t server = nullptr;
+esp_netif_t* ap_netif = nullptr;
+httpd_handle_t server_80 = nullptr;
+httpd_handle_t server_8080 = nullptr;
+TaskHandle_t dns_task = nullptr;
 char wifi_ip[16] = "0.0.0.0";
 char wifi_ssid[33] = "";
 char wifi_password[65] = "";
@@ -215,13 +225,8 @@ void buildProvisioningServiceName(char* out, size_t out_len) {
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     std::snprintf(out,
                   out_len,
-                  "PROV_MITSUBISHI_%02X%02X%02X%02X%02X%02X",
-                  mac[0],
-                  mac[1],
-                  mac[2],
-                  mac[3],
-                  mac[4],
-                  mac[5]);
+                  "PROV_MITSUBISHI_%02X",
+                  mac[0]);
 }
 
 esp_err_t sendText(httpd_req_t* req, const char* type, const char* body) {
@@ -536,6 +541,79 @@ void writeSettingsToNvs(const InstallerSettings& s) {
     nvs_close(handle);
 }
 
+void loadStringFromNvs(nvs_handle_t handle, const char* key, char* out, size_t out_len) {
+    if (out == nullptr || out_len == 0) {
+        return;
+    }
+    size_t len = out_len;
+    const esp_err_t err = nvs_get_str(handle, key, out, &len);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to read NVS string %s: %s", key, esp_err_to_name(err));
+    }
+}
+
+void loadI32FromNvs(nvs_handle_t handle, const char* key, int* out) {
+    int32_t value = 0;
+    const esp_err_t err = nvs_get_i32(handle, key, &value);
+    if (err == ESP_OK) {
+        *out = static_cast<int>(value);
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to read NVS i32 %s: %s", key, esp_err_to_name(err));
+    }
+}
+
+void loadU32FromNvs(nvs_handle_t handle, const char* key, uint32_t* out) {
+    uint32_t value = 0;
+    const esp_err_t err = nvs_get_u32(handle, key, &value);
+    if (err == ESP_OK) {
+        *out = value;
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to read NVS u32 %s: %s", key, esp_err_to_name(err));
+    }
+}
+
+void loadU8FromNvs(nvs_handle_t handle, const char* key, uint8_t* out) {
+    uint8_t value = 0;
+    const esp_err_t err = nvs_get_u8(handle, key, &value);
+    if (err == ESP_OK) {
+        *out = value;
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to read NVS u8 %s: %s", key, esp_err_to_name(err));
+    }
+}
+
+void loadSettingsFromNvs(InstallerSettings& s) {
+    nvs_handle_t handle = 0;
+    const esp_err_t err = nvs_open(kDeviceCfgNamespace, NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open device_cfg NVS: %s", esp_err_to_name(err));
+        return;
+    }
+
+    loadStringFromNvs(handle, "device_name", s.device_name, sizeof(s.device_name));
+    loadStringFromNvs(handle, "wifi_ssid", s.wifi_ssid, sizeof(s.wifi_ssid));
+    loadStringFromNvs(handle, "wifi_pass", s.wifi_pass, sizeof(s.wifi_pass));
+    loadStringFromNvs(handle, "hk_code", s.hk_code, sizeof(s.hk_code));
+    loadStringFromNvs(handle, "hk_mfr", s.hk_mfr, sizeof(s.hk_mfr));
+    loadStringFromNvs(handle, "hk_model", s.hk_model, sizeof(s.hk_model));
+    loadStringFromNvs(handle, "hk_serial", s.hk_serial, sizeof(s.hk_serial));
+    loadStringFromNvs(handle, "hk_setupid", s.hk_setupid, sizeof(s.hk_setupid));
+    uint8_t use_real = s.use_real ? 1 : 0;
+    loadU8FromNvs(handle, "use_real", &use_real);
+    s.use_real = use_real != 0;
+    loadI32FromNvs(handle, "led_pin", &s.led_pin);
+    loadI32FromNvs(handle, "rx_pin", &s.rx_pin);
+    loadI32FromNvs(handle, "tx_pin", &s.tx_pin);
+    loadI32FromNvs(handle, "baud", &s.baud);
+    loadU32FromNvs(handle, "poll_on", &s.poll_on);
+    loadU32FromNvs(handle, "poll_off", &s.poll_off);
+    loadU8FromNvs(handle, "log_level", &s.log_level);
+    nvs_close(handle);
+}
+
 const char* logLevelName(uint8_t level) {
     switch (level) {
         case ESP_LOG_ERROR:
@@ -678,6 +756,13 @@ std::string settingsJson(const InstallerSettings& s) {
 
 InstallerSettings defaultSettings() {
     InstallerSettings s{};
+    loadSettingsFromNvs(s);
+    if (wifi_ssid[0] != '\0') {
+        copyString(s.wifi_ssid, sizeof(s.wifi_ssid), wifi_ssid);
+    }
+    if (wifi_password[0] != '\0') {
+        copyString(s.wifi_pass, sizeof(s.wifi_pass), wifi_password);
+    }
     if (last_probe.found) {
         s.rx_pin = last_probe.rx_pin;
         s.tx_pin = last_probe.tx_pin;
@@ -721,29 +806,30 @@ void ledTestTask(void* arg) {
 }
 
 const char kIndexHtml[] = R"HTML(
-<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mitsubishi Installer</title>
 <style>
 :root{--bg:#080812;--card:#111126ee;--line:#3b1c45;--text:#f9eaff;--muted:#bba7c8;--hot:#ff4fd8;--cyan:#45f3ff;--ok:#69ff9b;--bad:#ff6b6b}
 *{box-sizing:border-box}body{margin:0;font-family:ui-rounded,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text);background:radial-gradient(circle at 10% 0,#40113d,transparent 32rem),radial-gradient(circle at 90% 12%,#0b6b79,transparent 28rem),var(--bg)}
-main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px,6vw,68px);margin:12px 0 4px;letter-spacing:-.06em}.subtitle{color:var(--muted);font-size:15px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);background:linear-gradient(145deg,#151229ee,#0c0c19ee);border-radius:28px;padding:22px;margin:18px 0;box-shadow:0 0 36px #ff4fd81b}.card.locked{opacity:.52;filter:saturate(.55)}.step-note{color:var(--muted);margin:-4px 0 16px;font-size:14px}.field{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--cyan);font-weight:800;letter-spacing:.04em}.field input,.field select{width:100%;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px}.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{border:1px solid #673070;background:#161326;color:var(--text);border-radius:999px;padding:12px 18px;font-weight:900;font-size:15px;cursor:pointer}button.primary{background:linear-gradient(135deg,var(--hot),var(--cyan));color:#090817;border:0}button.mini{padding:0 15px;border-radius:16px;white-space:nowrap}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}.pill{display:inline-flex;border:1px solid #48304f;border-radius:999px;padding:6px 10px;margin:3px;color:var(--muted)}.status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px}.status-tile{border:1px solid #372142;background:#090916;border-radius:18px;padding:14px}.status-tile b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.status-tile span{font-size:17px;font-weight:900}.json-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}.json-card h3{margin:0 0 8px;color:var(--hot);font-size:14px;letter-spacing:.05em}pre{white-space:pre-wrap;overflow:auto;background:#060711;border:1px solid #33213d;border-radius:18px;padding:14px;color:#c9f7ff;min-height:84px}.ok{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:760px){main{padding:18px 12px 84px}.grid,.status-grid,.json-grid{grid-template-columns:1fr}.card{border-radius:22px;padding:18px}}
+main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px,6vw,68px);margin:12px 0 4px;letter-spacing:-.06em}.subtitle{color:var(--muted);font-size:15px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);background:linear-gradient(145deg,#151229ee,#0c0c19ee);border-radius:28px;padding:22px;margin:18px 0;box-shadow:0 0 36px #ff4fd81b}.card.locked{opacity:.52;filter:saturate(.55)}.step-note{color:var(--muted);margin:-4px 0 16px;font-size:14px}.field{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--cyan);font-weight:800;letter-spacing:.04em}.field input,.field select{width:100%;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px}.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{border:1px solid #673070;background:#161326;color:var(--text);border-radius:999px;padding:12px 18px;font-weight:900;font-size:15px;cursor:pointer}button.primary{background:linear-gradient(135deg,var(--hot),var(--cyan));color:#090817;border:0}button.mini{padding:0 15px;border-radius:16px;white-space:nowrap}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}.pill{display:inline-flex;border:1px solid #48304f;border-radius:999px;padding:6px 10px;margin:3px;color:var(--muted)}.status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.status-tile{border:1px solid #372142;background:#090916;border-radius:18px;padding:14px}.status-tile b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.status-tile span{font-size:17px;font-weight:900}.progress{display:none;width:100%;margin-top:14px}.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(3,6,15,.78);backdrop-filter:blur(10px);z-index:50}.modal.open{display:flex}.modal-panel{width:min(560px,calc(100vw - 24px));border:1px solid #7a2c82;border-radius:26px;background:linear-gradient(145deg,#151229,#090916);padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.58),0 0 42px #ff4fd822}.modal-panel h2{margin-top:0}.danger{border:1px solid rgba(255,107,107,.58);background:rgba(255,107,107,.12);border-radius:18px;padding:14px;margin:14px 0;color:#ffe8ee;font-weight:800}pre{white-space:pre-wrap;overflow:auto;background:#060711;border:1px solid #33213d;border-radius:18px;padding:14px;color:#c9f7ff;min-height:84px}.ok{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:760px){main{padding:18px 12px 84px}.grid,.status-grid{grid-template-columns:1fr}.card{border-radius:22px;padding:18px}}
 </style></head><body><main>
-<h1>Installer / Probe</h1><div class="subtitle">1. Provision WiFi with the Espressif phone app over BLE. 2. Open this page and probe CN105. 3. Save configuration to NVS. 4. Upload the production firmware with OTA.</div>
+<h1>Installer / Probe</h1><div class="subtitle">Provision WiFi over BLE, save production device settings, optionally test CN105, then upload the production firmware over OTA.</div>
 <section class="card"><h2>Connection Status</h2><div id="status">Loading...</div></section>
-<section class="card" id="step1"><h2>Step 1: CN105 Hardware Probe</h2><div class="step-note">Confirm RX/TX, baud rate, status LED GPIO, and production CN105 mode. Production firmware uses the stable serial profile: 26/32 wiring model, 8E1, RX pullup enabled, TX push-pull; the status LED is always enabled.</div><div class="grid">
+<section class="card" id="step1"><h2>Step 1: Device Settings</h2><div class="step-note">These values are written to the same NVS namespace used by the production firmware. Saving here does not reboot the installer.</div><div class="grid">
+<label class="field">Device Name<input id="device_name" value="Mitsubishi AC" autocomplete="off"></label><label class="field">WiFi SSID<input id="wifi_ssid" value="YOUR_WIFI_SSID" autocomplete="off" autocapitalize="none" spellcheck="false"></label><label class="field">WiFi Password<input id="wifi_pass" type="text" value="YOUR_WIFI_PASSWORD" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+<label class="field">HomeKit Pairing Code<div class="inline-control"><input id="hk_code" value="1111-2233" inputmode="numeric" autocomplete="off"><button class="mini" onclick="randomizeHomeKitCode()" type="button">Random</button></div></label><label class="field">HomeKit Setup ID<input id="hk_setupid" value="DKT1" maxlength="4"></label>
+<label class="field">HomeKit Manufacturer<input id="hk_mfr" value="dkt smart home"></label><label class="field">HomeKit Model<input id="hk_model" value="Mitsubishi Heat Pump"></label><label class="field">HomeKit Serial<input id="hk_serial" value="DKT-MITSUBISHI-HOMEKIT"></label>
+<label class="field">Status LED GPIO<input id="led_pin" type="number" value="27"></label><label class="field">Log Level<select id="log_level"><option value="error" selected>Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option><option value="verbose">Verbose</option></select></label>
+<label class="field">On Polling ms<input id="poll_on" type="number" value="15000"></label><label class="field">Off Polling ms<input id="poll_off" type="number" value="60000"></label>
+<label class="field">Production CN105 Mode<select id="use_real"><option value="1">Real CN105</option><option value="0">Mock</option></select></label>
 <label class="field">CN105 RX GPIO<input id="rx_pin" type="number" value="26"></label><label class="field">CN105 TX GPIO<input id="tx_pin" type="number" value="32"></label>
 <label class="field">CN105 Baud Rate<select id="baud"><option>2400</option><option>4800</option><option>9600</option></select></label><label class="field">Production Serial Profile<input value="8E1 / RX pullup / TX push-pull" disabled></label>
-<label class="field">Status LED GPIO<input id="led_pin" type="number" value="27"></label>
-<label class="field">Production CN105 Mode<select id="use_real"><option value="1">Real CN105</option><option value="0">Mock</option></select></label>
-</div><div class="btns"><button onclick="probe()">Auto Probe CN105</button><button onclick="ledTest()">LED Color Test</button><button class="primary" onclick="saveStep1()">Save Step 1 and Continue</button></div><pre id="probe_out">Probe has not run yet.</pre></section>
-<section class="card locked" id="step2"><h2>Step 2: Confirm and Write Production NVS</h2><div class="step-note">After Step 1 is saved, edit this section. Confirm WiFi, HomeKit, and runtime parameters, then save the full configuration to NVS.</div><div class="grid">
-<label class="field">Device Name<input id="device_name" value="Mitsubishi AC" autocomplete="off"></label><label class="field">WiFi SSID<input id="wifi_ssid" value="YOUR_WIFI_SSID" autocomplete="off" autocapitalize="none" spellcheck="false"></label><label class="field">WiFi Password<input id="wifi_pass" type="text" value="YOUR_WIFI_PASSWORD" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
-<label class="field">HomeKit Pairing Code<div class="inline-control"><input id="hk_code" value="1111-2233" inputmode="numeric" autocomplete="off"><button class="mini" onclick="randomizeHomeKitCode()">Random</button></div></label><label class="field">HomeKit Setup ID<input id="hk_setupid" value="DKT1" maxlength="4"></label>
-<label class="field">HomeKit Manufacturer<input id="hk_mfr" value="dkt smart home"></label><label class="field">HomeKit Model<input id="hk_model" value="Mitsubishi Heat Pump"></label><label class="field">HomeKit Serial<input id="hk_serial" value="DKT-MITSUBISHI-HOMEKIT"></label>
-<label class="field">On Polling ms<input id="poll_on" type="number" value="15000"></label><label class="field">Off Polling ms<input id="poll_off" type="number" value="60000"></label><label class="field">Log Level<select id="log_level"><option value="error" selected>Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option><option value="verbose">Verbose</option></select></label>
-</div><div class="btns"><button class="primary" onclick="saveStep2()">Save Step 2 and Continue to OTA</button></div><pre id="nvs_out">Save Step 1 first.</pre></section>
-<section class="card locked" id="step3"><h2>Step 3: Upload Production Firmware OTA</h2><div class="step-note">After Step 2 is saved, upload the production firmware. Select the app bin from <code>firmware_exports/&lt;version&gt;/</code>, the file ending in <code>_0x20000.bin</code>.</div><input id="fw" type="file" accept=".bin"><div class="btns"><button class="primary" onclick="upload()">Upload Production Firmware</button><button onclick="applyOta()">Reboot and Apply OTA</button></div><pre id="ota_out">Save Step 2 first.</pre></section>
-</main><script>
+</div><div class="btns"><button onclick="ledTest()" type="button">LED Color Test</button><button class="primary" onclick="saveStep1()" type="button">Save and Continue</button></div><pre id="step1_out">Save Step 1 before continuing.</pre></section>
+<section class="card locked" id="step2"><h2>Step 2: Optional CN105 Smoke Test</h2><div class="step-note">If the AC is connected, run a safe CN105 CONNECT/INFO probe using the saved pins and baud rate. You may also skip this step.</div><div class="btns"><button onclick="backToStep1()" type="button">Back to Step 1</button><button onclick="probe()" type="button">Run CN105 Test</button><button class="primary" onclick="continueToOta()" type="button">Continue to OTA</button></div><pre id="probe_out">Optional test has not run.</pre></section>
+<section class="card locked" id="step3"><h2>Step 3: OTA Update</h2><div class="step-note">Select the production app firmware at address <code>0x20000</code> from <code>firmware_exports/&lt;version&gt;/</code>. Upload starts automatically after selection.</div><input id="fw" type="file" accept=".bin,application/octet-stream"><progress id="ota_progress" class="progress" value="0" max="100"></progress><pre id="ota_out">Save Step 1, then continue from Step 2.</pre></section>
+</main>
+<div id="ota_modal" class="modal" aria-hidden="true"><div class="modal-panel"><h2>Confirm OTA Update</h2><div class="subtitle">Firmware upload is complete. Confirm to reboot and boot the production firmware.</div><div class="danger">Canceling will not switch firmware. To change your mind, select and upload the firmware file again.</div><pre id="ota_confirm_body">--</pre><div class="btns"><button class="primary" onclick="applyOta()" type="button">Confirm Reboot and Apply</button><button onclick="cancelOta()" type="button">Cancel</button></div></div></div>
+<script>
 const $=id=>document.getElementById(id);
 function val(id){return $(id).value}
 function set(id,text){$(id).textContent=text}
@@ -755,14 +841,17 @@ function placeholderWifi(value,placeholder){return !value||value===placeholder}
 function randomHomeKitCode(){const b=new Uint8Array(8);crypto.getRandomValues(b);const d=[...b].map(x=>String(x%10));return d.slice(0,4).join('')+'-'+d.slice(4).join('')}
 function randomizeHomeKitCode(){$('hk_code').value=randomHomeKitCode()}
 function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
-async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'Connected':'Not Connected'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>BLE Service</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div><div class="status-tile"><b>Probe Result</b><span class="${j.probe&&j.probe.found?'ok':'bad'}">${j.probe&&j.probe.found?'Found':'Not Found'}</span><div>${esc((j.probe&&j.probe.summary)||'Not run yet')}</div></div></div><div class="json-grid"><div class="json-card"><h3>NVS Defaults</h3><pre>${pretty(j.defaults)}</pre></div><div class="json-card"><h3>Last CN105 Probe</h3><pre>${pretty(j.probe)}</pre></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}}
+async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi STA</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'Connected':'Not Connected'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>Installer AP</b><span>${esc(j.wifi.ap_ssid)}</span><div>${esc(j.wifi.ap_ip)}</div></div><div class="status-tile"><b>BLE Service</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}}
 async function probe(){set('probe_out','Probing. This may take a few dozen seconds...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud}}
-async function ledTest(){const j=await (await fetch('/api/led-test',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({led_pin:val('led_pin')})})).json();set('probe_out',JSON.stringify(j,null,2))}
+async function ledTest(){const j=await (await fetch('/api/led-test',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({led_pin:val('led_pin')})})).json();set('step1_out',JSON.stringify(j,null,2))}
 async function writeSettings(outId,pending){set(outId,pending);try{const j=await (await fetch('/api/write-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params()})).json();set(outId,JSON.stringify(j,null,2));return !!j.ok}catch(e){set(outId,'Save failed: '+e);return false}}
-async function saveStep1(){if(await writeSettings('probe_out','Saving Step 1 hardware settings to NVS...')){setStepEnabled(2,true);set('nvs_out','Step 1 saved. Confirm Step 2 settings, then save to NVS again.');$('step2').scrollIntoView({behavior:'smooth',block:'start'})}}
-async function saveStep2(){const ssid=$('wifi_ssid').value.trim();const pass=$('wifi_pass').value.trim();if(placeholderWifi(ssid,'YOUR_WIFI_SSID')||placeholderWifi(pass,'YOUR_WIFI_PASSWORD')){set('nvs_out','Enter a real WiFi SSID and password. Do not keep the placeholder values.');$('wifi_ssid').focus();return}if(await writeSettings('nvs_out','Saving Step 2 full configuration to NVS...')){setStepEnabled(3,true);set('ota_out','Step 2 saved. You can now upload the production app bin from firmware_exports/<version>/ (the file ending in _0x20000.bin).');$('step3').scrollIntoView({behavior:'smooth',block:'start'})}}
-async function upload(){const f=$('fw').files[0];if(!f){set('ota_out','Select a .bin file');return}set('ota_out','Uploading...');const j=await (await fetch('/api/ota/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f})).json();set('ota_out',JSON.stringify(j,null,2))}
-async function applyOta(){set('ota_out','Rebooting. Redirecting to the production WebUI (:8080) in 5 seconds...');fetch('/api/ota/apply',{method:'POST'}).catch(()=>{});setTimeout(()=>location.href=`http://${location.hostname}:8080/`,5000)}
+async function saveStep1(){const ssid=$('wifi_ssid').value.trim();const pass=$('wifi_pass').value.trim();if(placeholderWifi(ssid,'YOUR_WIFI_SSID')||placeholderWifi(pass,'YOUR_WIFI_PASSWORD')){set('step1_out','Enter a real WiFi SSID and password. Do not keep the placeholder values.');$('wifi_ssid').focus();return}if(await writeSettings('step1_out','Saving Step 1 settings to NVS...')){setStepEnabled(1,false);setStepEnabled(2,true);set('probe_out','Step 1 saved. Optional: run a CN105 smoke test, or continue to OTA.');$('step2').scrollIntoView({behavior:'smooth',block:'start'})}}
+function backToStep1(){setStepEnabled(1,true);setStepEnabled(2,false);setStepEnabled(3,false);$('step1').scrollIntoView({behavior:'smooth',block:'start'})}
+function continueToOta(){setStepEnabled(2,false);setStepEnabled(3,true);set('ota_out','Select the production app firmware. Upload starts automatically.');$('step3').scrollIntoView({behavior:'smooth',block:'start'})}
+async function upload(){const f=$('fw').files[0];if(!f){set('ota_out','Select a .bin file');return}const name=(f.name||'').toLowerCase();if(!name.endsWith('.bin')){set('ota_out','Only .bin firmware files are allowed.');$('fw').value='';return}if(!name.endsWith('_0x20000.bin')){set('ota_out','Select the app firmware at address 0x20000.');$('fw').value='';return}const progress=$('ota_progress');progress.style.display='block';progress.value=0;set('ota_out','Uploading '+f.name+' ...');const xhr=new XMLHttpRequest();xhr.open('POST','/api/ota/upload');xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.upload.onprogress=e=>{if(e.lengthComputable)progress.value=Math.round((e.loaded/e.total)*100)};xhr.onload=()=>{let j={};try{j=JSON.parse(xhr.responseText||'{}')}catch(e){};if(xhr.status>=200&&xhr.status<300&&j.ok){progress.style.display='none';$('fw').value='';$('ota_confirm_body').textContent=JSON.stringify(j,null,2);$('ota_modal').classList.add('open');$('ota_modal').setAttribute('aria-hidden','false');set('ota_out','Upload complete. Confirm in the modal to reboot and apply.')}else{set('ota_out','OTA upload failed: '+(j.error||xhr.responseText||xhr.status));}};xhr.onerror=()=>set('ota_out','OTA upload failed: network error');xhr.send(f)}
+function cancelOta(){$('ota_modal').classList.remove('open');$('ota_modal').setAttribute('aria-hidden','true');set('ota_out','Upload canceled. Select the firmware again if you want to apply it.')}
+async function applyOta(){set('ota_out','Rebooting. Redirecting to the production WebUI (:8080) in 5 seconds...');$('ota_modal').classList.remove('open');fetch('/api/ota/apply',{method:'POST'}).catch(()=>{});setTimeout(()=>location.href=`http://${location.hostname}:8080/`,5000)}
+$('fw').addEventListener('change',upload);
 initSteps();
 load().catch(e=>set('status','Load failed: '+e));
 </script></body></html>
@@ -776,7 +865,8 @@ esp_err_t statusHandler(httpd_req_t* req) {
     InstallerSettings settings = defaultSettings();
     std::string body = "{\"ok\":true,\"wifi\":{\"connected\":";
     body += wifi_connected ? "true" : "false";
-    body += ",\"ssid\":\"" + jsonEscape(wifi_ssid) + "\",\"ip\":\"" + jsonEscape(wifi_ip) + "\"}";
+    body += ",\"ssid\":\"" + jsonEscape(wifi_ssid) + "\",\"ip\":\"" + jsonEscape(wifi_ip) + "\"";
+    body += ",\"ap_ssid\":\"" + jsonEscape(provisioning_service_name) + "\",\"ap_ip\":\"" + jsonEscape(kApIp) + "\"}";
     body += ",\"provisioning\":{\"service_name\":\"";
     body += provisioning_service_name;
     body += "\",\"security\":\"Security 1\",\"pop\":\"";
@@ -923,16 +1013,7 @@ esp_err_t otaApplyHandler(httpd_req_t* req) {
     return ESP_OK;
 }
 
-void startWebServer() {
-    if (server != nullptr) {
-        return;
-    }
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8080;
-    config.stack_size = 12288;
-    config.max_uri_handlers = 12;
-    config.max_open_sockets = 4;
-    ESP_ERROR_CHECK(httpd_start(&server, &config));
+void registerRoutes(httpd_handle_t handle) {
     const httpd_uri_t routes[] = {
         {.uri = "/", .method = HTTP_GET, .handler = indexHandler, .user_ctx = nullptr},
         {.uri = "/api/status", .method = HTTP_GET, .handler = statusHandler, .user_ctx = nullptr},
@@ -941,11 +1022,150 @@ void startWebServer() {
         {.uri = "/api/led-test", .method = HTTP_POST, .handler = ledTestHandler, .user_ctx = nullptr},
         {.uri = "/api/ota/upload", .method = HTTP_POST, .handler = otaUploadHandler, .user_ctx = nullptr},
         {.uri = "/api/ota/apply", .method = HTTP_POST, .handler = otaApplyHandler, .user_ctx = nullptr},
+        // Captive portal probes use many URLs. Serve the installer shell for all GET misses.
+        {.uri = "/*", .method = HTTP_GET, .handler = indexHandler, .user_ctx = nullptr},
     };
     for (const auto& route : routes) {
-        ESP_ERROR_CHECK(httpd_register_uri_handler(server, &route));
+        ESP_ERROR_CHECK(httpd_register_uri_handler(handle, &route));
     }
-    ESP_LOGI(TAG, "Installer WebUI ready: http://%s:%u/", wifi_ip, static_cast<unsigned>(config.server_port));
+}
+
+void startOneWebServer(uint16_t port, httpd_handle_t* handle) {
+    if (*handle != nullptr) {
+        return;
+    }
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = port;
+    config.stack_size = 12288;
+    config.max_uri_handlers = 16;
+    config.max_open_sockets = 4;
+    config.lru_purge_enable = true;
+    config.uri_match_fn = httpd_uri_match_wildcard;
+    ESP_ERROR_CHECK(httpd_start(handle, &config));
+    registerRoutes(*handle);
+    ESP_LOGI(TAG,
+             "Installer WebUI ready on port %u: AP=http://%s:%u/ STA=http://%s:%u/",
+             static_cast<unsigned>(port),
+             kApIp,
+             static_cast<unsigned>(port),
+             wifi_ip,
+             static_cast<unsigned>(port));
+}
+
+void startWebServer() {
+    startOneWebServer(kHttpPrimaryPort, &server_80);
+    startOneWebServer(kHttpSecondaryPort, &server_8080);
+}
+
+void captiveDnsTask(void*) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Failed to create captive DNS socket");
+        dns_task = nullptr;
+        vTaskDelete(nullptr);
+    }
+
+    sockaddr_in listen_addr = {};
+    listen_addr.sin_family = AF_INET;
+    listen_addr.sin_port = htons(kDnsPort);
+    listen_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(sock, reinterpret_cast<sockaddr*>(&listen_addr), sizeof(listen_addr)) < 0) {
+        ESP_LOGE(TAG, "Failed to bind captive DNS socket");
+        closesocket(sock);
+        dns_task = nullptr;
+        vTaskDelete(nullptr);
+    }
+
+    uint8_t query[512] = {};
+    uint8_t response[512] = {};
+    const uint32_t ap_addr = inet_addr(kApIp);
+    while (true) {
+        sockaddr_in source_addr = {};
+        socklen_t source_len = sizeof(source_addr);
+        const int query_len = recvfrom(sock,
+                                       query,
+                                       sizeof(query),
+                                       0,
+                                       reinterpret_cast<sockaddr*>(&source_addr),
+                                       &source_len);
+        if (query_len < 12) {
+            continue;
+        }
+
+        memcpy(response, query, query_len);
+        response[2] = 0x81;  // response, recursion desired/available
+        response[3] = 0x80;
+        response[6] = 0x00;  // ANCOUNT = 1
+        response[7] = 0x01;
+
+        size_t out = static_cast<size_t>(query_len);
+        if (out + 16 > sizeof(response)) {
+            continue;
+        }
+        response[out++] = 0xC0;  // pointer to the original QNAME at offset 12
+        response[out++] = 0x0C;
+        response[out++] = 0x00;  // TYPE A
+        response[out++] = 0x01;
+        response[out++] = 0x00;  // CLASS IN
+        response[out++] = 0x01;
+        response[out++] = 0x00;  // TTL 60 seconds
+        response[out++] = 0x00;
+        response[out++] = 0x00;
+        response[out++] = 0x3C;
+        response[out++] = 0x00;  // RDLENGTH 4
+        response[out++] = 0x04;
+        memcpy(response + out, &ap_addr, sizeof(ap_addr));
+        out += sizeof(ap_addr);
+
+        sendto(sock,
+               response,
+               out,
+               0,
+               reinterpret_cast<sockaddr*>(&source_addr),
+               source_len);
+    }
+}
+
+void startCaptiveDns() {
+    if (dns_task != nullptr) {
+        return;
+    }
+    xTaskCreate(captiveDnsTask, "captive_dns", 4096, nullptr, 4, &dns_task);
+    ESP_LOGI(TAG, "Captive DNS started for AP clients");
+}
+
+void configureCaptiveDhcpOptions() {
+    if (ap_netif == nullptr) {
+        return;
+    }
+    esp_netif_dns_info_t dns = {};
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
+    dns.ip.u_addr.ip4.addr = inet_addr(kApIp);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_set_dns_info(ap_netif, ESP_NETIF_DNS_MAIN, &dns));
+
+    uint8_t offer_dns = 1;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_option(ap_netif,
+                                                         ESP_NETIF_OP_SET,
+                                                         ESP_NETIF_DOMAIN_NAME_SERVER,
+                                                         &offer_dns,
+                                                         sizeof(offer_dns)));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_option(ap_netif,
+                                                         ESP_NETIF_OP_SET,
+                                                         ESP_NETIF_CAPTIVEPORTAL_URI,
+                                                         const_cast<char*>(kCaptivePortalUrl),
+                                                         std::strlen(kCaptivePortalUrl)));
+}
+
+void configureSoftAp() {
+    wifi_config_t ap_config = {};
+    const size_t ssid_len = std::min(std::strlen(provisioning_service_name), sizeof(ap_config.ap.ssid));
+    memcpy(ap_config.ap.ssid, provisioning_service_name, ssid_len);
+    ap_config.ap.ssid_len = ssid_len;
+    ap_config.ap.channel = 1;
+    ap_config.ap.max_connection = 4;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
 }
 
 void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* event_data) {
@@ -967,6 +1187,11 @@ void eventHandler(void*, esp_event_base_t event_base, int32_t event_id, void* ev
     if (event_base == WIFI_EVENT) {
         if (event_id == WIFI_EVENT_STA_START) {
             esp_wifi_connect();
+        } else if (event_id == WIFI_EVENT_AP_START) {
+            ESP_LOGI(TAG, "Installer SoftAP started: ssid=%s ip=%s", provisioning_service_name, kApIp);
+        } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
+            auto* event = static_cast<wifi_event_ap_staconnected_t*>(event_data);
+            ESP_LOGI(TAG, "Installer SoftAP client joined: " MACSTR, MAC2STR(event->mac));
         } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
             wifi_connected = false;
             copyString(wifi_ip, sizeof(wifi_ip), "0.0.0.0");
@@ -999,13 +1224,21 @@ void startWifiProvisioning() {
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, eventHandler, nullptr));
 
     esp_netif_create_default_wifi_sta();
+    ap_netif = esp_netif_create_default_wifi_ap();
+    buildProvisioningServiceName(provisioning_service_name, sizeof(provisioning_service_name));
+    configureCaptiveDhcpOptions();
+
     wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
+    configureSoftAp();
+
     wifi_prov_mgr_config_t prov_config = {};
-    prov_config.scheme = wifi_prov_scheme_ble;
+    wifi_prov_scheme_t ble_apsta_scheme = wifi_prov_scheme_ble;
+    ble_apsta_scheme.wifi_mode = WIFI_MODE_APSTA;
+    prov_config.scheme = ble_apsta_scheme;
     prov_config.scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM;
     prov_config.app_event_handler = WIFI_PROV_EVENT_HANDLER_NONE;
     ESP_ERROR_CHECK(wifi_prov_mgr_init(prov_config));
@@ -1014,7 +1247,6 @@ void startWifiProvisioning() {
     // even if this board has stale Wi-Fi provisioning data from an older test.
     wifi_prov_mgr_reset_provisioning();
 
-    buildProvisioningServiceName(provisioning_service_name, sizeof(provisioning_service_name));
     const wifi_prov_security1_params_t* security_params = kProvisioningPop;
     uint8_t custom_service_uuid[] = {
         0xb4, 0xdf, 0x5a, 0x1c, 0x3f, 0x6b, 0xf4, 0xbf,
@@ -1022,6 +1254,9 @@ void startWifiProvisioning() {
     };
     wifi_prov_scheme_ble_set_service_uuid(custom_service_uuid);
     ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, security_params, provisioning_service_name, nullptr));
+    configureSoftAp();
+    startCaptiveDns();
+    startWebServer();
     ESP_LOGI(TAG,
              "BLE provisioning started. Use Espressif app, service name: %s security=1 pop=%s",
              provisioning_service_name,
@@ -1039,5 +1274,5 @@ extern "C" void app_main(void) {
     }
 
     startWifiProvisioning();
-    ESP_LOGI(TAG, "Waiting for WiFi before starting installer WebUI");
+    ESP_LOGI(TAG, "Installer WebUI is available on SoftAP %s at http://%s/ and :8080", provisioning_service_name, kApIp);
 }

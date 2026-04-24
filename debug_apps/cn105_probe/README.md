@@ -7,7 +7,12 @@ It replaces the old serial-only CN105 probe. The app now provides:
 
 - BLE Wi-Fi provisioning through Espressif's mobile provisioning app using
   Security 1 and PoP `abcd1234`.
-- An installer WebUI on port `80` after Wi-Fi connects.
+- A no-password installer SoftAP on every boot. The AP SSID matches the BLE
+  provisioning name, such as `PROV_MITSUBISHI_90`.
+- Captive portal DNS for SoftAP users. If the OS does not auto-open the portal,
+  browse to `http://192.168.4.1/`.
+- An installer WebUI on both ports `80` and `8080` over SoftAP and over the
+  provisioned STA network.
 - CN105 auto-probing from the browser using user-selected RX/TX GPIO pins.
 - LED GPIO color test for WS2812-style status LEDs.
 - Full-overwrite writes to the formal firmware's `device_cfg` NVS namespace.
@@ -21,6 +26,14 @@ The installer uses the same OTA partition layout as the formal firmware:
 - `ota_0`
 - `ota_1`
 - `spiffs`
+
+## UI Maintenance Note
+
+The installer WebUI is not code-level reused from the production WebUI yet.
+Production UI source lives under `components/web/pages`, while this installer
+UI is embedded in `main/app_main.cpp`. If you change Device Settings, CN105
+settings, OTA upload/apply behavior, or safety warning copy in either place,
+check whether the other UI needs the same update.
 
 ## Build And Flash
 
@@ -52,17 +65,20 @@ The legacy app alias still works:
 ## First-Run Flow
 
 1. Flash the installer firmware.
-2. Use Espressif's mobile provisioning app to connect over BLE.
-3. Provision Wi-Fi using the BLE service name printed in serial logs, e.g.
-   `PROV_MITSUBISHI_ABCDEF`.
-4. In the Espressif app, use Security 1 with Proof of Possession `abcd1234`.
-5. Open `http://<installer-ip>/`.
+2. Connect either through the installer SoftAP or through BLE provisioning.
+3. For SoftAP setup, join `PROV_MITSUBISHI_XX` with no password and use the
+   captive portal or open `http://192.168.4.1/`.
+4. For BLE setup, use Espressif's mobile provisioning app with the BLE service
+   name printed in serial logs, Security 1, and Proof of Possession `abcd1234`.
+5. The WebUI is available on both `http://<installer-ip>/` and
+   `http://<installer-ip>:8080/`.
 6. Run CN105 auto-probe with the physical RX/TX GPIO pins.
 7. Test the status LED GPIO if needed.
-8. Save step 1, then save step 2 so the installer writes NVS explicitly twice.
-9. Upload the formal firmware app binary from the exported package:
+8. Save step 1 so the installer writes the full `device_cfg` NVS set.
+9. Optionally run the step 2 CN105 smoke test.
+10. Upload the formal firmware app binary from the exported package:
    `firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin`
-10. Click `Reboot and Apply OTA`.
+11. Click `Reboot and Apply OTA`.
 
 After reboot, the formal firmware reads the NVS values written by the installer
 and starts normally with the same partition table.

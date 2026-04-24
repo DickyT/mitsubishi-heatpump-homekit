@@ -161,6 +161,7 @@
 <div class="subtitle modal-subtitle">These values affect ESP32-to-CN105 serial communication. Bad GPIO, baud, or electrical settings can make the AC stop responding. Confirm only updates the local page draft; click “Save and Reboot” afterward to write changes.</div>
 </div>
 </div>
+<div class="danger-banner"><strong>Dangerous advanced settings.</strong> Make sure you know exactly what you are changing. If CN105 communication currently works, do not change these values unless you are actively debugging hardware or wiring.</div>
 <div class="grid2">
 <label class="field"><span>CN105 RX GPIO</span><input id="cfg-cn105-rx-pin" type="number" min="0" max="39" step="1"></label>
 <label class="field"><span>CN105 TX GPIO</span><input id="cfg-cn105-tx-pin" type="number" min="0" max="33" step="1"></label>
@@ -186,6 +187,7 @@
 <div class="subtitle modal-subtitle">This is a dangerous operation. You are editing the <code>device_cfg</code> namespace; bad WiFi, HomeKit, CN105, or GPIO values can make the device go offline or stop controlling the AC. Canceling writes nothing.</div>
 </div>
 </div>
+<div class="danger-banner"><strong>High risk operation.</strong> Make sure you know what you are doing. If the device is working now, do not edit raw NVS values casually; a bad value can make the device unreachable or require USB recovery.</div>
 <textarea id="device-cfg-editor" class="nvs-editor" spellcheck="false" autocomplete="off" autocapitalize="off">Loading...</textarea>
 <div id="device-cfg-msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
 <div class="btns modal-actions">

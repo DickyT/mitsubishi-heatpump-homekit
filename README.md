@@ -79,6 +79,20 @@ The current baseline is considered healthy when:
 - [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
 - [`external/esp-homekit-sdk`](./external/esp-homekit-sdk): Espressif HomeKit SDK submodule
 
+## WebUI Maintenance Note
+
+The production WebUI and the installer/probe WebUI are intentionally separate
+right now:
+
+- production firmware UI lives in [`components/web/pages`](./components/web/pages)
+  and is built into gzip asset fragments
+- installer/probe UI is embedded in
+  [`debug_apps/cn105_probe/main/app_main.cpp`](./debug_apps/cn105_probe/main/app_main.cpp)
+
+They do not share a real component system yet. When changing Device Settings,
+CN105 settings, OTA upload/apply flow, pairing/setup copy, or safety warnings,
+evaluate whether the same behavior needs to be updated in both UIs.
+
 ## Hardware Assumptions
 
 - ESP32 or M5Stack ATOM Lite class device
@@ -198,10 +212,12 @@ with four images named like:
 <project_name>_<version>_<0xOFFSET>.bin
 ```
 
-The installer/probe firmware has its own port-80 WebUI after BLE Wi-Fi
-provisioning and uses the same OTA partition table as the formal firmware. Its
-job is to detect CN105 hardware settings, write `device_cfg` NVS with a full
-overwrite strategy, then OTA-upload the formal app binary:
+The installer/probe firmware always starts a no-password SoftAP named like its
+BLE provisioning service (`PROV_MITSUBISHI_XX`) and serves the installer WebUI
+on both ports `80` and `8080`. It also supports Espressif BLE Wi-Fi
+provisioning, uses the same OTA partition table as the formal firmware, detects
+CN105 hardware settings, writes `device_cfg` NVS with a full overwrite strategy,
+then OTA-uploads the formal app binary:
 
 ```text
 firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin
