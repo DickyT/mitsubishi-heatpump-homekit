@@ -16,6 +16,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -25,6 +26,33 @@ MAX_CHUNK_BYTES = 900
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def strip_leading_source_header(text: str) -> str:
+    text = text.lstrip()
+    for pattern in (r"^/\*.*?\*/\s*", r"^<!--.*?-->\s*", r"^(?:# .*\n)+\s*"):
+        text = re.sub(pattern, "", text, count=1, flags=re.DOTALL)
+    return text
+
+
+def compact_html(text: str) -> str:
+    text = strip_leading_source_header(text)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    text = re.sub(r">\s+<", "><", text)
+    return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def compact_css(text: str) -> str:
+    text = strip_leading_source_header(text)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s*([{}:;,>+~])\s*", r"\1", text)
+    return text.strip()
+
+
+def compact_js(text: str) -> str:
+    text = strip_leading_source_header(text)
+    return "\n".join(line.rstrip() for line in text.splitlines() if line.strip())
 
 
 def chunk_text(text: str, max_bytes: int = MAX_CHUNK_BYTES) -> list[str]:
@@ -172,7 +200,7 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    inputs = [pages_dir / "loader.js", pages_dir / "style.css", pages_dir / "tabs.html"]
+    inputs = [pages_dir / "loader.js", pages_dir / "style.css"]
     for page in PAGES:
         inputs.extend([pages_dir / f"{page}.html", pages_dir / f"{page}.js"])
 
@@ -185,18 +213,17 @@ def main() -> int:
     assets: list[dict] = []
     manifest = {"version": version, "css": [], "pages": {}}
 
-    manifest["css"] = add_chunked_assets(out_dir, "style", "css", read_text(pages_dir / "style.css"), "text/css; charset=utf-8", assets)
+    manifest["css"] = add_chunked_assets(out_dir, "style", "css", compact_css(read_text(pages_dir / "style.css")), "text/css; charset=utf-8", assets)
 
-    tabs = read_text(pages_dir / "tabs.html")
     for page in PAGES:
-        body = tabs + read_text(pages_dir / f"{page}.html")
-        js = read_text(pages_dir / f"{page}.js")
+        body = compact_html(read_text(pages_dir / f"{page}.html"))
+        js = compact_js(read_text(pages_dir / f"{page}.js"))
         manifest["pages"][page] = {
             "body": add_chunked_assets(out_dir, f"{page}.body", "html", body, "text/html; charset=utf-8", assets),
             "js": add_chunked_assets(out_dir, page, "js", js, "application/javascript; charset=utf-8", assets),
         }
 
-    loader_template = read_text(pages_dir / "loader.js")
+    loader_template = compact_js(read_text(pages_dir / "loader.js"))
     loader = loader_template.replace("__WEB_ASSET_MANIFEST__", json.dumps(manifest, separators=(",", ":"), ensure_ascii=False))
     write_asset(out_dir, "/assets/loader.js", loader, "application/javascript; charset=utf-8", assets)
 
