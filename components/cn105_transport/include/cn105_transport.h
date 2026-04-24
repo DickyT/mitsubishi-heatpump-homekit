@@ -24,9 +24,16 @@ struct ApplyResult {
     char message[96] = "";
 };
 
+struct RefreshResult {
+    bool completed = false;
+    uint8_t receivedMask = 0;
+    char message[96] = "";
+};
+
 esp_err_t start();
 Status getStatus();
 bool queueSetCommand(const cn105_core::SetCommand& command);
 bool queueSetCommandAndConfirm(const cn105_core::SetCommand& command, ApplyResult* result);
+bool requestFullInfoPollAndWait(RefreshResult* result);
 
 }  // namespace cn105_transport

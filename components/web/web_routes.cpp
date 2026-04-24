@@ -785,6 +785,22 @@ esp_err_t cn105MockStatusHandler(httpd_req_t* req) {
     return web_http::sendText(req, "application/json", body);
 }
 
+esp_err_t cn105RefreshHandler(httpd_req_t* req) {
+    if (device_settings::useRealCn105()) {
+        cn105_transport::RefreshResult result{};
+        if (!cn105_transport::requestFullInfoPollAndWait(&result)) {
+            char body[192] = {};
+            std::snprintf(body,
+                          sizeof(body),
+                          "{\"ok\":false,\"error\":\"%s\",\"received_mask\":%u}",
+                          result.message[0] != '\0' ? result.message : "CN105 refresh failed",
+                          static_cast<unsigned>(result.receivedMask));
+            return web_http::sendText(req, "application/json", body);
+        }
+    }
+    return statusHandler(req);
+}
+
 esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
     const cn105_core::MockState mock = cn105_core::getMockState();
     char query[512] = {};
@@ -1378,6 +1394,7 @@ const web_http::Route ROUTES[] = {
     { "/api/log/live", HTTP_GET, liveLogHandler },
     { "/api/files/delete", HTTP_POST, fileDeleteHandler },
     { "/api/cn105/mock/status", HTTP_GET, cn105MockStatusHandler },
+    { "/api/cn105/refresh", HTTP_POST, cn105RefreshHandler },
     { "/api/cn105/mock/build-set", HTTP_GET, cn105BuildSetHandler },
     { "/api/cn105/mock/build-set", HTTP_POST, cn105BuildSetHandler },
     { "/api/cn105/decode", HTTP_GET, cn105DecodeHandler },

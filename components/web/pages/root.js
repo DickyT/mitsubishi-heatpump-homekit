@@ -76,11 +76,21 @@ function fill(s){
   $('s-transport').textContent=s.cn105.transport==='real'?(t.connected?'Connected':'Connecting...'):'Mock';
   $('s-hk').textContent=s.homekit.started?(s.homekit.paired_controllers+' controller(s)'):'Not started';
 }
-async function refresh(){
+async function refresh(force=false){
   if(sending){
     return;
   }
-  try{const r=await fetch('/api/status');const j=await r.json();fill(j);$('out').textContent=draftLocked?'Local draft not sent':'Ready';}
+  try{
+    $('out').textContent=force?'Querying CN105 info 0x02/0x03/0x06...':'Loading...';
+    const r=await fetch(force?'/api/cn105/refresh':'/api/status',{method:force?'POST':'GET'});
+    const j=await r.json();
+    if(!j.ok&&j.error){
+      $('out').textContent='Refresh failed: '+j.error;
+      return;
+    }
+    fill(j);
+    $('out').textContent=draftLocked?'Local draft not sent':'Ready';
+  }
   catch(e){$('out').textContent='Status fetch failed: '+e;}
 }
 function params(){

@@ -18,6 +18,11 @@ const char* TAG = "cn105_transport";
 constexpr uint8_t kConfirmInfoAttempts = 3;
 constexpr uint32_t kConfirmInfoRetryMs = 100;
 constexpr uint32_t kConfirmInfoFinalWaitMs = 500;
+constexpr uint32_t kFullInfoRefreshTimeoutMs = 3500;
+constexpr uint8_t kInfoMaskControl = 0x01;
+constexpr uint8_t kInfoMaskRoom = 0x02;
+constexpr uint8_t kInfoMaskRuntime = 0x04;
+constexpr uint8_t kInfoMaskAll = kInfoMaskControl | kInfoMaskRoom | kInfoMaskRuntime;
 
 enum class Phase {
     kDisconnected,
@@ -38,9 +43,14 @@ struct TransportState {
     uint32_t txPackets = 0;
     uint32_t setAcks = 0;
     uint32_t controlInfoUpdates = 0;
+    uint32_t roomInfoUpdates = 0;
+    uint32_t runtimeInfoUpdates = 0;
     int64_t lastSetAckUs = 0;
     int64_t lastControlInfoUs = 0;
     bool immediateControlInfoRequested = false;
+    uint8_t pendingInfoCodes[3] = {};
+    uint8_t pendingInfoCount = 0;
+    uint8_t pendingInfoIndex = 0;
     char lastError[96] = "";
 
     uint8_t rxBuf[cn105_core::kPacketLen] = {};
@@ -48,8 +58,6 @@ struct TransportState {
     size_t rxExpected = 0;
     int64_t rxLastByteUs = 0;
 
-    uint8_t pollCodes[3] = {0x02, 0x03, 0x06};
-    int pollIndex = 0;
     uint8_t awaitingInfoCode = 0;
     bool forceFastPolling = false;
     int64_t requestSentUs = 0;
@@ -174,6 +182,14 @@ void requestImmediateControlInfo() {
     ts.immediateControlInfoRequested = true;
 }
 
+void scheduleFullInfoPoll() {
+    ts.pendingInfoCodes[0] = 0x02;
+    ts.pendingInfoCodes[1] = 0x03;
+    ts.pendingInfoCodes[2] = 0x06;
+    ts.pendingInfoCount = 3;
+    ts.pendingInfoIndex = 0;
+}
+
 bool uartSend(const uint8_t* data, size_t len) {
     const int written = uart_write_bytes(app_config::kCn105UartPort, data, len);
     if (written < 0 || static_cast<size_t>(written) != len) {
@@ -213,6 +229,17 @@ void sendInfoRequest(uint8_t code) {
     }
 }
 
+bool sendNextPendingInfo() {
+    if (ts.pendingInfoIndex >= ts.pendingInfoCount) {
+        ts.pendingInfoCount = 0;
+        ts.pendingInfoIndex = 0;
+        return false;
+    }
+    const uint8_t code = ts.pendingInfoCodes[ts.pendingInfoIndex++];
+    sendInfoRequest(code);
+    return true;
+}
+
 void sendSetPacket(const cn105_core::SetCommand& command, bool optimistic) {
     cn105_core::Packet packet{};
     char error[96] = {};
@@ -224,7 +251,6 @@ void sendSetPacket(const cn105_core::SetCommand& command, bool optimistic) {
     if (uartSend(packet.bytes, packet.length)) {
         ts.phase = Phase::kAwaitingSetAck;
         ts.requestSentUs = nowUs();
-        ts.pollIndex = 0;
         if (command.hasPower && command.power != nullptr && std::strcmp(command.power, "ON") == 0) {
             ts.forceFastPolling = true;
         }
@@ -282,7 +308,9 @@ void handlePacket(const uint8_t* bytes, size_t len) {
             if (ts.phase == Phase::kConnecting) {
                 ts.connected = true;
                 ts.phase = Phase::kIdle;
-                ts.lastPollUs = nowUs();
+                ts.forceFastPolling = true;
+                ts.lastPollUs = 0;
+                scheduleFullInfoPoll();
                 cn105_core::setConnected(true);
                 setError("");
                 ESP_LOGI(TAG, "CONNECT acknowledged (0x%02X)", cmd);
@@ -290,9 +318,21 @@ void handlePacket(const uint8_t* bytes, size_t len) {
             break;
         case 0x62:
             if (ts.phase == Phase::kAwaitingInfoResponse) {
-                if (cn105_core::applyInfoResponseToState(bytes, len) && len > 5 && bytes[5] == 0x02) {
-                    ts.controlInfoUpdates++;
-                    ts.lastControlInfoUs = nowUs();
+                if (cn105_core::applyInfoResponseToState(bytes, len) && len > 5) {
+                    switch (bytes[5]) {
+                        case 0x02:
+                            ts.controlInfoUpdates++;
+                            ts.lastControlInfoUs = nowUs();
+                            break;
+                        case 0x03:
+                            ts.roomInfoUpdates++;
+                            break;
+                        case 0x06:
+                            ts.runtimeInfoUpdates++;
+                            break;
+                        default:
+                            break;
+                    }
                 }
                 if (ts.awaitingInfoCode == 0x02) {
                     ts.forceFastPolling = false;
@@ -413,13 +453,14 @@ void transportTask(void*) {
                     sendInfoRequest(0x02);
                     break;
                 }
+                if (sendNextPendingInfo()) {
+                    break;
+                }
                 if (elapsedMs(ts.lastPollUs, currentPollIntervalMs())) {
-                    sendInfoRequest(ts.pollCodes[ts.pollIndex]);
-                    ts.pollIndex = (ts.pollIndex + 1) % 3;
-                    if (ts.pollIndex == 0) {
-                        ts.pollCycles++;
-                    }
+                    scheduleFullInfoPoll();
+                    ts.pollCycles++;
                     ts.lastPollUs = nowUs();
+                    sendNextPendingInfo();
                 }
                 break;
             }
@@ -550,6 +591,53 @@ bool queueSetCommandAndConfirm(const cn105_core::SetCommand& command, ApplyResul
 
     if (result != nullptr) {
         copyString(result->message, sizeof(result->message), "CN105 did not confirm the requested state");
+    }
+    return false;
+}
+
+bool requestFullInfoPollAndWait(RefreshResult* result) {
+    if (result != nullptr) {
+        *result = {};
+    }
+    if (!ts.taskRunning || !ts.connected) {
+        if (result != nullptr) {
+            copyString(result->message, sizeof(result->message), "CN105 transport is not connected");
+        }
+        return false;
+    }
+
+    const uint32_t control_baseline = ts.controlInfoUpdates;
+    const uint32_t room_baseline = ts.roomInfoUpdates;
+    const uint32_t runtime_baseline = ts.runtimeInfoUpdates;
+    scheduleFullInfoPoll();
+
+    const int64_t deadline_us = nowUs() + static_cast<int64_t>(kFullInfoRefreshTimeoutMs) * 1000;
+    while (nowUs() < deadline_us) {
+        uint8_t mask = 0;
+        if (ts.controlInfoUpdates != control_baseline) {
+            mask |= kInfoMaskControl;
+        }
+        if (ts.roomInfoUpdates != room_baseline) {
+            mask |= kInfoMaskRoom;
+        }
+        if (ts.runtimeInfoUpdates != runtime_baseline) {
+            mask |= kInfoMaskRuntime;
+        }
+        if (result != nullptr) {
+            result->receivedMask = mask;
+        }
+        if ((mask & kInfoMaskAll) == kInfoMaskAll) {
+            if (result != nullptr) {
+                result->completed = true;
+                copyString(result->message, sizeof(result->message), "CN105 full info refresh completed");
+            }
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    if (result != nullptr) {
+        copyString(result->message, sizeof(result->message), "CN105 full info refresh timed out");
     }
     return false;
 }
