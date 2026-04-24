@@ -526,12 +526,12 @@ void writeSettingsToNvs(const InstallerSettings& s) {
     ESP_ERROR_CHECK(nvs_set_i32(handle, "rx_pin", s.rx_pin));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "tx_pin", s.tx_pin));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "baud", s.baud));
-    ESP_ERROR_CHECK(nvs_set_i32(handle, "data_bits", kStableCn105DataBits));
-    char parity_value[2] = {kStableCn105Parity, '\0'};
+    ESP_ERROR_CHECK(nvs_set_i32(handle, "data_bits", s.data_bits));
+    char parity_value[2] = {s.parity, '\0'};
     writeString(handle, "parity", parity_value);
-    ESP_ERROR_CHECK(nvs_set_i32(handle, "stop_bits", kStableCn105StopBits));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "rx_pull", kStableCn105RxPull ? 1 : 0));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "tx_od", kStableCn105TxOpenDrain ? 1 : 0));
+    ESP_ERROR_CHECK(nvs_set_i32(handle, "stop_bits", s.stop_bits));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "rx_pull", s.rx_pull ? 1 : 0));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "tx_od", s.tx_od ? 1 : 0));
     ESP_ERROR_CHECK(nvs_set_u32(handle, "poll_on", s.poll_on));
     ESP_ERROR_CHECK(nvs_set_u32(handle, "poll_off", s.poll_off));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "log_level", s.log_level));
@@ -606,6 +606,19 @@ void loadSettingsFromNvs(InstallerSettings& s) {
     loadI32FromNvs(handle, "rx_pin", &s.rx_pin);
     loadI32FromNvs(handle, "tx_pin", &s.tx_pin);
     loadI32FromNvs(handle, "baud", &s.baud);
+    loadI32FromNvs(handle, "data_bits", &s.data_bits);
+    char parity_value[4] = {};
+    loadStringFromNvs(handle, "parity", parity_value, sizeof(parity_value));
+    if (parity_value[0] != '\0') {
+        s.parity = parity_value[0];
+    }
+    loadI32FromNvs(handle, "stop_bits", &s.stop_bits);
+    uint8_t rx_pull = s.rx_pull ? 1 : 0;
+    loadU8FromNvs(handle, "rx_pull", &rx_pull);
+    s.rx_pull = rx_pull != 0;
+    uint8_t tx_od = s.tx_od ? 1 : 0;
+    loadU8FromNvs(handle, "tx_od", &tx_od);
+    s.tx_od = tx_od != 0;
     loadU32FromNvs(handle, "poll_on", &s.poll_on);
     loadU32FromNvs(handle, "poll_off", &s.poll_off);
     loadU8FromNvs(handle, "log_level", &s.log_level);
@@ -677,18 +690,17 @@ bool parseSettingsFromBody(const char* body, InstallerSettings& s, char* error, 
     if (formValue(body, "rx_pin", value, sizeof(value))) s.rx_pin = std::atoi(value);
     if (formValue(body, "tx_pin", value, sizeof(value))) s.tx_pin = std::atoi(value);
     if (formValue(body, "baud", value, sizeof(value))) s.baud = std::atoi(value);
+    if (formValue(body, "data_bits", value, sizeof(value))) s.data_bits = std::atoi(value);
+    if (formValue(body, "parity", value, sizeof(value)) && value[0] != '\0') s.parity = value[0];
+    if (formValue(body, "stop_bits", value, sizeof(value))) s.stop_bits = std::atoi(value);
+    if (formValue(body, "rx_pull", value, sizeof(value))) s.rx_pull = !falseLike(value);
+    if (formValue(body, "tx_od", value, sizeof(value))) s.tx_od = !falseLike(value);
     if (formValue(body, "poll_on", value, sizeof(value))) s.poll_on = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
     if (formValue(body, "poll_off", value, sizeof(value))) s.poll_off = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
     if (formValue(body, "log_level", value, sizeof(value)) && !parseLogLevel(value, &s.log_level)) {
         copyString(error, error_len, "invalid log level");
         return false;
     }
-
-    s.data_bits = kStableCn105DataBits;
-    s.parity = kStableCn105Parity;
-    s.stop_bits = kStableCn105StopBits;
-    s.rx_pull = kStableCn105RxPull;
-    s.tx_od = kStableCn105TxOpenDrain;
 
     if (s.device_name[0] == '\0') {
         copyString(error, error_len, "device name is required");
@@ -704,6 +716,11 @@ bool parseSettingsFromBody(const char* body, InstallerSettings& s, char* error, 
     }
     if (!validBaud(s.baud)) {
         copyString(error, error_len, "invalid CN105 baud rate");
+        return false;
+    }
+    if (s.data_bits != 8 || (s.parity != 'E' && s.parity != 'N' && s.parity != 'O') ||
+        (s.stop_bits != 1 && s.stop_bits != 2)) {
+        copyString(error, error_len, "invalid CN105 serial format");
         return false;
     }
     if (s.poll_on < 1000 || s.poll_off < 5000) {
@@ -809,7 +826,7 @@ const char kIndexHtml[] = R"HTML(
 <style>
 :root{--bg:#080812;--card:#111126ee;--line:#3b1c45;--text:#f9eaff;--muted:#bba7c8;--hot:#ff4fd8;--cyan:#45f3ff;--ok:#69ff9b;--bad:#ff6b6b}
 *{box-sizing:border-box}body{margin:0;font-family:ui-rounded,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text);background:radial-gradient(circle at 10% 0,#40113d,transparent 32rem),radial-gradient(circle at 90% 12%,#0b6b79,transparent 28rem),var(--bg)}
-main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px,6vw,68px);margin:12px 0 4px;letter-spacing:-.06em}.subtitle{color:var(--muted);font-size:15px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);background:linear-gradient(145deg,#151229ee,#0c0c19ee);border-radius:28px;padding:22px;margin:18px 0;box-shadow:0 0 36px #ff4fd81b}.card.locked{opacity:.52;filter:saturate(.55)}.step-note{color:var(--muted);margin:-4px 0 16px;font-size:14px}.field{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--cyan);font-weight:800;letter-spacing:.04em}.field input,.field select{width:100%;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px}.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{border:1px solid #673070;background:#161326;color:var(--text);border-radius:999px;padding:12px 18px;font-weight:900;font-size:15px;cursor:pointer}button.primary{background:linear-gradient(135deg,var(--hot),var(--cyan));color:#090817;border:0}button.mini{padding:0 15px;border-radius:16px;white-space:nowrap}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}.pill{display:inline-flex;border:1px solid #48304f;border-radius:999px;padding:6px 10px;margin:3px;color:var(--muted)}.status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.status-tile{border:1px solid #372142;background:#090916;border-radius:18px;padding:14px}.status-tile b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.status-tile span{font-size:17px;font-weight:900}.progress{display:none;width:100%;margin-top:14px}.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(3,6,15,.78);backdrop-filter:blur(10px);z-index:50}.modal.open{display:flex}.modal-panel{width:min(560px,calc(100vw - 24px));border:1px solid #7a2c82;border-radius:26px;background:linear-gradient(145deg,#151229,#090916);padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.58),0 0 42px #ff4fd822}.modal-panel h2{margin-top:0}.danger{border:1px solid rgba(255,107,107,.58);background:rgba(255,107,107,.12);border-radius:18px;padding:14px;margin:14px 0;color:#ffe8ee;font-weight:800}pre{white-space:pre-wrap;overflow:auto;background:#060711;border:1px solid #33213d;border-radius:18px;padding:14px;color:#c9f7ff;min-height:84px}.ok{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:760px){main{padding:18px 12px 84px}.grid,.status-grid{grid-template-columns:1fr}.card{border-radius:22px;padding:18px}}
+main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px,6vw,68px);margin:12px 0 4px;letter-spacing:-.06em}.subtitle{color:var(--muted);font-size:15px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);background:linear-gradient(145deg,#151229ee,#0c0c19ee);border-radius:28px;padding:22px;margin:18px 0;box-shadow:0 0 36px #ff4fd81b}.card.locked{opacity:.52;filter:saturate(.55)}.step-note{color:var(--muted);margin:-4px 0 16px;font-size:14px}.field{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--cyan);font-weight:800;letter-spacing:.04em}.field input,.field select{width:100%;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px}.config-summary-button{width:100%;min-height:51px;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px;text-align:left;letter-spacing:.01em}.config-summary-button:hover{border-color:var(--hot);box-shadow:0 0 18px #ff4fd833}.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{border:1px solid #673070;background:#161326;color:var(--text);border-radius:999px;padding:12px 18px;font-weight:900;font-size:15px;cursor:pointer}button.primary{background:linear-gradient(135deg,var(--hot),var(--cyan));color:#090817;border:0}button.mini{padding:0 15px;border-radius:16px;white-space:nowrap}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}.pill{display:inline-flex;border:1px solid #48304f;border-radius:999px;padding:6px 10px;margin:3px;color:var(--muted)}.status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.status-tile{border:1px solid #372142;background:#090916;border-radius:18px;padding:14px}.status-tile b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.status-tile span{font-size:17px;font-weight:900}.progress{display:none;width:100%;margin-top:14px}.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(3,6,15,.78);backdrop-filter:blur(10px);z-index:50}.modal.open{display:flex}.modal-panel{width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 28px);overflow:auto;border:1px solid #7a2c82;border-radius:26px;background:linear-gradient(145deg,#151229,#090916);padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.58),0 0 42px #ff4fd822}.modal-panel h2{margin-top:0}.danger{border:1px solid rgba(255,107,107,.58);background:rgba(255,107,107,.12);border-radius:18px;padding:14px;margin:14px 0;color:#ffe8ee;font-weight:800}pre{white-space:pre-wrap;overflow:auto;background:#060711;border:1px solid #33213d;border-radius:18px;padding:14px;color:#c9f7ff;min-height:84px}.ok{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:760px){main{padding:18px 12px 84px}.grid,.status-grid{grid-template-columns:1fr}.card{border-radius:22px;padding:18px}}
 </style></head><body><main>
 <h1>Installer / Probe</h1><div class="subtitle">Provision WiFi over BLE, save production device settings, optionally test CN105, then upload the production firmware over OTA.</div>
 <section class="card"><h2>Connection Status</h2><div id="status">Loading...</div></section>
@@ -819,14 +836,19 @@ main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px
 <label class="field">HomeKit Manufacturer<input id="hk_mfr" value="dkt smart home"></label><label class="field">HomeKit Model<input id="hk_model" value="Mitsubishi Heat Pump"></label><label class="field">HomeKit Serial<input id="hk_serial" value="DKT-MITSUBISHI-HOMEKIT"></label>
 <label class="field">Status LED GPIO<input id="led_pin" type="number" value="27"></label><label class="field">Log Level<select id="log_level"><option value="error" selected>Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option><option value="verbose">Verbose</option></select></label>
 <label class="field">On Polling ms<input id="poll_on" type="number" value="15000"></label><label class="field">Off Polling ms<input id="poll_off" type="number" value="60000"></label>
-<label class="field">Production CN105 Mode<select id="use_real"><option value="1">Real CN105</option><option value="0">Mock</option></select></label>
-<label class="field">CN105 RX GPIO<input id="rx_pin" type="number" value="26"></label><label class="field">CN105 TX GPIO<input id="tx_pin" type="number" value="32"></label>
-<label class="field">CN105 Baud Rate<select id="baud"><option>2400</option><option>4800</option><option>9600</option></select></label><label class="field">Production Serial Profile<input value="8E1 / RX pullup / TX push-pull" disabled></label>
+<label class="field">CN105 Mode<select id="use_real"><option value="1">Real CN105</option><option value="0">Mock</option></select></label>
+<label class="field">CN105 Advanced Settings<button class="config-summary-button" id="cn105_advanced_btn" type="button">8E1 2400 RX G26 TX G32</button></label>
 </div><div class="btns"><button onclick="ledTest()" type="button">LED Color Test</button><button class="primary" onclick="saveStep1()" type="button">Save and Continue</button></div><pre id="step1_out">Save Step 1 before continuing.</pre></section>
 <section class="card locked" id="step2"><h2>Step 2: Optional CN105 Smoke Test</h2><div class="step-note">If the AC is connected, run a safe CN105 CONNECT/INFO probe using the saved pins and baud rate. You may also skip this step.</div><div class="btns"><button onclick="backToStep1()" type="button">Back to Step 1</button><button onclick="probe()" type="button">Run CN105 Test</button><button class="primary" onclick="continueToOta()" type="button">Continue to OTA</button></div><pre id="probe_out">Optional test has not run.</pre></section>
 <section class="card locked" id="step3"><h2>Step 3: OTA Update</h2><div class="step-note">Select the production app firmware at address <code>0x20000</code> from <code>firmware_exports/&lt;version&gt;/</code>. Upload starts automatically after selection.</div><input id="fw" type="file" accept=".bin,application/octet-stream"><progress id="ota_progress" class="progress" value="0" max="100"></progress><pre id="ota_out">Save Step 1, then continue from Step 2.</pre></section>
 </main>
 <div id="ota_modal" class="modal" aria-hidden="true"><div class="modal-panel"><h2>Confirm OTA Update</h2><div class="subtitle">Firmware upload is complete. Confirm to reboot and boot the production firmware.</div><div class="danger">Canceling will not switch firmware. To change your mind, select and upload the firmware file again.</div><pre id="ota_confirm_body">--</pre><div class="btns"><button class="primary" onclick="applyOta()" type="button">Confirm Reboot and Apply</button><button onclick="cancelOta()" type="button">Cancel</button></div></div></div>
+<div id="cn105_modal" class="modal" aria-hidden="true"><div class="modal-panel"><h2>CN105 Advanced Settings</h2><div class="subtitle">These values affect ESP32-to-CN105 serial communication. Bad GPIO, baud, or electrical settings can make the AC stop responding. Confirm only updates the local Step 1 draft; click Save and Continue afterward to write NVS.</div><div class="danger">Dangerous advanced settings. If CN105 communication currently works, do not change these values unless you are actively debugging hardware or wiring.</div><div class="grid">
+<label class="field">CN105 RX GPIO<input id="rx_pin" type="number" min="0" max="39" step="1" value="26"></label><label class="field">CN105 TX GPIO<input id="tx_pin" type="number" min="0" max="33" step="1" value="32"></label>
+<label class="field">CN105 Baud Rate<select id="baud"><option>2400</option><option>4800</option><option>9600</option></select></label><label class="field">CN105 Data Bits<select id="data_bits"><option value="8">8</option></select></label>
+<label class="field">CN105 Parity<select id="parity"><option value="E">Even</option><option value="N">None</option><option value="O">Odd</option></select></label><label class="field">CN105 Stop Bits<select id="stop_bits"><option value="1">1</option><option value="2">2</option></select></label>
+<label class="field">CN105 RX Pullup<select id="rx_pull"><option value="1">On</option><option value="0">Off</option></select></label><label class="field">CN105 TX Open Drain<select id="tx_od"><option value="0">Off</option><option value="1">On</option></select></label>
+</div><div class="btns"><button class="primary" onclick="closeCn105Modal(true,event)" type="button">Confirm</button><button onclick="closeCn105Modal(false,event)" type="button">Cancel</button></div></div></div>
 <script>
 const $=id=>document.getElementById(id);
 function val(id){return $(id).value}
@@ -838,9 +860,17 @@ function initSteps(){setStepEnabled(2,false);setStepEnabled(3,false)}
 function placeholderWifi(value,placeholder){return !value||value===placeholder}
 function randomHomeKitCode(){const b=new Uint8Array(8);crypto.getRandomValues(b);const d=[...b].map(x=>String(x%10));return d.slice(0,4).join('')+'-'+d.slice(4).join('')}
 function randomizeHomeKitCode(){$('hk_code').value=randomHomeKitCode()}
-function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
-async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi STA</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'Connected':'Not Connected'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>Installer AP</b><span>${esc(j.wifi.ap_ssid)}</span><div>${esc(j.wifi.ap_ip)}</div></div><div class="status-tile"><b>BLE Service</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}}
-async function probe(){set('probe_out','Probing. This may take a few dozen seconds...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud}}
+const cn105Ids=['rx_pin','tx_pin','baud','data_bits','parity','stop_bits','rx_pull','tx_od'];
+let cn105Snapshot=null;
+function cn105Summary(){return `${val('data_bits')}${val('parity')}${val('stop_bits')} ${val('baud')} RX G${val('rx_pin')} TX G${val('tx_pin')}`}
+function updateCn105Summary(){$('cn105_advanced_btn').textContent=cn105Summary()}
+function captureCn105(){const out={};cn105Ids.forEach(id=>out[id]=val(id));return out}
+function restoreCn105(values){if(!values)return;for(const [id,value] of Object.entries(values)){if($(id))$(id).value=value}updateCn105Summary()}
+function openCn105Modal(){cn105Snapshot=captureCn105();$('cn105_modal').classList.add('open');$('cn105_modal').setAttribute('aria-hidden','false');updateCn105Summary()}
+function closeCn105Modal(keep,event){event?.preventDefault();if(!keep)restoreCn105(cn105Snapshot);cn105Snapshot=null;updateCn105Summary();$('cn105_modal').classList.remove('open');$('cn105_modal').setAttribute('aria-hidden','true')}
+function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','data_bits','parity','stop_bits','rx_pull','tx_od','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
+async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi STA</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'Connected':'Not Connected'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>Installer AP</b><span>${esc(j.wifi.ap_ssid)}</span><div>${esc(j.wifi.ap_ip)}</div></div><div class="status-tile"><b>BLE Service</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0';$('rx_pull').value=j.defaults.rx_pull?'1':'0';$('tx_od').value=j.defaults.tx_od?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}updateCn105Summary()}
+async function probe(){set('probe_out','Probing. This may take a few dozen seconds...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud;updateCn105Summary()}}
 async function ledTest(){const j=await (await fetch('/api/led-test',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({led_pin:val('led_pin')})})).json();set('step1_out',JSON.stringify(j,null,2))}
 async function writeSettings(outId,pending){set(outId,pending);try{const j=await (await fetch('/api/write-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params()})).json();set(outId,JSON.stringify(j,null,2));return !!j.ok}catch(e){set(outId,'Save failed: '+e);return false}}
 async function saveStep1(){const ssid=$('wifi_ssid').value.trim();const pass=$('wifi_pass').value.trim();if(placeholderWifi(ssid,'YOUR_WIFI_SSID')||placeholderWifi(pass,'YOUR_WIFI_PASSWORD')){set('step1_out','Enter a real WiFi SSID and password. Do not keep the placeholder values.');$('wifi_ssid').focus();return}if(await writeSettings('step1_out','Saving Step 1 settings to NVS...')){setStepEnabled(1,false);setStepEnabled(2,true);set('probe_out','Step 1 saved. Optional: run a CN105 smoke test, or continue to OTA.');$('step2').scrollIntoView({behavior:'smooth',block:'start'})}}
@@ -849,6 +879,8 @@ function continueToOta(){setStepEnabled(2,false);setStepEnabled(3,true);set('ota
 async function upload(){const f=$('fw').files[0];if(!f){set('ota_out','Select a .bin file');return}const name=(f.name||'').toLowerCase();if(!name.endsWith('.bin')){set('ota_out','Only .bin firmware files are allowed.');$('fw').value='';return}if(!name.endsWith('_0x20000.bin')){set('ota_out','Select the app firmware at address 0x20000.');$('fw').value='';return}const progress=$('ota_progress');progress.style.display='block';progress.value=0;set('ota_out','Uploading '+f.name+' ...');const xhr=new XMLHttpRequest();xhr.open('POST','/api/ota/upload');xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.upload.onprogress=e=>{if(e.lengthComputable)progress.value=Math.round((e.loaded/e.total)*100)};xhr.onload=()=>{let j={};try{j=JSON.parse(xhr.responseText||'{}')}catch(e){};if(xhr.status>=200&&xhr.status<300&&j.ok){progress.style.display='none';$('fw').value='';$('ota_confirm_body').textContent=JSON.stringify(j,null,2);$('ota_modal').classList.add('open');$('ota_modal').setAttribute('aria-hidden','false');set('ota_out','Upload complete. Confirm in the modal to reboot and apply.')}else{set('ota_out','OTA upload failed: '+(j.error||xhr.responseText||xhr.status));}};xhr.onerror=()=>set('ota_out','OTA upload failed: network error');xhr.send(f)}
 function cancelOta(){$('ota_modal').classList.remove('open');$('ota_modal').setAttribute('aria-hidden','true');set('ota_out','Upload canceled. Select the firmware again if you want to apply it.')}
 async function applyOta(){set('ota_out','Rebooting. Redirecting to the production WebUI (:8080) in 5 seconds...');$('ota_modal').classList.remove('open');fetch('/api/ota/apply',{method:'POST'}).catch(()=>{});setTimeout(()=>location.href=`http://${location.hostname}:8080/`,5000)}
+$('cn105_advanced_btn').addEventListener('click',openCn105Modal);
+cn105Ids.forEach(id=>{$(id).addEventListener('input',updateCn105Summary);$(id).addEventListener('change',updateCn105Summary)});
 $('fw').addEventListener('change',upload);
 initSteps();
 load().catch(e=>set('status','Load failed: '+e));
