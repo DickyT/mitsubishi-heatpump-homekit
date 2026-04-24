@@ -51,16 +51,8 @@ esp_err_t sendRoot(httpd_req_t* req) {
     return sendShell(req, "root");
 }
 
-esp_err_t sendDebug(httpd_req_t* req) {
-    return sendShell(req, "debug");
-}
-
 esp_err_t sendLogs(httpd_req_t* req) {
     return sendShell(req, "logs");
-}
-
-esp_err_t sendFiles(httpd_req_t* req) {
-    return sendShell(req, "files");
 }
 
 esp_err_t sendAdmin(httpd_req_t* req) {

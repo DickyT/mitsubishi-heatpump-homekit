@@ -13,6 +13,20 @@
 <div class="kvrow"><span class="kk">存储</span><span class="vv" id="i-fs">--</span></div>
 </div>
 <div class="card">
+<h3>HomeKit</h3>
+<div class="kvrow"><span class="kk">状态</span><span class="vv" id="i-hk-status">--</span></div>
+<div class="kvrow"><span class="kk">已配对</span><span class="vv" id="i-hk-paired">--</span></div>
+<div class="kvrow"><span class="kk">配对码</span><span class="vv" id="i-hk-code">--</span></div>
+<div class="kvrow"><span class="kk">Model</span><span class="vv" id="i-hk-model">--</span></div>
+<div class="kvrow"><span class="kk">Firmware</span><span class="vv" id="i-hk-fw">--</span></div>
+<div class="kvrow"><span class="kk">配对信息</span><span class="vv"><button id="hk-modal-btn" class="btn-secondary btn-compact" type="button">点击查看</button></span></div>
+</div>
+<div class="card">
+<h3>CN105 通信状态</h3>
+<pre id="tp">加载中...</pre>
+<div class="btns"><button class="btn-secondary" id="transport-refresh-btn" type="button">刷新</button></div>
+</div>
+<div class="card">
 <h3>蓝牙配网</h3>
 <div class="subtitle">长按 M5Stack Atom Lite 按钮 3 秒会打开 Espressif BLE 配网，窗口持续 5 分钟。Atom Lite 按钮固定使用 GPIO39。</div>
 <div class="kvrow"><span class="kk">状态</span><span class="vv" id="i-prov-state">--</span></div>
@@ -35,21 +49,12 @@
 <label class="field"><span>HomeKit Serial</span><input id="cfg-homekit-serial" type="text" maxlength="63" placeholder="DKT-MITSUBISHI-HOMEKIT"></label>
 <label class="field"><span>状态灯</span><select id="cfg-led-enabled"><option value="1">开启</option><option value="0">关闭</option></select></label>
 <label class="field"><span>状态灯 GPIO</span><input id="cfg-led-pin" type="number" min="0" max="33" step="1"></label>
-<label class="field"><span>CN105 模式</span><select id="cfg-cn105-mode"><option value="real">真实 CN105</option><option value="mock">Mock</option></select></label>
-<label class="field"><span>CN105 RX GPIO</span><input id="cfg-cn105-rx-pin" type="number" min="0" max="39" step="1"></label>
-<label class="field"><span>CN105 TX GPIO</span><input id="cfg-cn105-tx-pin" type="number" min="0" max="33" step="1"></label>
-<label class="field"><span>CN105 波特率</span><select id="cfg-cn105-baud"><option value="2400">2400</option><option value="4800">4800</option><option value="9600">9600</option></select></label>
-<label class="field"><span>CN105 数据位</span><select id="cfg-cn105-data-bits"><option value="8">8</option></select></label>
-<label class="field"><span>CN105 校验</span><select id="cfg-cn105-parity"><option value="E">Even</option><option value="N">None</option><option value="O">Odd</option></select></label>
-<label class="field"><span>CN105 停止位</span><select id="cfg-cn105-stop-bits"><option value="1">1</option><option value="2">2</option></select></label>
-<label class="field"><span>CN105 RX 上拉</span><select id="cfg-cn105-rx-pullup"><option value="1">开启</option><option value="0">关闭</option></select></label>
-<label class="field"><span>CN105 TX 开漏</span><select id="cfg-cn105-tx-open-drain"><option value="0">关闭</option><option value="1">开启</option></select></label>
 <label class="field"><span>日志等级</span><select id="cfg-log-level"><option value="error">error</option><option value="warn">warn</option><option value="info">info</option><option value="debug">debug</option><option value="verbose">verbose</option></select></label>
-<label class="field"><span>开机轮询(ms)</span><input id="cfg-poll-active" type="number" min="1000" step="1000"></label>
-<label class="field"><span>关机轮询(ms)</span><input id="cfg-poll-off" type="number" min="5000" step="1000"></label>
+<label class="field"><span>CN105 模式</span><select id="cfg-cn105-mode"><option value="real">真实 CN105</option><option value="mock">Mock</option></select></label>
+<label class="field"><span>CN105 高级设置</span><button class="config-summary-button" id="cn105-advanced-btn" type="button">8E1 2400 RX G26 TX G32</button></label>
 </div>
 <div class="btns">
-<button class="btn-primary" id="cfg-save-btn" type="button">保存并重启</button>
+<button class="btn-primary" id="cfg-save-btn" type="button" disabled>保存并重启</button>
 </div>
 </div>
 <div class="card">
@@ -60,31 +65,21 @@
 <div id="ota-msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
 </div>
 <div class="card">
-<h3>HomeKit</h3>
-<div class="kvrow"><span class="kk">状态</span><span class="vv" id="i-hk-status">--</span></div>
-<div class="kvrow"><span class="kk">已配对</span><span class="vv" id="i-hk-paired">--</span></div>
-<div class="kvrow"><span class="kk">配对码</span><span class="vv" id="i-hk-code">--</span></div>
-<div class="kvrow"><span class="kk">Model</span><span class="vv" id="i-hk-model">--</span></div>
-<div class="kvrow"><span class="kk">Firmware</span><span class="vv" id="i-hk-fw">--</span></div>
-<div class="kvrow"><span class="kk">配对信息</span><span class="vv"><button id="hk-modal-btn" class="btn-secondary btn-compact" type="button">点击查看</button></span></div>
-</div>
-<div class="card">
 <h3>维护</h3>
 <div class="kvrow"><span class="kk">当前日志</span><span class="vv" id="i-log-current">--</span></div>
 <div class="kvrow"><span class="kk">日志等级</span><span class="vv" id="i-log-level">--</span></div>
 <div class="subtitle">这些操作用于重新配对或清理本地维护数据。重置 HomeKit 会由 HomeKit SDK 自动重启设备。</div>
 <div class="btns">
 <button class="btn-danger" onclick="maintenance('/api/maintenance/reset-homekit','重置 HomeKit','确定重置 HomeKit 吗？这会清除配对和 HomeKit SDK 状态，设备随后会重启。')">重置 HomeKit</button>
-<button class="btn-secondary" onclick="maintenance('/api/maintenance/clear-logs','清空当前日志','确定清空当前日志吗？日志会在同一个文件里继续写入。')">清空当前日志</button>
 <button class="btn-secondary" onclick="reboot()">重启设备</button>
 </div>
 </div>
 <div class="card">
 <h3>危险区域</h3>
-<div class="subtitle">下面操作不可恢复。清空全部 NVS 会擦掉 Wi-Fi SDK/HomeKit/系统运行时数据并重启。</div>
+<div class="subtitle">下面操作会直接修改底层配置。保存错误值可能导致设备离线、HomeKit 失效或 CN105 无法通信。</div>
 <div class="btns">
 <button class="btn-danger" onclick="maintenance('/api/maintenance/clear-spiffs','清空全部 SPIFFS','确定清空整个 SPIFFS 吗？日志、上传文件和文件夹占位都会被删除。')">清空全部 SPIFFS</button>
-<button class="btn-danger" onclick="maintenance('/api/maintenance/clear-all-nvs','清空全部 NVS','确定清空整个 NVS 分区吗？这会删除所有 NVS 数据并重启。')">清空全部 NVS</button>
+<button class="btn-danger" id="device-cfg-modal-btn" type="button">修改 NVS 值</button>
 </div>
 <div id="msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
 </div>
@@ -155,6 +150,50 @@
 </div>
 <div class="btns modal-actions">
 <button id="notice-close" class="btn-secondary" type="button">知道了</button>
+</div>
+</div>
+</div>
+<div id="cn105-modal" class="modal" aria-hidden="true">
+<div class="modal-backdrop" data-close-modal="cn105-modal"></div>
+<div class="modal-panel nvs-panel">
+<div class="modal-header">
+<div>
+<h2>CN105 高级设置</h2>
+<div class="subtitle modal-subtitle">这些值会影响 ESP32 和空调 CN105 串口通信。错误的 GPIO、波特率或电气设置可能导致空调无法响应。这里点确定只更新本页面草稿，不会写入设备；最后仍需点击“保存并重启”。</div>
+</div>
+</div>
+<div class="grid2">
+<label class="field"><span>CN105 RX GPIO</span><input id="cfg-cn105-rx-pin" type="number" min="0" max="39" step="1"></label>
+<label class="field"><span>CN105 TX GPIO</span><input id="cfg-cn105-tx-pin" type="number" min="0" max="33" step="1"></label>
+<label class="field"><span>CN105 波特率</span><select id="cfg-cn105-baud"><option value="2400">2400</option><option value="4800">4800</option><option value="9600">9600</option></select></label>
+<label class="field"><span>CN105 数据位</span><select id="cfg-cn105-data-bits"><option value="8">8</option></select></label>
+<label class="field"><span>CN105 校验</span><select id="cfg-cn105-parity"><option value="E">Even</option><option value="N">None</option><option value="O">Odd</option></select></label>
+<label class="field"><span>CN105 停止位</span><select id="cfg-cn105-stop-bits"><option value="1">1</option><option value="2">2</option></select></label>
+<label class="field"><span>CN105 RX 上拉</span><select id="cfg-cn105-rx-pullup"><option value="1">开启</option><option value="0">关闭</option></select></label>
+<label class="field"><span>CN105 TX 开漏</span><select id="cfg-cn105-tx-open-drain"><option value="0">关闭</option><option value="1">开启</option></select></label>
+<label class="field"><span>开机轮询(ms)</span><input id="cfg-poll-active" type="number" min="1000" step="1000"></label>
+<label class="field"><span>关机轮询(ms)</span><input id="cfg-poll-off" type="number" min="5000" step="1000"></label>
+</div>
+<div class="btns modal-actions">
+<button id="cn105-modal-confirm" class="btn-primary" type="button">确定</button>
+<button id="cn105-modal-cancel" class="btn-secondary" type="button">取消</button>
+</div>
+</div>
+</div>
+<div id="device-cfg-modal" class="modal" aria-hidden="true">
+<div class="modal-backdrop" data-close-modal="device-cfg-modal"></div>
+<div class="modal-panel nvs-panel">
+<div class="modal-header">
+<div>
+<h2>修改 NVS 值</h2>
+<div class="subtitle modal-subtitle">这是危险操作。这里编辑的是 <code>device_cfg</code> namespace；错误的 WiFi、HomeKit、CN105 或 GPIO 值可能导致设备离线或无法控制空调。取消不会修改任何内容。</div>
+</div>
+</div>
+<textarea id="device-cfg-editor" class="nvs-editor" spellcheck="false" autocomplete="off" autocapitalize="off">加载中...</textarea>
+<div id="device-cfg-msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
+<div class="btns modal-actions">
+<button id="device-cfg-save" class="btn-danger" type="button">保存到 NVS 并重启</button>
+<button id="device-cfg-cancel" class="btn-secondary" type="button">取消</button>
 </div>
 </div>
 </div>

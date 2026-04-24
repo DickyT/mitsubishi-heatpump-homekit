@@ -21,7 +21,10 @@
 #include "web_http.h"
 #include "web_pages.h"
 
+#include "jsmn.h"
+
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -272,20 +275,264 @@ void writeHomeKitJson(const homekit_bridge::Status& status, char* out, size_t ou
                   esc_error);
 }
 
+std::string quotedJson(const char* value) {
+    return "\"" + platform_fs::jsonEscape(value == nullptr ? "" : value) + "\"";
+}
+
+std::string deviceCfgJson() {
+    const device_settings::Settings& s = device_settings::get();
+    std::string body = "{\n";
+    body += "  \"device_name\": " + quotedJson(s.deviceName) + ",\n";
+    body += "  \"wifi_ssid\": " + quotedJson(s.wifiSsid) + ",\n";
+    body += "  \"wifi_pass\": " + quotedJson(s.wifiPassword) + ",\n";
+    body += "  \"hk_code\": " + quotedJson(s.homeKitCode) + ",\n";
+    body += "  \"hk_mfr\": " + quotedJson(s.homeKitManufacturer) + ",\n";
+    body += "  \"hk_model\": " + quotedJson(s.homeKitModel) + ",\n";
+    body += "  \"hk_serial\": " + quotedJson(s.homeKitSerial) + ",\n";
+    body += "  \"hk_setupid\": " + quotedJson(s.homeKitSetupId) + ",\n";
+    body += "  \"use_real\": " + std::string(s.useRealCn105 ? "true" : "false") + ",\n";
+    body += "  \"led_on\": " + std::string(s.statusLedEnabled ? "true" : "false") + ",\n";
+    body += "  \"led_pin\": " + std::to_string(s.statusLedPin) + ",\n";
+    body += "  \"rx_pin\": " + std::to_string(s.cn105RxPin) + ",\n";
+    body += "  \"tx_pin\": " + std::to_string(s.cn105TxPin) + ",\n";
+    body += "  \"baud\": " + std::to_string(s.cn105BaudRate) + ",\n";
+    body += "  \"data_bits\": " + std::to_string(s.cn105DataBits) + ",\n";
+    char parity[2] = {s.cn105Parity, '\0'};
+    body += "  \"parity\": " + quotedJson(parity) + ",\n";
+    body += "  \"stop_bits\": " + std::to_string(s.cn105StopBits) + ",\n";
+    body += "  \"rx_pull\": " + std::string(s.cn105RxPullupEnabled ? "true" : "false") + ",\n";
+    body += "  \"tx_od\": " + std::string(s.cn105TxOpenDrain ? "true" : "false") + ",\n";
+    body += "  \"poll_on\": " + std::to_string(s.pollIntervalActiveMs) + ",\n";
+    body += "  \"poll_off\": " + std::to_string(s.pollIntervalOffMs) + ",\n";
+    body += "  \"log_level\": " + quotedJson(device_settings::logLevelName()) + "\n";
+    body += "}\n";
+    return body;
+}
+
+bool tokenEquals(const char* json, const jsmntok_t& token, const char* value) {
+    if (json == nullptr || value == nullptr || token.start < 0 || token.end < token.start) {
+        return false;
+    }
+    const size_t len = static_cast<size_t>(token.end - token.start);
+    return std::strlen(value) == len && std::strncmp(json + token.start, value, len) == 0;
+}
+
+bool decodeJsonString(const char* src, const jsmntok_t& token, char* out, size_t out_len) {
+    if (src == nullptr || out == nullptr || out_len == 0 || token.type != JSMN_STRING) {
+        return false;
+    }
+    size_t written = 0;
+    for (int i = token.start; i < token.end && written + 1 < out_len; ++i) {
+        char c = src[i];
+        if (c == '\\' && i + 1 < token.end) {
+            const char esc = src[++i];
+            switch (esc) {
+                case '"': c = '"'; break;
+                case '\\': c = '\\'; break;
+                case '/': c = '/'; break;
+                case 'b': c = '\b'; break;
+                case 'f': c = '\f'; break;
+                case 'n': c = '\n'; break;
+                case 'r': c = '\r'; break;
+                case 't': c = '\t'; break;
+                default: c = esc; break;
+            }
+        }
+        out[written++] = c;
+    }
+    out[written] = '\0';
+    return true;
+}
+
+bool tokenText(const char* json, const jsmntok_t& token, char* out, size_t out_len) {
+    if (json == nullptr || out == nullptr || out_len == 0 || token.start < 0 || token.end < token.start) {
+        return false;
+    }
+    if (token.type == JSMN_STRING) {
+        return decodeJsonString(json, token, out, out_len);
+    }
+    const size_t len = std::min(static_cast<size_t>(token.end - token.start), out_len - 1);
+    std::memcpy(out, json + token.start, len);
+    out[len] = '\0';
+    return true;
+}
+
+bool parseJsonBoolValue(const char* json, const jsmntok_t& token, bool* out) {
+    char value[16] = {};
+    if (out == nullptr || !tokenText(json, token, value, sizeof(value))) {
+        return false;
+    }
+    for (char* p = value; *p != '\0'; ++p) {
+        *p = static_cast<char>(std::tolower(static_cast<unsigned char>(*p)));
+    }
+    if (std::strcmp(value, "true") == 0 || std::strcmp(value, "1") == 0 || std::strcmp(value, "on") == 0) {
+        *out = true;
+        return true;
+    }
+    if (std::strcmp(value, "false") == 0 || std::strcmp(value, "0") == 0 || std::strcmp(value, "off") == 0) {
+        *out = false;
+        return true;
+    }
+    return false;
+}
+
+bool parseJsonIntValue(const char* json, const jsmntok_t& token, int* out) {
+    char value[24] = {};
+    if (out == nullptr || !tokenText(json, token, value, sizeof(value))) {
+        return false;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || (end != nullptr && *end != '\0')) {
+        return false;
+    }
+    *out = static_cast<int>(parsed);
+    return true;
+}
+
+int skipJsonToken(const jsmntok_t* tokens, int count, int index) {
+    if (tokens == nullptr || index < 0 || index >= count) {
+        return index + 1;
+    }
+    const jsmntok_t& token = tokens[index];
+    int next = index + 1;
+    if (token.type == JSMN_OBJECT) {
+        for (int i = 0; i < token.size && next < count; ++i) {
+            next = skipJsonToken(tokens, count, next);
+            next = skipJsonToken(tokens, count, next);
+        }
+    } else if (token.type == JSMN_ARRAY) {
+        for (int i = 0; i < token.size && next < count; ++i) {
+            next = skipJsonToken(tokens, count, next);
+        }
+    }
+    return next;
+}
+
+bool applyDeviceCfgJson(const char* json, size_t len, device_settings::Settings* out, char* error, size_t error_len) {
+    if (json == nullptr || out == nullptr) {
+        std::snprintf(error, error_len, "invalid request");
+        return false;
+    }
+
+    jsmn_parser parser;
+    jsmntok_t tokens[80] = {};
+    jsmn_init(&parser);
+    const int count = jsmn_parse(&parser, json, len, tokens, sizeof(tokens) / sizeof(tokens[0]));
+    if (count < 1 || tokens[0].type != JSMN_OBJECT) {
+        std::snprintf(error, error_len, "invalid JSON object");
+        return false;
+    }
+
+    int i = 1;
+    for (int field = 0; field < tokens[0].size && i + 1 < count; ++field) {
+        const jsmntok_t& key = tokens[i];
+        const jsmntok_t& value = tokens[i + 1];
+        const int next = skipJsonToken(tokens, count, i + 1);
+        char text[192] = {};
+        int number = 0;
+        bool boolean = false;
+
+        if (tokenEquals(json, key, "device_name") && tokenText(json, value, out->deviceName, sizeof(out->deviceName))) { i = next; continue; }
+        if (tokenEquals(json, key, "wifi_ssid") && tokenText(json, value, out->wifiSsid, sizeof(out->wifiSsid))) { i = next; continue; }
+        if (tokenEquals(json, key, "wifi_pass") && tokenText(json, value, out->wifiPassword, sizeof(out->wifiPassword))) { i = next; continue; }
+        if (tokenEquals(json, key, "hk_code") && tokenText(json, value, out->homeKitCode, sizeof(out->homeKitCode))) { i = next; continue; }
+        if (tokenEquals(json, key, "hk_mfr") && tokenText(json, value, out->homeKitManufacturer, sizeof(out->homeKitManufacturer))) { i = next; continue; }
+        if (tokenEquals(json, key, "hk_model") && tokenText(json, value, out->homeKitModel, sizeof(out->homeKitModel))) { i = next; continue; }
+        if (tokenEquals(json, key, "hk_serial") && tokenText(json, value, out->homeKitSerial, sizeof(out->homeKitSerial))) { i = next; continue; }
+        if (tokenEquals(json, key, "hk_setupid") && tokenText(json, value, out->homeKitSetupId, sizeof(out->homeKitSetupId))) { i = next; continue; }
+        if (tokenEquals(json, key, "use_real") && parseJsonBoolValue(json, value, &boolean)) {
+            out->useRealCn105 = boolean;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "led_on") && parseJsonBoolValue(json, value, &boolean)) {
+            out->statusLedEnabled = boolean;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "led_pin") && parseJsonIntValue(json, value, &number)) {
+            out->statusLedPin = number;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "rx_pin") && parseJsonIntValue(json, value, &number)) {
+            out->cn105RxPin = number;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "tx_pin") && parseJsonIntValue(json, value, &number)) {
+            out->cn105TxPin = number;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "baud") && parseJsonIntValue(json, value, &number)) {
+            out->cn105BaudRate = number;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "data_bits") && parseJsonIntValue(json, value, &number)) {
+            out->cn105DataBits = number;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "parity") && tokenText(json, value, text, sizeof(text))) {
+            char parity = 'E';
+            if (!device_settings::parseCn105Parity(text, &parity)) {
+                std::snprintf(error, error_len, "invalid parity");
+                return false;
+            }
+            out->cn105Parity = parity;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "stop_bits") && parseJsonIntValue(json, value, &number)) {
+            out->cn105StopBits = number;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "rx_pull") && parseJsonBoolValue(json, value, &boolean)) {
+            out->cn105RxPullupEnabled = boolean;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "tx_od") && parseJsonBoolValue(json, value, &boolean)) {
+            out->cn105TxOpenDrain = boolean;
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "poll_on") && parseJsonIntValue(json, value, &number)) {
+            out->pollIntervalActiveMs = static_cast<uint32_t>(number);
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "poll_off") && parseJsonIntValue(json, value, &number)) {
+            out->pollIntervalOffMs = static_cast<uint32_t>(number);
+            i = next;
+            continue;
+        }
+        if (tokenEquals(json, key, "log_level") && tokenText(json, value, text, sizeof(text))) {
+            esp_log_level_t level = ESP_LOG_INFO;
+            if (!device_settings::parseLogLevel(text, &level)) {
+                std::snprintf(error, error_len, "invalid log_level");
+                return false;
+            }
+            out->logLevel = level;
+            i = next;
+            continue;
+        }
+        i = next;
+    }
+
+    return true;
+}
+
 esp_err_t rootHandler(httpd_req_t* req) {
     return web_pages::sendRoot(req);
 }
 
-esp_err_t debugHandler(httpd_req_t* req) {
-    return web_pages::sendDebug(req);
-}
-
 esp_err_t logsHandler(httpd_req_t* req) {
     return web_pages::sendLogs(req);
-}
-
-esp_err_t filesHandler(httpd_req_t* req) {
-    return web_pages::sendFiles(req);
 }
 
 const char* downloadFileName(const char* path) {
@@ -818,6 +1065,42 @@ esp_err_t configSaveHandler(httpd_req_t* req) {
     return web_http::sendText(req, "application/json", response);
 }
 
+esp_err_t deviceCfgJsonGetHandler(httpd_req_t* req) {
+    const std::string body = deviceCfgJson();
+    return web_http::sendText(req, "application/json", body.c_str());
+}
+
+esp_err_t deviceCfgJsonPostHandler(httpd_req_t* req) {
+    char body[4096] = {};
+    if (!readBody(req, body, sizeof(body))) {
+        return web_http::sendJsonError(req, "failed to read JSON body");
+    }
+
+    device_settings::Settings next = device_settings::get();
+    char error[128] = {};
+    if (!applyDeviceCfgJson(body, std::strlen(body), &next, error, sizeof(error))) {
+        return web_http::sendJsonError(req, error);
+    }
+
+    bool reboot_required = false;
+    char message[192] = {};
+    if (!device_settings::save(next, &reboot_required, message, sizeof(message))) {
+        return web_http::sendJsonError(req, message);
+    }
+
+    platform_log::applyConfiguredLogLevel();
+
+    char escaped[256] = {};
+    web_http::jsonEscape(message, escaped, sizeof(escaped));
+    char response[512] = {};
+    std::snprintf(response,
+                  sizeof(response),
+                  "{\"ok\":true,\"reboot_required\":%s,\"message\":\"%s\"}",
+                  reboot_required ? "true" : "false",
+                  escaped);
+    return web_http::sendText(req, "application/json", response);
+}
+
 esp_err_t assetHandler(httpd_req_t* req) {
     return web_pages::sendAsset(req);
 }
@@ -894,29 +1177,6 @@ esp_err_t liveLogHandler(httpd_req_t* req) {
     return web_http::sendText(req, "application/json", body.c_str());
 }
 
-esp_err_t filesListHandler(httpd_req_t* req) {
-    char query[256] = {};
-    web_http::readQuery(req, query, sizeof(query));
-    char dir[160] = "/";
-    web_http::queryValue(query, "dir", dir, sizeof(dir));
-    const std::string body = platform_fs::listJson(dir);
-    return web_http::sendText(req, "application/json", body.c_str());
-}
-
-esp_err_t fileDownloadHandler(httpd_req_t* req) {
-    char query[256] = {};
-    web_http::readQuery(req, query, sizeof(query));
-    char path[160] = {};
-    if (!web_http::queryValue(query, "path", path, sizeof(path))) {
-        return web_http::sendJsonError(req, "missing path");
-    }
-
-    FILE* file = platform_fs::openRead(path);
-    char normalized[160] = {};
-    platform_fs::normalizePath(path, normalized, sizeof(normalized));
-    return streamFile(req, file, "application/octet-stream", normalized);
-}
-
 esp_err_t fileDeleteHandler(httpd_req_t* req) {
     char query[256] = {};
     web_http::readQuery(req, query, sizeof(query));
@@ -935,94 +1195,6 @@ esp_err_t fileDeleteHandler(httpd_req_t* req) {
         httpd_resp_set_status(req, "400 Bad Request");
     }
     return web_http::sendText(req, "application/json", body);
-}
-
-esp_err_t fileCreateHandler(httpd_req_t* req) {
-    char query[256] = {};
-    web_http::readQuery(req, query, sizeof(query));
-    char path[160] = {};
-    if (!web_http::queryValue(query, "path", path, sizeof(path))) {
-        return web_http::sendJsonError(req, "missing path");
-    }
-
-    char message[96] = {};
-    const bool ok = platform_fs::createFile(path, "", 0, message, sizeof(message));
-    char escaped[128] = {};
-    web_http::jsonEscape(message, escaped, sizeof(escaped));
-    char body[192] = {};
-    std::snprintf(body, sizeof(body), "{\"ok\":%s,\"message\":\"%s\"}", ok ? "true" : "false", escaped);
-    if (!ok) {
-        httpd_resp_set_status(req, "400 Bad Request");
-    }
-    return web_http::sendText(req, "application/json", body);
-}
-
-esp_err_t dirCreateHandler(httpd_req_t* req) {
-    char query[256] = {};
-    web_http::readQuery(req, query, sizeof(query));
-    char path[160] = {};
-    if (!web_http::queryValue(query, "path", path, sizeof(path))) {
-        return web_http::sendJsonError(req, "missing path");
-    }
-
-    char message[96] = {};
-    const bool ok = platform_fs::createDirectory(path, message, sizeof(message));
-    char escaped[128] = {};
-    web_http::jsonEscape(message, escaped, sizeof(escaped));
-    char body[192] = {};
-    std::snprintf(body, sizeof(body), "{\"ok\":%s,\"message\":\"%s\"}", ok ? "true" : "false", escaped);
-    if (!ok) {
-        httpd_resp_set_status(req, "400 Bad Request");
-    }
-    return web_http::sendText(req, "application/json", body);
-}
-
-esp_err_t fileUploadHandler(httpd_req_t* req) {
-    char query[256] = {};
-    web_http::readQuery(req, query, sizeof(query));
-    char path[160] = {};
-    if (!web_http::queryValue(query, "path", path, sizeof(path))) {
-        return web_http::sendJsonError(req, "missing path");
-    }
-
-    const platform_fs::Status fs = platform_fs::getStatus();
-    const size_t existing = platform_fs::fileSize(path);
-    if (req->content_len > fs.freeBytes + existing) {
-        return web_http::sendJsonError(req, "not enough SPIFFS space for upload");
-    }
-
-    FILE* file = platform_fs::openWrite(path, "w");
-    if (file == nullptr) {
-        return web_http::sendJsonError(req, "failed to open upload file");
-    }
-
-    char buffer[app_config::kPersistentLogReadChunkBytes] = {};
-    int remaining = req->content_len;
-    size_t written_total = 0;
-    while (remaining > 0) {
-        const int recv = httpd_req_recv(req, buffer, std::min<int>(remaining, sizeof(buffer)));
-        if (recv <= 0) {
-            std::fclose(file);
-            return web_http::sendJsonError(req, "upload receive failed");
-        }
-        const size_t written = std::fwrite(buffer, 1, static_cast<size_t>(recv), file);
-        written_total += written;
-        remaining -= recv;
-        if (written < static_cast<size_t>(recv)) {
-            std::fclose(file);
-            return web_http::sendJsonError(req, "partial upload write");
-        }
-    }
-    std::fclose(file);
-
-    char normalized[160] = {};
-    platform_fs::normalizePath(path, normalized, sizeof(normalized));
-    std::string body = "{\"ok\":true,\"path\":\"";
-    body += platform_fs::jsonEscape(normalized);
-    body += "\",\"bytes\":";
-    body += std::to_string(written_total);
-    body += "}";
-    return web_http::sendText(req, "application/json", body.c_str());
 }
 
 esp_err_t rebootHandler(httpd_req_t* req) {
@@ -1198,15 +1370,15 @@ esp_err_t otaApplyHandler(httpd_req_t* req) {
 
 const web_http::Route ROUTES[] = {
     { "/", HTTP_GET, rootHandler },
-    { "/debug", HTTP_GET, debugHandler },
     { "/logs", HTTP_GET, logsHandler },
-    { "/files", HTTP_GET, filesHandler },
     { "/admin", HTTP_GET, adminHandler },
     { "/assets/*", HTTP_GET, assetHandler },
     { "/api/health", HTTP_GET, healthHandler },
     { "/api/status", HTTP_GET, statusHandler },
     { "/api/reboot", HTTP_POST, rebootHandler },
     { "/api/config/save", HTTP_POST, configSaveHandler },
+    { "/api/config/device-cfg-json", HTTP_GET, deviceCfgJsonGetHandler },
+    { "/api/config/device-cfg-json", HTTP_POST, deviceCfgJsonPostHandler },
     { "/api/maintenance/reset-homekit", HTTP_POST, resetHomeKitHandler },
     { "/api/maintenance/clear-logs", HTTP_POST, clearLogsHandler },
     { "/api/maintenance/clear-spiffs", HTTP_POST, clearSpiffsHandler },
@@ -1216,12 +1388,7 @@ const web_http::Route ROUTES[] = {
     { "/api/logs", HTTP_GET, logsListHandler },
     { "/api/log/file", HTTP_GET, logFileHandler },
     { "/api/log/live", HTTP_GET, liveLogHandler },
-    { "/api/files", HTTP_GET, filesListHandler },
-    { "/api/files/download", HTTP_GET, fileDownloadHandler },
     { "/api/files/delete", HTTP_POST, fileDeleteHandler },
-    { "/api/files/create-file", HTTP_POST, fileCreateHandler },
-    { "/api/files/create-dir", HTTP_POST, dirCreateHandler },
-    { "/api/files/upload", HTTP_POST, fileUploadHandler },
     { "/api/cn105/mock/status", HTTP_GET, cn105MockStatusHandler },
     { "/api/cn105/mock/build-set", HTTP_GET, cn105BuildSetHandler },
     { "/api/cn105/mock/build-set", HTTP_POST, cn105BuildSetHandler },

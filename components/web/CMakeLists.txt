@@ -8,12 +8,8 @@ set(WEB_ASSET_SOURCES
     "${WEB_PAGES_DIR}/tabs.html"
     "${WEB_PAGES_DIR}/root.html"
     "${WEB_PAGES_DIR}/root.js"
-    "${WEB_PAGES_DIR}/debug.html"
-    "${WEB_PAGES_DIR}/debug.js"
     "${WEB_PAGES_DIR}/logs.html"
     "${WEB_PAGES_DIR}/logs.js"
-    "${WEB_PAGES_DIR}/files.html"
-    "${WEB_PAGES_DIR}/files.js"
     "${WEB_PAGES_DIR}/admin.html"
     "${WEB_PAGES_DIR}/admin.js"
     "${CMAKE_CURRENT_LIST_DIR}/tools/build_assets.py")
@@ -40,7 +36,7 @@ idf_component_register(SRCS "web_http.cpp"
                             "web_server.cpp"
                             "${WEB_ASSETS_CPP}"
                        INCLUDE_DIRS "include"
-                       REQUIRES app_config app_update build_info cn105_transport core_cn105 device_settings esp_http_server esp_timer homekit_bridge platform_fs platform_log platform_maintenance platform_provisioning platform_uart platform_wifi log)
+                       REQUIRES app_config app_update build_info cn105_transport core_cn105 device_settings esp_http_server esp_timer homekit_bridge jsmn platform_fs platform_log platform_maintenance platform_provisioning platform_uart platform_wifi log)
 
 foreach(asset_file IN LISTS WEB_GZIP_ASSET_FILES)
     target_add_binary_data(${COMPONENT_LIB} "${asset_file}" BINARY)

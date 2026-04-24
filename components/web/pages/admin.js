@@ -9,6 +9,117 @@ let settingsLoaded=false;
 let otaUploading=false;
 let otaUploadResult=null;
 let otaApplying=false;
+let cn105ModalSnapshot=null;
+let settingsDirty=false;
+
+const cn105AdvancedFieldIds=[
+  'cfg-cn105-rx-pin',
+  'cfg-cn105-tx-pin',
+  'cfg-cn105-baud',
+  'cfg-cn105-data-bits',
+  'cfg-cn105-parity',
+  'cfg-cn105-stop-bits',
+  'cfg-cn105-rx-pullup',
+  'cfg-cn105-tx-open-drain',
+  'cfg-poll-active',
+  'cfg-poll-off'
+];
+const settingsFieldIds=[
+  'cfg-device-name',
+  'cfg-wifi-ssid',
+  'cfg-wifi-password',
+  'cfg-homekit-code',
+  'cfg-homekit-setup-id',
+  'cfg-homekit-manufacturer',
+  'cfg-homekit-model',
+  'cfg-homekit-serial',
+  'cfg-led-enabled',
+  'cfg-led-pin',
+  'cfg-cn105-mode',
+  'cfg-log-level',
+  ...cn105AdvancedFieldIds
+];
+
+function cn105FormatSummary(){
+  const dataBits=$('cfg-cn105-data-bits').value||'8';
+  const parity=$('cfg-cn105-parity').value||'E';
+  const stopBits=$('cfg-cn105-stop-bits').value||'1';
+  const baud=$('cfg-cn105-baud').value||'2400';
+  const rx=$('cfg-cn105-rx-pin').value||'26';
+  const tx=$('cfg-cn105-tx-pin').value||'32';
+  return `${dataBits}${parity}${stopBits} ${baud} RX G${rx} TX G${tx}`;
+}
+
+function updateCn105AdvancedSummary(){
+  $('cn105-advanced-btn').textContent=cn105FormatSummary();
+}
+
+function setSettingsDirty(dirty){
+  settingsDirty=dirty;
+  $('cfg-save-btn').disabled=!dirty;
+  $('cn105-advanced-btn').classList.toggle('dirty',dirty);
+}
+
+function markSettingsDirty(){
+  setSettingsDirty(true);
+}
+
+function captureCn105AdvancedValues(){
+  const values={};
+  cn105AdvancedFieldIds.forEach(id=>{values[id]=$(id).value;});
+  return values;
+}
+
+function restoreCn105AdvancedValues(values){
+  if(!values)return;
+  cn105AdvancedFieldIds.forEach(id=>{
+    if(Object.prototype.hasOwnProperty.call(values,id))$(id).value=values[id];
+  });
+  updateCn105AdvancedSummary();
+}
+
+function openCn105Modal(){
+  cn105ModalSnapshot=captureCn105AdvancedValues();
+  updateCn105AdvancedSummary();
+  $('cn105-modal').classList.add('open');
+  $('cn105-modal').setAttribute('aria-hidden','false');
+}
+
+function closeCn105Modal(keepChanges,e){
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  if(!keepChanges)restoreCn105AdvancedValues(cn105ModalSnapshot);
+  cn105ModalSnapshot=null;
+  updateCn105AdvancedSummary();
+  if(keepChanges)markSettingsDirty();
+  $('cn105-modal').classList.remove('open');
+  $('cn105-modal').setAttribute('aria-hidden','true');
+}
+
+function renderTransportStatus(transportStatus){
+  if(!transportStatus){
+    $('tp').textContent='暂无传输层状态';
+    return;
+  }
+  $('tp').textContent=
+    'Phase: '+transportStatus.phase+'\nConnected: '+transportStatus.connected+
+    '\nConnect Attempts: '+transportStatus.connect_attempts+'\nPoll Cycles: '+transportStatus.poll_cycles+
+    '\nRX Packets: '+transportStatus.rx_packets+' / Errors: '+transportStatus.rx_errors+
+    '\nTX Packets: '+transportStatus.tx_packets+'\nSets Pending: '+transportStatus.sets_pending+
+    (transportStatus.last_error?'\nLast Error: '+transportStatus.last_error:'');
+}
+
+async function loadTransport(){
+  try{
+    const r=await fetch('/api/status');
+    const j=await r.json();
+    renderTransportStatus(j.cn105&&j.cn105.transport_status);
+  }catch(e){
+    $('tp').textContent='错误: '+e;
+  }
+}
 
 function formatHomeKitCode(code){
   const digits=String(code||'').replace(/\D/g,'');
@@ -114,6 +225,67 @@ function closeNoticeModal(e){
   $('notice-modal').setAttribute('aria-hidden','true');
 }
 
+async function openDeviceCfgModal(){
+  const modal=$('device-cfg-modal');
+  const editor=$('device-cfg-editor');
+  $('device-cfg-msg').textContent='读取 device_cfg 中...';
+  editor.value='加载中...';
+  $('device-cfg-save').disabled=false;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+  try{
+    const r=await fetch('/api/config/device-cfg-json');
+    const text=await r.text();
+    if(!r.ok){
+      editor.value='';
+      $('device-cfg-msg').textContent='读取失败: '+text;
+      return;
+    }
+    editor.value=text;
+    $('device-cfg-msg').textContent='请谨慎编辑。点击取消不会写入任何内容。';
+    editor.focus();
+  }catch(e){
+    editor.value='';
+    $('device-cfg-msg').textContent='读取失败: '+e;
+  }
+}
+
+function closeDeviceCfgModal(e){
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  $('device-cfg-modal').classList.remove('open');
+  $('device-cfg-modal').setAttribute('aria-hidden','true');
+}
+
+async function saveDeviceCfgJson(){
+  let parsed=null;
+  try{
+    parsed=JSON.parse($('device-cfg-editor').value);
+  }catch(e){
+    $('device-cfg-msg').textContent='JSON 格式错误: '+e.message;
+    return;
+  }
+  $('device-cfg-save').disabled=true;
+  $('device-cfg-msg').textContent='正在写入 NVS...';
+  try{
+    const r=await fetch('/api/config/device-cfg-json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsed)});
+    const j=await r.json();
+    if(!j.ok){
+      $('device-cfg-save').disabled=false;
+      $('device-cfg-msg').textContent='写入失败: '+(j.error||j.message||'unknown');
+      return;
+    }
+    closeDeviceCfgModal();
+    openRestartModal('NVS 已写入','device_cfg 已保存。设备正在重启，页面将在 5 秒后自动刷新。');
+    await fetch('/api/reboot',{method:'POST'}).catch(()=>{});
+  }catch(e){
+    $('device-cfg-save').disabled=false;
+    $('device-cfg-msg').textContent='写入失败: '+e;
+  }
+}
+
 async function saveConfig(){
   const params=new URLSearchParams();
   const homekitCode=normalizeHomeKitCodeInput($('cfg-homekit-code').value.trim());
@@ -144,8 +316,8 @@ async function saveConfig(){
   params.set('log_level',$('cfg-log-level').value);
   params.set('poll_active_ms',$('cfg-poll-active').value);
   params.set('poll_off_ms',$('cfg-poll-off').value);
-  const button=$('cfg-save-btn');
-  button.disabled=true;
+    const button=$('cfg-save-btn');
+    button.disabled=true;
   $('msg').textContent='设置保存中，成功后会自动重启...';
   try{
     const r=await fetch('/api/config/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()});
@@ -394,6 +566,7 @@ async function loadInfo(){
     $('i-prov-remaining').textContent=prov.active?formatDuration(prov.remaining_ms||0):'--';
     $('i-prov-result').textContent=prov.last_result||'--';
     $('i-prov-pending').textContent=prov.pending_ssid||'--';
+    renderTransportStatus(j.cn105&&j.cn105.transport_status);
     if(!settingsLoaded){
       $('cfg-device-name').value=(j.config&&j.config.device_name)||j.device||'';
       $('cfg-wifi-ssid').value=(j.config&&j.config.wifi_ssid)||'';
@@ -418,7 +591,9 @@ async function loadInfo(){
       $('cfg-log-level').value=(j.config&&j.config.log_level)||'info';
       $('cfg-poll-active').value=(j.config&&j.config.poll_active_ms)||15000;
       $('cfg-poll-off').value=(j.config&&j.config.poll_off_ms)||60000;
+      updateCn105AdvancedSummary();
       settingsLoaded=true;
+      setSettingsDirty(false);
     }
   }catch(e){$('msg').textContent='\u52a0\u8f7d\u5931\u8d25: '+e;}
 }
@@ -441,6 +616,17 @@ async function maintenance(url,label,prompt){
 $('hk-modal-btn').addEventListener('click',openHomeKitModal);
 $('hk-modal-close').addEventListener('click',closeHomeKitModal);
 $('cfg-save-btn').addEventListener('click',saveConfig);
+$('transport-refresh-btn').addEventListener('click',loadTransport);
+$('cn105-advanced-btn').addEventListener('click',openCn105Modal);
+$('cn105-modal-confirm').addEventListener('click',e=>closeCn105Modal(true,e));
+$('cn105-modal-cancel').addEventListener('click',e=>closeCn105Modal(false,e));
+cn105AdvancedFieldIds.forEach(id=>$(id).addEventListener('change',updateCn105AdvancedSummary));
+cn105AdvancedFieldIds.forEach(id=>$(id).addEventListener('input',updateCn105AdvancedSummary));
+settingsFieldIds.forEach(id=>$(id).addEventListener('change',markSettingsDirty));
+settingsFieldIds.forEach(id=>$(id).addEventListener('input',markSettingsDirty));
+$('device-cfg-modal-btn').addEventListener('click',openDeviceCfgModal);
+$('device-cfg-cancel').addEventListener('click',closeDeviceCfgModal);
+$('device-cfg-save').addEventListener('click',saveDeviceCfgJson);
 $('ota-file').addEventListener('change',uploadOta);
 $('ota-modal-cancel').addEventListener('click',handleOtaCancel);
 $('ota-modal-confirm').addEventListener('click',handleOtaConfirm);
@@ -449,10 +635,14 @@ $('cfg-homekit-code').addEventListener('blur',()=>{$('cfg-homekit-code').value=n
 document.querySelectorAll('[data-close-modal="hk-modal"]').forEach(el=>el.addEventListener('click',closeHomeKitModal));
 document.querySelectorAll('[data-close-modal="ota-modal"]').forEach(el=>el.addEventListener('click',handleOtaCancel));
 document.querySelectorAll('[data-close-modal="notice-modal"]').forEach(el=>el.addEventListener('click',closeNoticeModal));
+document.querySelectorAll('[data-close-modal="cn105-modal"]').forEach(el=>el.addEventListener('click',e=>closeCn105Modal(false,e)));
+document.querySelectorAll('[data-close-modal="device-cfg-modal"]').forEach(el=>el.addEventListener('click',closeDeviceCfgModal));
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&$('hk-modal').classList.contains('open'))closeHomeKitModal();
   if(e.key==='Escape'&&$('ota-modal').classList.contains('open'))handleOtaCancel(e);
   if(e.key==='Escape'&&$('notice-modal').classList.contains('open')&&!$('notice-close').disabled)closeNoticeModal(e);
+  if(e.key==='Escape'&&$('cn105-modal').classList.contains('open'))closeCn105Modal(false,e);
+  if(e.key==='Escape'&&$('device-cfg-modal').classList.contains('open'))closeDeviceCfgModal(e);
 });
 
 loadInfo();

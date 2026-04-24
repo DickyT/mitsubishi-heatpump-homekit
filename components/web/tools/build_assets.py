@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 
-PAGES = ("root", "debug", "logs", "files", "admin")
+PAGES = ("root", "logs", "admin")
 MAX_CHUNK_BYTES = 900
 
 
