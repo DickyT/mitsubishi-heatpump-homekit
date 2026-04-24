@@ -11,6 +11,7 @@ let otaUploadResult=null;
 let otaApplying=false;
 let cn105ModalSnapshot=null;
 let settingsDirty=false;
+let cn105AdvancedDirty=false;
 
 const cn105AdvancedFieldIds=[
   'cfg-cn105-rx-pin',
@@ -35,8 +36,7 @@ const settingsFieldIds=[
   'cfg-cn105-mode',
   'cfg-log-level',
   'cfg-poll-active',
-  'cfg-poll-off',
-  ...cn105AdvancedFieldIds
+  'cfg-poll-off'
 ];
 
 function cn105FormatSummary(){
@@ -50,13 +50,17 @@ function cn105FormatSummary(){
 }
 
 function updateCn105AdvancedSummary(){
-  $('cn105-advanced-btn').textContent=(settingsDirty?'* ':'')+cn105FormatSummary();
+  $('cn105-advanced-btn').textContent=(cn105AdvancedDirty?'* ':'')+cn105FormatSummary();
 }
 
 function setSettingsDirty(dirty){
   settingsDirty=dirty;
   $('cfg-save-btn').disabled=!dirty;
   $('cfg-save-btn').textContent=dirty?'* Save and Reboot':'Save and Reboot';
+}
+
+function setCn105AdvancedDirty(dirty){
+  cn105AdvancedDirty=dirty;
   $('cn105-advanced-btn').classList.toggle('dirty',dirty);
   updateCn105AdvancedSummary();
 }
@@ -69,6 +73,11 @@ function captureCn105AdvancedValues(){
   const values={};
   cn105AdvancedFieldIds.forEach(id=>{values[id]=$(id).value;});
   return values;
+}
+
+function cn105AdvancedChanged(values){
+  if(!values)return false;
+  return cn105AdvancedFieldIds.some(id=>$(id).value!==values[id]);
 }
 
 function restoreCn105AdvancedValues(values){
@@ -91,10 +100,14 @@ function closeCn105Modal(keepChanges,e){
     e.preventDefault();
     e.stopPropagation();
   }
+  const changed=keepChanges&&cn105AdvancedChanged(cn105ModalSnapshot);
   if(!keepChanges)restoreCn105AdvancedValues(cn105ModalSnapshot);
-  cn105ModalSnapshot=null;
   updateCn105AdvancedSummary();
-  if(keepChanges)markSettingsDirty();
+  cn105ModalSnapshot=null;
+  if(changed){
+    setCn105AdvancedDirty(true);
+    markSettingsDirty();
+  }
   $('cn105-modal').classList.remove('open');
   $('cn105-modal').setAttribute('aria-hidden','true');
 }
@@ -590,6 +603,7 @@ async function loadInfo(){
       $('cfg-poll-off').value=(j.config&&j.config.poll_off_ms)||60000;
       updateCn105AdvancedSummary();
       settingsLoaded=true;
+      setCn105AdvancedDirty(false);
       setSettingsDirty(false);
     }
   }catch(e){$('msg').textContent='Load failed: '+e;}
