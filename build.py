@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +43,11 @@ IDF_PATH = Path.home() / ".espressif" / IDF_VERSION / "esp-idf"
 IDF_PYTHON = IDF_TOOLS_PATH / "python" / IDF_VERSION / "venv" / "bin" / "python"
 IDF_SCRIPT = IDF_PATH / "tools" / "idf.py"
 ESPTOOL_SCRIPT = IDF_PATH / "components" / "esptool_py" / "esptool" / "esptool.py"
+KIRI_PACKAGE_FORMAT = "kiri-firmware-package-v1"
+KIRI_PROJECT_ID = "kiri-bridge"
+KIRI_PRODUCT_NAME = "Kiri Bridge"
+KIRI_WEBSITE = "https://kiri.dkt.moe"
+KIRI_SOURCE = "https://github.com/DickyT/kiri-homekit"
 
 APP_ROOTS = {
     "main": REPO_ROOT,
@@ -245,6 +252,162 @@ def load_json(path: Path) -> dict:
         return json.load(handle)
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_size(value: str) -> int:
+    normalized = value.strip().lower()
+    if normalized.startswith("0x"):
+        return int(normalized, 16)
+    if normalized.endswith("mb"):
+        return int(normalized[:-2]) * 1024 * 1024
+    if normalized.endswith("kb"):
+        return int(normalized[:-2]) * 1024
+    return int(normalized, 10)
+
+
+def load_partitions(project_root: Path) -> dict[str, dict[str, int | str]]:
+    partitions_path = project_root / "partitions.csv"
+    if not partitions_path.exists():
+        fail(f"Missing partition table CSV: {partitions_path}")
+
+    partitions: dict[str, dict[str, int | str]] = {}
+    for raw_line in partitions_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        fields = [field.strip() for field in line.split(",")]
+        if len(fields) < 5:
+            continue
+        name, part_type, subtype, offset, size = fields[:5]
+        partitions[name] = {
+            "type": part_type,
+            "subtype": subtype,
+            "offset": parse_size(offset),
+            "size": parse_size(size),
+        }
+    return partitions
+
+
+def parse_flash_size(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return parse_size(value)
+    except ValueError:
+        return None
+
+
+def part_package_name(offset: str, source_relative_path: str, project_name: str) -> str:
+    normalized = source_relative_path.replace("\\", "/")
+    if normalized.endswith("bootloader.bin"):
+        return "bootloader.bin"
+    if normalized.endswith("partition-table.bin"):
+        return "partition-table.bin"
+    if normalized.endswith("ota_data_initial.bin"):
+        return "ota_data_initial.bin"
+    if normalized.endswith(f"{project_name}.bin"):
+        return "app.bin"
+    return Path(normalized).name
+
+
+def part_logical_name(package_name: str) -> str:
+    if package_name == "partition-table.bin":
+        return "partition_table"
+    if package_name == "ota_data_initial.bin":
+        return "ota_data"
+    if package_name == "app.bin":
+        return "app"
+    return package_name.removesuffix(".bin").replace("-", "_")
+
+
+def create_kiri_package(
+    version_dir: Path,
+    build_dir: Path,
+    project_root: Path,
+    app: str,
+    project_name: str,
+    version: str,
+    desc: dict,
+    flash_info: dict,
+) -> Path:
+    partitions = load_partitions(project_root)
+    flash_settings = flash_info.get("flash_settings", {})
+    flash_files = flash_info.get("flash_files", {})
+
+    package_parts: list[dict[str, object]] = []
+    sha256: dict[str, str] = {}
+    package_sources: dict[str, Path] = {}
+    for offset, relative_path in sorted(flash_files.items(), key=lambda item: int(item[0], 16)):
+        source = build_dir / relative_path
+        if not source.exists():
+            fail(f"Build output is missing: {source}")
+        package_path = part_package_name(offset, relative_path, project_name)
+        digest = sha256_file(source)
+        size = source.stat().st_size
+        sha256[package_path] = digest
+        package_sources[package_path] = source
+        package_parts.append({
+            "name": part_logical_name(package_path),
+            "offset": int(offset, 16),
+            "path": package_path,
+            "size": size,
+            "sha256": digest,
+        })
+
+    app_part = next((part for part in package_parts if part["name"] == "app"), None)
+    if app_part is None:
+        fail("Unable to identify app.bin in flash files")
+
+    app_offset = int(app_part["offset"])
+    app_partition = next(
+        (partition for partition in partitions.values()
+         if partition["type"] == "app" and int(partition["offset"]) == app_offset),
+        None,
+    )
+    if app_partition is None:
+        fail(f"Unable to find OTA app partition at offset 0x{app_offset:x}")
+
+    manifest = {
+        "format": KIRI_PACKAGE_FORMAT,
+        "project": KIRI_PROJECT_ID,
+        "product": KIRI_PRODUCT_NAME,
+        "website": KIRI_WEBSITE,
+        "source": KIRI_SOURCE,
+        "variant": "app" if app == "main" else "installer",
+        "build_app": app,
+        "project_name": project_name,
+        "version": version,
+        "target": desc.get("target", "esp32"),
+        "chipFamily": str(desc.get("target", "esp32")).upper(),
+        "flashSize": parse_flash_size(flash_settings.get("flash_size")),
+        "flash_settings": flash_settings,
+        "extra_esptool_args": flash_info.get("extra_esptool_args", {}),
+        "app": {
+            "offset": app_offset,
+            "maxSize": int(app_partition["size"]),
+            "path": "app.bin",
+            "size": int(app_part["size"]),
+            "sha256": app_part["sha256"],
+        },
+        "parts": package_parts,
+        "sha256": sha256,
+        "partitions": partitions,
+    }
+
+    package_path = version_dir / f"{project_name}_{version}.kiri"
+    with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as package:
+        package.writestr("manifest.json", json.dumps(manifest, indent=2) + "\n")
+        for package_name, source in package_sources.items():
+            package.write(source, package_name)
+    return package_path
+
+
 def build_dir_for(project_root: Path) -> Path:
     return project_root / "build"
 
@@ -275,6 +438,17 @@ def export_artifacts(project_root: Path, app: str) -> Path:
             }
         )
 
+    kiri_package_path = create_kiri_package(
+        version_dir=version_dir,
+        build_dir=build_dir,
+        project_root=project_root,
+        app=app,
+        project_name=project_name,
+        version=version,
+        desc=desc,
+        flash_info=flash_info,
+    )
+
     manifest = {
         "app": app,
         "project_name": project_name,
@@ -284,10 +458,12 @@ def export_artifacts(project_root: Path, app: str) -> Path:
         "flash_settings": flash_info.get("flash_settings", {}),
         "extra_esptool_args": flash_info.get("extra_esptool_args", {}),
         "files": exported_files,
+        "kiri_package": kiri_package_path.name,
     }
     manifest_path = version_dir / f"{project_name}_{version}_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Exported firmware package: {manifest_path}", flush=True)
+    print(f"Exported Kiri package: {kiri_package_path}", flush=True)
     return manifest_path
 
 
