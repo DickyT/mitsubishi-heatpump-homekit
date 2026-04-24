@@ -18,8 +18,15 @@ struct Status {
     char lastError[96] = "";
 };
 
+struct ApplyResult {
+    bool confirmed = false;
+    uint8_t attempts = 0;
+    char message[96] = "";
+};
+
 esp_err_t start();
 Status getStatus();
 bool queueSetCommand(const cn105_core::SetCommand& command);
+bool queueSetCommandAndConfirm(const cn105_core::SetCommand& command, ApplyResult* result);
 
 }  // namespace cn105_transport

@@ -866,8 +866,9 @@ esp_err_t cn105BuildSetHandler(httpd_req_t* req) {
         (web_http::queryValue(query, "apply", apply_value, sizeof(apply_value)) && std::strcmp(apply_value, "1") == 0);
     if (apply) {
         if (device_settings::useRealCn105()) {
-            if (!cn105_transport::queueSetCommand(command)) {
-                return web_http::sendJsonError(req, "transport queue full");
+            cn105_transport::ApplyResult result{};
+            if (!cn105_transport::queueSetCommandAndConfirm(command, &result)) {
+                return web_http::sendJsonError(req, result.message[0] != '\0' ? result.message : "CN105 confirmation failed");
             }
         } else if (!cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
             return web_http::sendJsonError(req, error);

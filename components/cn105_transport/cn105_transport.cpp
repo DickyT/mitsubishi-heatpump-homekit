@@ -15,6 +15,9 @@
 namespace {
 
 const char* TAG = "cn105_transport";
+constexpr uint8_t kConfirmInfoAttempts = 3;
+constexpr uint32_t kConfirmInfoRetryMs = 100;
+constexpr uint32_t kConfirmInfoFinalWaitMs = 500;
 
 enum class Phase {
     kDisconnected,
@@ -33,6 +36,11 @@ struct TransportState {
     uint32_t rxPackets = 0;
     uint32_t rxErrors = 0;
     uint32_t txPackets = 0;
+    uint32_t setAcks = 0;
+    uint32_t controlInfoUpdates = 0;
+    int64_t lastSetAckUs = 0;
+    int64_t lastControlInfoUs = 0;
+    bool immediateControlInfoRequested = false;
     char lastError[96] = "";
 
     uint8_t rxBuf[cn105_core::kPacketLen] = {};
@@ -51,6 +59,22 @@ struct TransportState {
 
 TransportState ts;
 QueueHandle_t set_queue = nullptr;
+
+struct QueuedSetCommand {
+    bool optimistic = true;
+    bool hasPower = false;
+    char power[16] = "";
+    bool hasMode = false;
+    char mode[16] = "";
+    bool hasTemperatureF = false;
+    int temperatureF = 77;
+    bool hasFan = false;
+    char fan[16] = "";
+    bool hasVane = false;
+    char vane[16] = "";
+    bool hasWideVane = false;
+    char wideVane[32] = "";
+};
 
 const char* phaseName(Phase p) {
     switch (p) {
@@ -74,6 +98,80 @@ bool elapsedMs(int64_t since_us, uint32_t ms) {
 void setError(const char* msg) {
     std::strncpy(ts.lastError, msg, sizeof(ts.lastError) - 1);
     ts.lastError[sizeof(ts.lastError) - 1] = '\0';
+}
+
+void copyString(char* out, size_t out_len, const char* value) {
+    if (out == nullptr || out_len == 0) {
+        return;
+    }
+    if (value == nullptr) {
+        out[0] = '\0';
+        return;
+    }
+    std::strncpy(out, value, out_len - 1);
+    out[out_len - 1] = '\0';
+}
+
+QueuedSetCommand queuedFromCommand(const cn105_core::SetCommand& command, bool optimistic) {
+    QueuedSetCommand queued{};
+    queued.optimistic = optimistic;
+    queued.hasPower = command.hasPower;
+    copyString(queued.power, sizeof(queued.power), command.power);
+    queued.hasMode = command.hasMode;
+    copyString(queued.mode, sizeof(queued.mode), command.mode);
+    queued.hasTemperatureF = command.hasTemperatureF;
+    queued.temperatureF = command.temperatureF;
+    queued.hasFan = command.hasFan;
+    copyString(queued.fan, sizeof(queued.fan), command.fan);
+    queued.hasVane = command.hasVane;
+    copyString(queued.vane, sizeof(queued.vane), command.vane);
+    queued.hasWideVane = command.hasWideVane;
+    copyString(queued.wideVane, sizeof(queued.wideVane), command.wideVane);
+    return queued;
+}
+
+cn105_core::SetCommand commandView(const QueuedSetCommand& queued) {
+    cn105_core::SetCommand command{};
+    command.hasPower = queued.hasPower;
+    command.power = queued.hasPower ? queued.power : nullptr;
+    command.hasMode = queued.hasMode;
+    command.mode = queued.hasMode ? queued.mode : nullptr;
+    command.hasTemperatureF = queued.hasTemperatureF;
+    command.temperatureF = queued.temperatureF;
+    command.hasFan = queued.hasFan;
+    command.fan = queued.hasFan ? queued.fan : nullptr;
+    command.hasVane = queued.hasVane;
+    command.vane = queued.hasVane ? queued.vane : nullptr;
+    command.hasWideVane = queued.hasWideVane;
+    command.wideVane = queued.hasWideVane ? queued.wideVane : nullptr;
+    return command;
+}
+
+bool commandMatchesState(const cn105_core::SetCommand& command) {
+    const cn105_core::MockState state = cn105_core::getMockState();
+    if (command.hasPower && command.power != nullptr && std::strcmp(state.power, command.power) != 0) {
+        return false;
+    }
+    if (command.hasMode && command.mode != nullptr && std::strcmp(state.mode, command.mode) != 0) {
+        return false;
+    }
+    if (command.hasTemperatureF && state.targetTemperatureF != command.temperatureF) {
+        return false;
+    }
+    if (command.hasFan && command.fan != nullptr && std::strcmp(state.fan, command.fan) != 0) {
+        return false;
+    }
+    if (command.hasVane && command.vane != nullptr && std::strcmp(state.vane, command.vane) != 0) {
+        return false;
+    }
+    if (command.hasWideVane && command.wideVane != nullptr && std::strcmp(state.wideVane, command.wideVane) != 0) {
+        return false;
+    }
+    return true;
+}
+
+void requestImmediateControlInfo() {
+    ts.immediateControlInfoRequested = true;
 }
 
 bool uartSend(const uint8_t* data, size_t len) {
@@ -115,7 +213,7 @@ void sendInfoRequest(uint8_t code) {
     }
 }
 
-void sendSetPacket(const cn105_core::SetCommand& command) {
+void sendSetPacket(const cn105_core::SetCommand& command, bool optimistic) {
     cn105_core::Packet packet{};
     char error[96] = {};
     if (!cn105_core::buildSetPacket(command, &packet, error, sizeof(error))) {
@@ -130,11 +228,12 @@ void sendSetPacket(const cn105_core::SetCommand& command) {
         if (command.hasPower && command.power != nullptr && std::strcmp(command.power, "ON") == 0) {
             ts.forceFastPolling = true;
         }
-        // Optimistically mirror the requested state locally so WebUI and
-        // HomeKit don't snap back to stale values while waiting for the next
-        // CN105 INFO poll to come around.
-        if (!cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
-            ESP_LOGW(TAG, "SET optimistic state apply failed: %s", error);
+        if (optimistic) {
+            // HomeKit remains optimistic so the Home app feels responsive; WebUI
+            // uses the confirm path and waits for a real INFO update instead.
+            if (!cn105_core::applySetPacketToMock(packet.bytes, packet.length, error, sizeof(error))) {
+                ESP_LOGW(TAG, "SET optimistic state apply failed: %s", error);
+            }
         }
         ESP_LOGI(TAG, "SET sent");
     }
@@ -191,7 +290,10 @@ void handlePacket(const uint8_t* bytes, size_t len) {
             break;
         case 0x62:
             if (ts.phase == Phase::kAwaitingInfoResponse) {
-                cn105_core::applyInfoResponseToState(bytes, len);
+                if (cn105_core::applyInfoResponseToState(bytes, len) && len > 5 && bytes[5] == 0x02) {
+                    ts.controlInfoUpdates++;
+                    ts.lastControlInfoUs = nowUs();
+                }
                 if (ts.awaitingInfoCode == 0x02) {
                     ts.forceFastPolling = false;
                 }
@@ -200,6 +302,8 @@ void handlePacket(const uint8_t* bytes, size_t len) {
             break;
         case 0x61:
             if (ts.phase == Phase::kAwaitingSetAck) {
+                ts.setAcks++;
+                ts.lastSetAckUs = nowUs();
                 ts.phase = Phase::kIdle;
                 ts.lastPollUs = 0;
                 ESP_LOGI(TAG, "SET acknowledged");
@@ -298,9 +402,15 @@ void transportTask(void*) {
                 break;
 
             case Phase::kIdle: {
-                cn105_core::SetCommand command{};
-                if (set_queue && xQueueReceive(set_queue, &command, 0) == pdTRUE) {
-                    sendSetPacket(command);
+                QueuedSetCommand queued{};
+                if (set_queue && xQueueReceive(set_queue, &queued, 0) == pdTRUE) {
+                    const cn105_core::SetCommand command = commandView(queued);
+                    sendSetPacket(command, queued.optimistic);
+                    break;
+                }
+                if (ts.immediateControlInfoRequested) {
+                    ts.immediateControlInfoRequested = false;
+                    sendInfoRequest(0x02);
                     break;
                 }
                 if (elapsedMs(ts.lastPollUs, currentPollIntervalMs())) {
@@ -333,7 +443,7 @@ esp_err_t start() {
         return ESP_OK;
     }
 
-    set_queue = xQueueCreate(2, sizeof(cn105_core::SetCommand));
+    set_queue = xQueueCreate(2, sizeof(QueuedSetCommand));
     if (set_queue == nullptr) {
         ESP_LOGE(TAG, "Failed to create SET command queue");
         return ESP_FAIL;
@@ -367,7 +477,81 @@ bool queueSetCommand(const cn105_core::SetCommand& command) {
     if (set_queue == nullptr) {
         return false;
     }
-    return xQueueSend(set_queue, &command, pdMS_TO_TICKS(100)) == pdTRUE;
+    const QueuedSetCommand queued = queuedFromCommand(command, true);
+    return xQueueSend(set_queue, &queued, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool queueSetCommandAndConfirm(const cn105_core::SetCommand& command, ApplyResult* result) {
+    if (result != nullptr) {
+        *result = {};
+    }
+    if (set_queue == nullptr || !ts.taskRunning) {
+        if (result != nullptr) {
+            copyString(result->message, sizeof(result->message), "CN105 transport is not running");
+        }
+        return false;
+    }
+    if (!ts.connected) {
+        if (result != nullptr) {
+            copyString(result->message, sizeof(result->message), "CN105 transport is not connected");
+        }
+        return false;
+    }
+
+    const QueuedSetCommand queued = queuedFromCommand(command, false);
+    const uint32_t ack_baseline = ts.setAcks;
+    if (xQueueSend(set_queue, &queued, pdMS_TO_TICKS(150)) != pdTRUE) {
+        if (result != nullptr) {
+            copyString(result->message, sizeof(result->message), "transport queue full");
+        }
+        return false;
+    }
+
+    const int64_t ack_deadline_us = nowUs() + static_cast<int64_t>(app_config::kCn105ResponseTimeoutMs + 200) * 1000;
+    bool saw_ack = false;
+    while (nowUs() < ack_deadline_us) {
+        if (ts.setAcks != ack_baseline) {
+            saw_ack = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    if (!saw_ack) {
+        if (result != nullptr) {
+            copyString(result->message, sizeof(result->message), "CN105 SET ACK timeout");
+        }
+        return false;
+    }
+
+    for (uint8_t info_attempt = 1; info_attempt <= kConfirmInfoAttempts; ++info_attempt) {
+        if (result != nullptr) {
+            result->attempts = info_attempt;
+        }
+        const uint32_t info_baseline = ts.controlInfoUpdates;
+        requestImmediateControlInfo();
+        const uint32_t wait_ms = info_attempt == kConfirmInfoAttempts ? kConfirmInfoFinalWaitMs : kConfirmInfoRetryMs;
+        const int64_t info_deadline_us = nowUs() + static_cast<int64_t>(wait_ms) * 1000;
+        while (nowUs() < info_deadline_us) {
+            if (ts.controlInfoUpdates != info_baseline && ts.lastControlInfoUs >= ts.lastSetAckUs) {
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        if (ts.controlInfoUpdates != info_baseline && ts.lastControlInfoUs >= ts.lastSetAckUs) {
+            if (commandMatchesState(command)) {
+                if (result != nullptr) {
+                    result->confirmed = true;
+                    copyString(result->message, sizeof(result->message), "CN105 state confirmed");
+                }
+                return true;
+            }
+        }
+    }
+
+    if (result != nullptr) {
+        copyString(result->message, sizeof(result->message), "CN105 did not confirm the requested state");
+    }
+    return false;
 }
 
 }  // namespace cn105_transport
