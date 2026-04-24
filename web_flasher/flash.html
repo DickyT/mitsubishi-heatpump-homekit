@@ -163,6 +163,32 @@ button:disabled{opacity:.48;cursor:not-allowed;transform:none}
 }
 .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
 .step-hidden{display:none}
+.modal{
+  position:fixed;
+  inset:0;
+  z-index:10;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+}
+.modal.open{display:flex}
+.modal-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(1,3,12,.72);
+  backdrop-filter:blur(8px);
+}
+.modal-panel{
+  position:relative;
+  width:min(560px,100%);
+  border:1px solid rgba(255,75,110,.35);
+  border-radius:22px;
+  padding:22px;
+  background:linear-gradient(180deg,rgba(24,14,32,.98),rgba(8,13,28,.98));
+  box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(255,75,110,.14);
+}
+.modal-panel h2{color:var(--red)}
 .status{
   display:grid;
   gap:10px;
@@ -240,19 +266,12 @@ a:hover{text-decoration:underline}
 
   <section class="card" id="step-serial">
     <h2>1. Select Serial Port</h2>
-    <p class="subtitle">Choose the USB serial device first. The page keeps the port open so it stays reserved for this installer flow.</p>
-    <div class="grid">
-      <label class="field">
-        <span>Flash baud rate</span>
-        <select id="baud">
-          <option value="57600">57600, slower fallback</option>
-          <option value="115200" selected>115200, Atom Lite safe default</option>
-        </select>
-      </label>
-    </div>
+    <p class="subtitle">Choose the USB serial device first. Kiri verifies the ESP32 bootloader at 115200 baud, then reserves the port for this installer flow.</p>
     <div class="actions">
-      <button id="serial-btn" class="primary">Select Serial Port</button>
+      <button id="serial-btn" class="primary">Select and Verify Device</button>
+      <button id="continue-package-btn" class="primary step-hidden">Continue to Package</button>
     </div>
+    <div id="device-details"></div>
   </section>
 
   <section class="card step-hidden" id="step-package">
@@ -282,6 +301,16 @@ a:hover{text-decoration:underline}
     <pre id="log"></pre>
   </section>
 </main>
+<div id="error-modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <h2 id="error-title">Device Verification Failed</h2>
+    <p id="error-body" class="subtitle">Unknown error.</p>
+    <div class="actions">
+      <button id="error-close-btn" class="secondary">OK</button>
+    </div>
+  </div>
+</div>
 <footer>
   Kiri Bridge · CN105 HomeKit controller for Mitsubishi heat pumps ·
   <a href="https://kiri.dkt.moe">kiri.dkt.moe</a>
@@ -294,6 +323,8 @@ const $=id=>document.getElementById(id);
 let selectedPackage=null;
 let selectedPort=null;
 let currentStep=1;
+let esptoolPromise=null;
+const flashBaudRate=115200;
 
 function log(line=''){
   const box=$('log');
@@ -311,7 +342,6 @@ function setSerialState(){
   $('serial-state').className=ok?'ok':'bad';
   $('serial-state').textContent=ok?'Web Serial: available, no port selected':'Web Serial: unavailable. Use Chrome or Edge over HTTPS.';
   $('serial-btn').disabled=!ok;
-  $('baud').disabled=false;
 }
 
 function showStep(step){
@@ -319,7 +349,6 @@ function showStep(step){
   $('step-serial').classList.toggle('step-hidden',step!==1);
   $('step-package').classList.toggle('step-hidden',step!==2);
   $('step-flash').classList.toggle('step-hidden',step!==3);
-  $('baud').disabled=step!==1;
   $('package-file').disabled=step!==2;
   $('flash-btn').disabled=step!==3||!selectedPort||!selectedPackage;
 }
@@ -335,15 +364,117 @@ async function closeReservedPort(){
   }
 }
 
+function openErrorModal(title,message){
+  $('error-title').textContent=title||'Device Verification Failed';
+  $('error-body').textContent=message||'Unknown error.';
+  $('error-modal').classList.add('open');
+  $('error-modal').setAttribute('aria-hidden','false');
+}
+
+function closeErrorModal(){
+  $('error-modal').classList.remove('open');
+  $('error-modal').setAttribute('aria-hidden','true');
+}
+
+function loadEsptool(){
+  if(esptoolPromise)return esptoolPromise;
+  esptoolPromise=import('https://cdn.jsdelivr.net/npm/esptool-js@0.5.7/+esm');
+  return esptoolPromise;
+}
+
+function extractChipName(esploader){
+  const candidates=[
+    esploader.chipName,
+    esploader.chip_name,
+    esploader.chip,
+    esploader.chipFamily,
+    esploader.chip_family,
+    esploader.chipType,
+    esploader.chip_type
+  ];
+  for(const value of candidates){
+    if(typeof value==='string'&&value)return value;
+    if(value&&typeof value==='object'){
+      if(typeof value.CHIP_NAME==='string')return value.CHIP_NAME;
+      if(typeof value.chipName==='string')return value.chipName;
+      if(typeof value.name==='string')return value.name;
+      if(typeof value.toString==='function'){
+        const text=value.toString();
+        if(text&&text!=='[object Object]')return text;
+      }
+    }
+  }
+  return 'ESP32';
+}
+
+async function readMac(esploader){
+  if(typeof esploader.readMac==='function')return esploader.readMac();
+  if(typeof esploader.read_mac==='function')return esploader.read_mac();
+  if(typeof esploader.getMAC==='function')return esploader.getMAC();
+  return '';
+}
+
+function normalizeMac(mac){
+  if(Array.isArray(mac)||mac instanceof Uint8Array){
+    return Array.from(mac).map(b=>Number(b).toString(16).padStart(2,'0')).join(':');
+  }
+  return String(mac||'');
+}
+
+function renderDeviceDetails(info){
+  $('device-details').innerHTML=`
+    <table>
+      <tbody>
+        <tr><th>USB VID/PID</th><td>${info.usbVendorId||'--'} / ${info.usbProductId||'--'}</td></tr>
+        <tr><th>Chip</th><td>${info.chipName}</td></tr>
+        <tr><th>MAC</th><td>${info.mac||'--'}</td></tr>
+        <tr><th>Baud</th><td>${flashBaudRate}</td></tr>
+      </tbody>
+    </table>`;
+}
+
+async function verifyDevice(port,usbInfo){
+  const {ESPLoader,Transport}=await loadEsptool();
+  const transport=new Transport(port,true);
+  const esploader=new ESPLoader({
+    transport,
+    baudrate:flashBaudRate,
+    terminal:makeTerminal(),
+    debugLogging:false
+  });
+  log('Connecting to ESP32 bootloader for verification...');
+  await esploader.main();
+  const chipName=extractChipName(esploader);
+  const mac=normalizeMac(await readMac(esploader));
+  if(typeof esploader.after==='function'){
+    await esploader.after('hard_reset');
+  }
+  if(typeof transport.disconnect==='function'){
+    await transport.disconnect();
+  }
+  if(!/ESP32/i.test(chipName)){
+    throw new Error(`Unexpected chip: ${chipName || 'unknown'}. Expected ESP32 / ESP32-PICO-D4.`);
+  }
+  return {
+    chipName,
+    mac,
+    usbVendorId:usbInfo.usbVendorId?`0x${usbInfo.usbVendorId.toString(16).padStart(4,'0')}`:'',
+    usbProductId:usbInfo.usbProductId?`0x${usbInfo.usbProductId.toString(16).padStart(4,'0')}`:''
+  };
+}
+
 async function resetToSerialStep(){
   await closeReservedPort();
   selectedPort=null;
   selectedPackage=null;
   $('package-file').value='';
   $('package-details').innerHTML='';
+  $('device-details').innerHTML='';
+  $('continue-package-btn').classList.add('step-hidden');
   setPackageState('not selected');
   setSerialState();
-  $('serial-btn').textContent='Select Serial Port';
+  $('serial-btn').textContent='Select and Verify Device';
+  $('serial-btn').disabled=!("serial" in navigator);
   log('Serial port released. Back to step 1.');
   showStep(1);
 }
@@ -362,22 +493,45 @@ async function selectSerialPort(){
     log('Web Serial is not available in this browser.');
     return;
   }
+  let port=null;
   try{
     await closeReservedPort();
-    const port=await navigator.serial.requestPort();
-    const baudRate=Number($('baud').value);
-    await port.open({baudRate});
+    port=await navigator.serial.requestPort({filters:[{usbVendorId:0x0403,usbProductId:0x6001}]});
+    const usbInfo=port.getInfo?port.getInfo():{};
+    $('serial-btn').disabled=true;
+    $('continue-package-btn').classList.add('step-hidden');
+    $('serial-state').className='warn';
+    $('serial-state').textContent='Serial: verifying ESP32 bootloader...';
+    const deviceInfo=await verifyDevice(port,usbInfo);
+    await port.open({baudRate:flashBaudRate});
     selectedPort=port;
     $('serial-state').className='ok';
-    $('serial-state').textContent=`Serial: selected and reserved at ${baudRate} baud`;
-    log(`Serial port selected and reserved at ${baudRate} baud.`);
-    showStep(2);
+    $('serial-state').textContent=`Serial: verified and reserved at ${flashBaudRate} baud`;
+    $('chip-state').className='ok';
+    $('chip-state').textContent=`Target: ${deviceInfo.chipName} ${deviceInfo.mac ? '('+deviceInfo.mac+')' : ''}`;
+    renderDeviceDetails(deviceInfo);
+    log(`Verified ${deviceInfo.chipName}${deviceInfo.mac?' MAC '+deviceInfo.mac:''}. Serial port reserved at ${flashBaudRate} baud.`);
+    $('serial-btn').textContent='Device Verified';
+    $('serial-btn').disabled=true;
+    $('continue-package-btn').classList.remove('step-hidden');
+    showStep(1);
   }catch(e){
+    if(port){
+      try{
+        if(port.readable||port.writable)await port.close();
+      }catch(closeError){
+        log('Serial cleanup warning: '+(closeError&&closeError.message?closeError.message:closeError));
+      }
+    }
+    await closeReservedPort();
     selectedPort=null;
     $('serial-state').className='bad';
-    $('serial-state').textContent='Serial: not selected or currently busy';
+    $('serial-state').textContent='Serial: verification failed';
     log('Serial selection failed: '+(e&&e.message?e.message:e));
+    openErrorModal('Device Verification Failed',e&&e.message?e.message:String(e));
     showStep(1);
+  }finally{
+    if(!selectedPort)$('serial-btn').disabled=!('serial' in navigator);
   }
 }
 
@@ -502,13 +656,13 @@ async function flashSelectedPackage(){
   $('flash-btn').disabled=true;
   try{
     log('Loading esptool-js...');
-    const {ESPLoader,Transport}=await import('https://cdn.jsdelivr.net/npm/esptool-js@0.5.7/+esm');
+    const {ESPLoader,Transport}=await loadEsptool();
     await closeReservedPort();
     log('Reserved serial port handed to esptool-js.');
     const transport=new Transport(selectedPort,true);
     const esploader=new ESPLoader({
       transport,
-      baudrate:Number($('baud').value),
+      baudrate:flashBaudRate,
       terminal:makeTerminal(),
       debugLogging:false
     });
@@ -548,15 +702,13 @@ async function flashSelectedPackage(){
 
 setSerialState();
 $('serial-btn').addEventListener('click',selectSerialPort);
-$('baud').addEventListener('change',()=>{
-  if(!selectedPort)return;
-  resetToSerialStep();
-});
+$('continue-package-btn').addEventListener('click',()=>showStep(2));
 $('back-serial-btn').addEventListener('click',resetToSerialStep);
 $('back-package-btn').addEventListener('click',resetToPackageStep);
 $('package-file').addEventListener('change',handlePackageSelection);
 $('flash-btn').addEventListener('click',flashSelectedPackage);
 $('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
+$('error-close-btn').addEventListener('click',closeErrorModal);
 log('Kiri Bridge Web Flasher ready.');
 </script>
 </body>
