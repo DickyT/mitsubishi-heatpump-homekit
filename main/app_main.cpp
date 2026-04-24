@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 #include <stdio.h>
 
 #include "app_config.h"
@@ -42,7 +53,7 @@ extern "C" void app_main(void) {
     esp_chip_info(&chip_info);
     esp_flash_get_size(nullptr, &flash_size);
 
-    ESP_LOGI(TAG, "Mitsubishi Heat Pump HomeKit bootstrap starting");
+    ESP_LOGI(TAG, "Kiri Bridge bootstrap starting");
     ESP_LOGI(TAG, "Firmware version: %s", build_info::firmwareVersion());
     platform_log::logStartupSummary();
     ESP_LOGI(TAG,

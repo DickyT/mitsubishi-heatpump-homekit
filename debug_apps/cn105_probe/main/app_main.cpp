@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -6,6 +17,7 @@
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "esp_app_desc.h"
 #include "esp_check.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -75,13 +87,13 @@ volatile InstallerLedMode installer_led_mode = InstallerLedMode::Pairing;
 TaskHandle_t installer_led_task = nullptr;
 
 struct InstallerSettings {
-    char device_name[64] = "Mitsubishi AC";
+    char device_name[64] = "Kiri Bridge";
     char wifi_ssid[33] = "YOUR_WIFI_SSID";
     char wifi_pass[65] = "YOUR_WIFI_PASSWORD";
     char hk_code[9] = "11112233";
     char hk_mfr[64] = "dkt smart home";
-    char hk_model[64] = "Mitsubishi Heat Pump";
-    char hk_serial[64] = "DKT-MITSUBISHI-HOMEKIT";
+    char hk_model[64] = "Kiri Bridge";
+    char hk_serial[64] = "KIRI-BRIDGE";
     char hk_setupid[5] = "DKT1";
     bool use_real = true;
     int led_pin = 27;
@@ -232,7 +244,7 @@ void buildProvisioningServiceName(char* out, size_t out_len) {
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     std::snprintf(out,
                   out_len,
-                  "PROV_MITSUBISHI_%02X",
+                  "PROV_KIRI_%02X",
                   mac[0]);
 }
 
@@ -857,18 +869,18 @@ void startInstallerStatusLed() {
 
 const char kIndexHtml[] = R"HTML(
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mitsubishi Installer</title>
+<title>Installer | Kiri Bridge</title>
 <style>
 :root{--bg:#080812;--card:#111126ee;--line:#3b1c45;--text:#f9eaff;--muted:#bba7c8;--hot:#ff4fd8;--cyan:#45f3ff;--ok:#69ff9b;--bad:#ff6b6b}
 *{box-sizing:border-box}body{margin:0;font-family:ui-rounded,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text);background:radial-gradient(circle at 10% 0,#40113d,transparent 32rem),radial-gradient(circle at 90% 12%,#0b6b79,transparent 28rem),var(--bg)}
-main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px,6vw,68px);margin:12px 0 4px;letter-spacing:-.06em}.subtitle{color:var(--muted);font-size:15px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);background:linear-gradient(145deg,#151229ee,#0c0c19ee);border-radius:28px;padding:22px;margin:18px 0;box-shadow:0 0 36px #ff4fd81b}.card.locked{opacity:.52;filter:saturate(.55)}.step-note{color:var(--muted);margin:-4px 0 16px;font-size:14px}.field{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--cyan);font-weight:800;letter-spacing:.04em}.field input,.field select{width:100%;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px}.field-label{position:relative;display:inline-flex;align-items:center;gap:7px;width:fit-content;max-width:100%}.help-dot{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1px solid rgba(69,243,255,.34);border-radius:999px;background:rgba(69,243,255,.10);color:var(--text);font-size:11px;line-height:1;cursor:help}.field-tip{position:absolute;left:0;top:calc(100% + 8px);z-index:20;display:none;width:min(300px,calc(100vw - 56px));border:1px solid rgba(255,79,216,.30);border-radius:14px;background:linear-gradient(180deg,rgba(10,15,31,.98),rgba(6,10,22,.98));color:var(--text);padding:10px 12px;font-size:12px;font-style:normal;font-weight:700;line-height:1.45;letter-spacing:0;box-shadow:0 18px 44px rgba(0,0,0,.46),0 0 24px rgba(255,79,216,.13)}.field-label:hover .field-tip,.field-label:focus-within .field-tip{display:block}.config-summary-button{width:100%;min-height:51px;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px;text-align:left;letter-spacing:.01em}.config-summary-button:hover{border-color:var(--hot);box-shadow:0 0 18px #ff4fd833}.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{border:1px solid #673070;background:#161326;color:var(--text);border-radius:999px;padding:12px 18px;font-weight:900;font-size:15px;cursor:pointer}button.primary{background:linear-gradient(135deg,var(--hot),var(--cyan));color:#090817;border:0}button.mini{padding:0 15px;border-radius:16px;white-space:nowrap}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}.pill{display:inline-flex;border:1px solid #48304f;border-radius:999px;padding:6px 10px;margin:3px;color:var(--muted)}.status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.status-tile{border:1px solid #372142;background:#090916;border-radius:18px;padding:14px}.status-tile b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.status-tile span{font-size:17px;font-weight:900}.progress{display:none;width:100%;margin-top:14px}.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(3,6,15,.78);backdrop-filter:blur(10px);z-index:50}.modal.open{display:flex}.modal-panel{width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 28px);overflow:auto;border:1px solid #7a2c82;border-radius:26px;background:linear-gradient(145deg,#151229,#090916);padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.58),0 0 42px #ff4fd822}.modal-panel h2{margin-top:0}.danger{border:1px solid rgba(255,107,107,.58);background:rgba(255,107,107,.12);border-radius:18px;padding:14px;margin:14px 0;color:#ffe8ee;font-weight:800}pre{white-space:pre-wrap;overflow:auto;background:#060711;border:1px solid #33213d;border-radius:18px;padding:14px;color:#c9f7ff;min-height:84px}.ok{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:760px){main{padding:18px 12px 84px}.grid,.status-grid{grid-template-columns:1fr}.card{border-radius:22px;padding:18px}}
+main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px,6vw,68px);margin:12px 0 4px;letter-spacing:-.06em}.subtitle{color:var(--muted);font-size:15px}.brand-strip{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:18px 0 8px;padding:14px 16px;border:1px solid rgba(255,79,216,.24);border-radius:20px;background:linear-gradient(135deg,rgba(255,79,216,.12),rgba(69,243,255,.08));box-shadow:0 18px 44px rgba(0,0,0,.28),0 0 24px #ff4fd822}.brand-strip strong{display:block;color:var(--text);font-size:16px}.brand-strip span{display:block;margin-top:2px;color:var(--muted);font-size:12px}.brand-links{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.brand-links a{color:var(--cyan);text-decoration:none;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}.site-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 0;padding:12px 4px 0;color:var(--muted);font-size:12px;line-height:1.5}.site-footer strong,.site-footer b{color:var(--text)}.site-footer a{color:var(--cyan);font-weight:900;text-decoration:none}.site-footer div:last-child{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);background:linear-gradient(145deg,#151229ee,#0c0c19ee);border-radius:28px;padding:22px;margin:18px 0;box-shadow:0 0 36px #ff4fd81b}.card.locked{opacity:.52;filter:saturate(.55)}.step-note{color:var(--muted);margin:-4px 0 16px;font-size:14px}.field{display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--cyan);font-weight:800;letter-spacing:.04em}.field input,.field select{width:100%;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px}.field-label{position:relative;display:inline-flex;align-items:center;gap:7px;width:fit-content;max-width:100%}.help-dot{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1px solid rgba(69,243,255,.34);border-radius:999px;background:rgba(69,243,255,.10);color:var(--text);font-size:11px;line-height:1;cursor:help}.field-tip{position:absolute;left:0;top:calc(100% + 8px);z-index:20;display:none;width:min(300px,calc(100vw - 56px));border:1px solid rgba(255,79,216,.30);border-radius:14px;background:linear-gradient(180deg,rgba(10,15,31,.98),rgba(6,10,22,.98));color:var(--text);padding:10px 12px;font-size:12px;font-style:normal;font-weight:700;line-height:1.45;letter-spacing:0;box-shadow:0 18px 44px rgba(0,0,0,.46),0 0 24px rgba(255,79,216,.13)}.field-label:hover .field-tip,.field-label:focus-within .field-tip{display:block}.config-summary-button{width:100%;min-height:51px;border:1px solid #613069;background:#080916;color:var(--text);border-radius:16px;padding:13px 14px;font-size:16px;text-align:left;letter-spacing:.01em}.config-summary-button:hover{border-color:var(--hot);box-shadow:0 0 18px #ff4fd833}.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{border:1px solid #673070;background:#161326;color:var(--text);border-radius:999px;padding:12px 18px;font-weight:900;font-size:15px;cursor:pointer}button.primary{background:linear-gradient(135deg,var(--hot),var(--cyan));color:#090817;border:0}button.mini{padding:0 15px;border-radius:16px;white-space:nowrap}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}.pill{display:inline-flex;border:1px solid #48304f;border-radius:999px;padding:6px 10px;margin:3px;color:var(--muted)}.status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.status-tile{border:1px solid #372142;background:#090916;border-radius:18px;padding:14px}.status-tile b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.status-tile span{font-size:17px;font-weight:900}.progress{display:none;width:100%;margin-top:14px}.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(3,6,15,.78);backdrop-filter:blur(10px);z-index:50}.modal.open{display:flex}.modal-panel{width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 28px);overflow:auto;border:1px solid #7a2c82;border-radius:26px;background:linear-gradient(145deg,#151229,#090916);padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.58),0 0 42px #ff4fd822}.modal-panel h2{margin-top:0}.danger{border:1px solid rgba(255,107,107,.58);background:rgba(255,107,107,.12);border-radius:18px;padding:14px;margin:14px 0;color:#ffe8ee;font-weight:800}pre{white-space:pre-wrap;overflow:auto;background:#060711;border:1px solid #33213d;border-radius:18px;padding:14px;color:#c9f7ff;min-height:84px}.ok{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:760px){main{padding:18px 12px 84px}.grid,.status-grid{grid-template-columns:1fr}.brand-strip,.site-footer{align-items:flex-start;flex-direction:column}.brand-links,.site-footer div:last-child{justify-content:flex-start}.card{border-radius:22px;padding:18px}}
 </style></head><body><main>
-<h1>Installer / Probe</h1><div class="subtitle">Provision WiFi over BLE, save production device settings, optionally test CN105, then upload the production firmware over OTA.</div>
+<h1>Kiri Installer</h1><div class="subtitle">Provision WiFi over BLE, save production device settings, optionally test CN105, then upload the production Kiri Bridge firmware over OTA.</div><div class="brand-strip"><div><strong>Kiri Bridge</strong><span>CN105 HomeKit controller for Mitsubishi heat pumps</span></div><div class="brand-links"><a href="https://kiri.dkt.moe" target="_blank" rel="noopener noreferrer">Website</a></div></div>
 <section class="card"><h2>Connection Status</h2><div id="status">Loading...</div></section>
 <section class="card" id="step1"><h2>Step 1: Device Settings</h2><div class="step-note">These values are written to the same NVS namespace used by the production firmware. Saving here does not reboot the installer.</div><div class="grid">
-<label class="field">Device Name<input id="device_name" value="Mitsubishi AC" autocomplete="off"></label><label class="field">WiFi SSID<input id="wifi_ssid" value="YOUR_WIFI_SSID" autocomplete="off" autocapitalize="none" spellcheck="false"></label><label class="field">WiFi Password<input id="wifi_pass" type="text" value="YOUR_WIFI_PASSWORD" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+<label class="field">Device Name<input id="device_name" value="Kiri Bridge" autocomplete="off"></label><label class="field">WiFi SSID<input id="wifi_ssid" value="YOUR_WIFI_SSID" autocomplete="off" autocapitalize="none" spellcheck="false"></label><label class="field">WiFi Password<input id="wifi_pass" type="text" value="YOUR_WIFI_PASSWORD" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
 <label class="field">HomeKit Pairing Code<div class="inline-control"><input id="hk_code" value="1111-2233" inputmode="numeric" autocomplete="off"><button class="mini" onclick="randomizeHomeKitCode()" type="button">Random</button></div></label><label class="field">HomeKit Setup ID<input id="hk_setupid" value="DKT1" maxlength="4"></label>
-<label class="field">HomeKit Manufacturer<input id="hk_mfr" value="dkt smart home"></label><label class="field">HomeKit Model<input id="hk_model" value="Mitsubishi Heat Pump"></label><label class="field">HomeKit Serial<input id="hk_serial" value="DKT-MITSUBISHI-HOMEKIT"></label>
+<label class="field">HomeKit Manufacturer<input id="hk_mfr" value="dkt smart home"></label><label class="field">HomeKit Model<input id="hk_model" value="Kiri Bridge"></label><label class="field">HomeKit Serial<input id="hk_serial" value="KIRI-BRIDGE"></label>
 <label class="field">Status LED GPIO<input id="led_pin" type="number" value="27"></label><label class="field">Log Level<select id="log_level"><option value="error" selected>Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option><option value="verbose">Verbose</option></select></label>
 <label class="field"><span class="field-label">On Polling (ms)<b class="help-dot" tabindex="0" aria-label="How often production firmware queries CN105 while the AC is on. Lower values sync faster but communicate more often.">?</b><em class="field-tip">How often production firmware queries CN105 while the AC is on. Lower values sync faster but communicate more often.</em></span><input id="poll_on" type="number" min="1000" step="1000" value="15000"></label><label class="field"><span class="field-label">Off Polling (ms)<b class="help-dot" tabindex="0" aria-label="How often production firmware queries CN105 while the AC is off. This can usually be longer to avoid unnecessary traffic.">?</b><em class="field-tip">How often production firmware queries CN105 while the AC is off. This can usually be longer to avoid unnecessary traffic.</em></span><input id="poll_off" type="number" min="5000" step="1000" value="60000"></label>
 <label class="field">CN105 Mode<select id="use_real"><option value="1">Real CN105</option><option value="0">Mock</option></select></label>
@@ -876,7 +888,7 @@ main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px
 </div><div class="btns"><button onclick="ledTest()" type="button">LED Color Test</button><button class="primary" onclick="saveStep1()" type="button">Save and Continue</button></div><pre id="step1_out">Save Step 1 before continuing.</pre></section>
 <section class="card locked" id="step2"><h2>Step 2: Optional CN105 Smoke Test</h2><div class="step-note">If the AC is connected, run a safe CN105 CONNECT/INFO probe using the saved pins and baud rate. You may also skip this step.</div><div class="btns"><button onclick="backToStep1()" type="button">Back to Step 1</button><button onclick="probe()" type="button">Run CN105 Test</button><button class="primary" onclick="continueToOta()" type="button">Continue to OTA</button></div><pre id="probe_out">Optional test has not run.</pre></section>
 <section class="card locked" id="step3"><h2>Step 3: OTA Update</h2><div class="step-note">Select the production app firmware at address <code>0x20000</code> from <code>firmware_exports/&lt;version&gt;/</code>. Upload starts automatically after selection.</div><input id="fw" type="file" accept=".bin,application/octet-stream"><progress id="ota_progress" class="progress" value="0" max="100"></progress><pre id="ota_out">Save Step 1, then continue from Step 2.</pre></section>
-</main>
+<footer class="site-footer"><div><strong>Kiri Bridge</strong> © 2026. All Rights Reserved.</div><div><a href="https://kiri.dkt.moe" target="_blank" rel="noopener noreferrer">kiri.dkt.moe</a><span>Firmware <b id="footer_version">--</b></span></div></footer></main>
 <div id="ota_modal" class="modal" aria-hidden="true"><div class="modal-panel"><h2>Confirm OTA Update</h2><div class="subtitle">Firmware upload is complete. Confirm to reboot and boot the production firmware.</div><div class="danger">Canceling will not switch firmware. To change your mind, select and upload the firmware file again.</div><pre id="ota_confirm_body">--</pre><div class="btns"><button class="primary" onclick="applyOta()" type="button">Confirm Reboot and Apply</button><button onclick="cancelOta()" type="button">Cancel</button></div></div></div>
 <div id="cn105_modal" class="modal" aria-hidden="true"><div class="modal-panel"><h2>CN105 Advanced Settings</h2><div class="subtitle">These values affect ESP32-to-CN105 serial communication. Bad GPIO, baud, or electrical settings can make the AC stop responding. Confirm only updates the local Step 1 draft; click Save and Continue afterward to write NVS.</div><div class="danger">Dangerous advanced settings. If CN105 communication currently works, do not change these values unless you are actively debugging hardware or wiring.</div><div class="grid">
 <label class="field">CN105 RX GPIO<input id="rx_pin" type="number" min="0" max="39" step="1" value="26"></label><label class="field">CN105 TX GPIO<input id="tx_pin" type="number" min="0" max="33" step="1" value="32"></label>
@@ -891,7 +903,7 @@ function set(id,text){$(id).textContent=text}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function pretty(obj){return esc(JSON.stringify(obj||{},null,2))}
 function setStepEnabled(step,enabled){const el=$('step'+step);el.classList.toggle('locked',!enabled);el.querySelectorAll('input,select,button').forEach(x=>x.disabled=!enabled)}
-function initSteps(){setStepEnabled(2,false);setStepEnabled(3,false)}
+function initSteps(){setStepEnabled(2,false);setStepEnabled(3,false);if($('footer_version'))fetch('/api/status').then(r=>r.json()).then(j=>{$('footer_version').textContent=j.version||'--'}).catch(()=>{})}
 function placeholderWifi(value,placeholder){return !value||value===placeholder}
 function randomHomeKitCode(){const b=new Uint8Array(8);crypto.getRandomValues(b);const d=[...b].map(x=>String(x%10));return d.slice(0,4).join('')+'-'+d.slice(4).join('')}
 function randomizeHomeKitCode(){$('hk_code').value=randomHomeKitCode()}
@@ -936,7 +948,9 @@ esp_err_t statusHandler(httpd_req_t* req) {
     body += provisioning_service_name;
     body += "\",\"security\":\"Security 1\",\"pop\":\"";
     body += kProvisioningPop;
-    body += "\"},\"defaults\":";
+    body += "\"},\"version\":\"";
+    body += jsonEscape(esp_app_get_description()->version);
+    body += "\",\"defaults\":";
     body += settingsJson(settings);
     body += ",\"probe\":{\"ran\":";
     body += last_probe.ran ? "true" : "false";
@@ -1326,7 +1340,7 @@ void startWifiProvisioning() {
 }  // namespace
 
 extern "C" void app_main(void) {
-    ESP_LOGI(TAG, "Mitsubishi installer/probe starting");
+    ESP_LOGI(TAG, "Kiri Installer starting");
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());

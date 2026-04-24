@@ -1,6 +1,11 @@
-# mitsubishi-heatpump-homekit
+# Kiri Bridge
+
+CN105 HomeKit controller for Mitsubishi heat pumps.
 
 ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + Espressif ESP HomeKit SDK**.
+
+- Website: <https://kiri.dkt.moe>
+- Source: <https://github.com/DickyT/kiri-homekit>
 
 ## Current Status
 
@@ -213,14 +218,14 @@ with four images named like:
 ```
 
 The installer/probe firmware always starts a no-password SoftAP named like its
-BLE provisioning service (`PROV_MITSUBISHI_XX`) and serves the installer WebUI
+BLE provisioning service (`PROV_KIRI_XX`) and serves the installer WebUI
 on port `80`. It also supports Espressif BLE Wi-Fi provisioning, uses the same
 OTA partition table as the formal firmware, detects CN105 hardware settings,
 writes `device_cfg` NVS with a full overwrite strategy, then OTA-uploads the
 formal app binary:
 
 ```text
-firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin
+firmware_exports/<version>/kiri_bridge_<version>_0x20000.bin
 ```
 
 Or use the project-specific auto-flash helper:
@@ -267,7 +272,7 @@ Expected serial output:
 - `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1 rxPull=on txOD=off`
 - `WiFi power save disabled`
 - `CN105 offline self-test passed: 77F SET roundtrip`
-- `HomeKit started: name=Mitsubishi AC setup_code=<random/generated> ...`
+- `HomeKit started: name=Kiri Bridge setup_code=<random/generated> ...`
 - `WebUI ready: http://<esp-ip>:8080/`
 - either `Connected to ...` or reconnect/offline STA status
 - a repeating platform heartbeat every 5 seconds with Wi-Fi status

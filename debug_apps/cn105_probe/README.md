@@ -8,7 +8,7 @@ It replaces the old serial-only CN105 probe. The app now provides:
 - BLE Wi-Fi provisioning through Espressif's mobile provisioning app using
   Security 1 and PoP `abcd1234`.
 - A no-password installer SoftAP on every boot. The AP SSID matches the BLE
-  provisioning name, such as `PROV_MITSUBISHI_90`.
+  provisioning name, such as `PROV_KIRI_90`.
 - Captive portal DNS for SoftAP users. If the OS does not auto-open the portal,
   browse to `http://192.168.4.1/`.
 - An installer WebUI on port `80` over SoftAP and over the provisioned STA
@@ -66,7 +66,7 @@ The legacy app alias still works:
 
 1. Flash the installer firmware.
 2. Connect either through the installer SoftAP or through BLE provisioning.
-3. For SoftAP setup, join `PROV_MITSUBISHI_XX` with no password and use the
+3. For SoftAP setup, join `PROV_KIRI_XX` with no password and use the
    captive portal or open `http://192.168.4.1/`.
 4. For BLE setup, use Espressif's mobile provisioning app with the BLE service
    name printed in serial logs, Security 1, and Proof of Possession `abcd1234`.
@@ -76,7 +76,7 @@ The legacy app alias still works:
 8. Save step 1 so the installer writes the full `device_cfg` NVS set.
 9. Optionally run the step 2 CN105 smoke test.
 10. Upload the formal firmware app binary from the exported package:
-   `firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin`
+   `firmware_exports/<version>/kiri_bridge_<version>_0x20000.bin`
 11. Click `Reboot and Apply OTA`.
 
 After reboot, the formal firmware reads the NVS values written by the installer

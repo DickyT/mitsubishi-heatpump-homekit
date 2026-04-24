@@ -1,3 +1,13 @@
+<!--
+  Kiri Bridge
+  CN105 HomeKit controller for Mitsubishi heat pumps
+  https://kiri.dkt.moe
+  https://github.com/DickyT/kiri-homekit
+
+  Copyright (c) 2026
+  All Rights Reserved.
+  Licensed under terms of the GPL-3.0 License.
+-->
 <main>
 <h1>System Admin</h1>
 <div class="subtitle">Device information and maintenance</div>
@@ -39,14 +49,14 @@
 <h3>Device Settings</h3>
 <div class="subtitle">Saving will reboot the device so the device name, HomeKit, CN105, and runtime settings all start from the same configuration.</div>
 <div class="grid2">
-<label class="field"><span>Device Name</span><input id="cfg-device-name" type="text" maxlength="63" placeholder="Mitsubishi AC"></label>
+<label class="field"><span>Device Name</span><input id="cfg-device-name" type="text" maxlength="63" placeholder="Kiri Bridge"></label>
 <label class="field"><span>WiFi SSID</span><input id="cfg-wifi-ssid" type="text" maxlength="32" placeholder="YOUR_WIFI_SSID"></label>
 <label class="field"><span>WiFi Password</span><input id="cfg-wifi-password" type="password" maxlength="64" placeholder="Leave blank to keep current"></label>
 <label class="field"><span>HomeKit Pairing Code</span><input id="cfg-homekit-code" type="text" maxlength="9" placeholder="1234-5678"></label>
 <label class="field"><span>HomeKit Setup ID</span><input id="cfg-homekit-setup-id" type="text" maxlength="4" placeholder="DKT1"></label>
 <label class="field"><span>HomeKit Manufacturer</span><input id="cfg-homekit-manufacturer" type="text" maxlength="63" placeholder="dkt smart home"></label>
-<label class="field"><span>HomeKit Model</span><input id="cfg-homekit-model" type="text" maxlength="63" placeholder="Mitsubishi Heat Pump"></label>
-<label class="field"><span>HomeKit Serial</span><input id="cfg-homekit-serial" type="text" maxlength="63" placeholder="DKT-MITSUBISHI-HOMEKIT"></label>
+<label class="field"><span>HomeKit Model</span><input id="cfg-homekit-model" type="text" maxlength="63" placeholder="Kiri Bridge"></label>
+<label class="field"><span>HomeKit Serial</span><input id="cfg-homekit-serial" type="text" maxlength="63" placeholder="KIRI-BRIDGE"></label>
 <label class="field"><span>Status LED GPIO</span><input id="cfg-led-pin" type="number" min="0" max="33" step="1"></label>
 <label class="field"><span>Log Level</span><select id="cfg-log-level"><option value="error">error</option><option value="warn">warn</option><option value="info">info</option><option value="debug">debug</option><option value="verbose">verbose</option></select></label>
 <label class="field"><span class="field-label">On Polling (ms)<b class="help-dot" tabindex="0" aria-label="How often to query CN105 while the AC is on. Lower values sync faster but communicate more often.">?</b><em class="field-tip">How often to query CN105 while the AC is on. Lower values sync faster but communicate more often.</em></span><input id="cfg-poll-active" type="number" min="1000" step="1000"></label>
@@ -83,6 +93,10 @@
 <div id="msg" style="margin-top:10px;font-size:13px;color:var(--orange)"></div>
 </div>
 </main>
+<footer class="site-footer">
+<div><strong>Kiri Bridge</strong> © 2026. All Rights Reserved.</div>
+<div><a href="https://kiri.dkt.moe" target="_blank" rel="noopener noreferrer">kiri.dkt.moe</a><span>Firmware <b id="footer-version">--</b></span></div>
+</footer>
 <div id="hk-modal" class="modal" aria-hidden="true">
 <div class="modal-backdrop" data-close-modal="hk-modal"></div>
 <div class="modal-panel">

@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 #pragma once
 
 #include "driver/uart.h"
@@ -5,7 +16,7 @@
 
 namespace app_config {
 
-inline constexpr char kDeviceName[] = "Mitsubishi Heat Pump HomeKit";
+inline constexpr char kDeviceName[] = "Kiri Bridge";
 inline constexpr char kPhaseName[] = "ESP-IDF stable baseline";
 
 inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_VERBOSE;

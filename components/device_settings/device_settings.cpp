@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 #include "device_settings.h"
 
 #include "app_config.h"
@@ -14,12 +25,12 @@ namespace {
 const char* TAG = "device_settings";
 const char* kNamespace = "device_cfg";
 
-constexpr char kDefaultDeviceName[] = "Mitsubishi AC";
+constexpr char kDefaultDeviceName[] = "Kiri Bridge";
 constexpr char kDefaultWifiSsid[] = "YOUR_WIFI_SSID";
 constexpr char kDefaultWifiPassword[] = "YOUR_WIFI_PASSWORD";
 constexpr char kDefaultHomeKitManufacturer[] = "dkt smart home";
-constexpr char kDefaultHomeKitModel[] = "Mitsubishi Heat Pump";
-constexpr char kDefaultHomeKitSerial[] = "DKT-MITSUBISHI-HOMEKIT";
+constexpr char kDefaultHomeKitModel[] = "Kiri Bridge";
+constexpr char kDefaultHomeKitSerial[] = "KIRI-BRIDGE";
 constexpr char kDefaultHomeKitSetupId[] = "DKT1";
 constexpr bool kDefaultUseRealCn105 = false;
 constexpr int kDefaultStatusLedPin = 27;

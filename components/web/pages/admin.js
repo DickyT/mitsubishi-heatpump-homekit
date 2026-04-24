@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 const $=id=>document.getElementById(id);
 document.getElementById('t5').classList.add('active');
 let homekitStatus=null;
@@ -307,7 +318,7 @@ async function saveConfig(){
     openNoticeModal('Save Failed','HomeKit pairing code must be 8 digits, for example 1111-2222.');
     return;
   }
-  params.set('device_name',$('cfg-device-name').value.trim()||'Mitsubishi AC');
+  params.set('device_name',$('cfg-device-name').value.trim()||'Kiri Bridge');
   params.set('wifi_ssid',$('cfg-wifi-ssid').value.trim());
   const wifiPassword=$('cfg-wifi-password').value;
   if(wifiPassword)params.set('wifi_password',wifiPassword);

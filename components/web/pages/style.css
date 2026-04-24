@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 :root {
   color-scheme: dark;
   --bg: #050713;
@@ -529,6 +540,93 @@ nav.tabs svg {
   filter: drop-shadow(0 0 8px rgba(255, 66, 210, .12))
 }
 
+.brand-strip {
+  position: relative;
+  z-index: 2;
+  width: min(920px, calc(100vw - 28px));
+  margin: 16px auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 66, 210, .18);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 66, 210, .10), rgba(84, 241, 255, .07));
+  color: var(--muted);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .24), var(--glow-pink);
+}
+
+.brand-strip strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  letter-spacing: .02em;
+}
+
+.brand-strip span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.brand-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.brand-links a {
+  color: var(--cyan);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.brand-links a:hover {
+  color: var(--pink);
+}
+
+.site-footer {
+  position: relative;
+  z-index: 1;
+  width: min(920px, calc(100vw - 28px));
+  margin: 10px auto 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.site-footer strong,
+.site-footer b {
+  color: var(--text);
+}
+
+.site-footer a {
+  color: var(--cyan);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--pink);
+}
+
+.site-footer div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .kvrow {
   display: flex;
   justify-content: space-between;
@@ -829,6 +927,10 @@ nav.tabs svg {
     font-size: 13px;
     border-radius: 999px;
   }
+
+  .brand-strip {
+    margin-top: 0;
+  }
 }
 
 @media(max-width:720px) {
@@ -896,6 +998,29 @@ nav.tabs svg {
   nav.tabs svg {
     width: 20px;
     height: 20px;
+  }
+
+  .brand-strip {
+    width: min(100vw - 24px, 100%);
+    align-items: flex-start;
+    flex-direction: column;
+    margin-top: 12px;
+    padding: 13px;
+  }
+
+  .brand-links {
+    justify-content: flex-start;
+  }
+
+  .site-footer {
+    width: min(100vw - 24px, 100%);
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+
+  .site-footer div:last-child {
+    justify-content: flex-start;
   }
 
   h1 {

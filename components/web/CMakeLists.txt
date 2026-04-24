@@ -1,3 +1,12 @@
+# Kiri Bridge
+# CN105 HomeKit controller for Mitsubishi heat pumps
+# https://kiri.dkt.moe
+# https://github.com/DickyT/kiri-homekit
+#
+# Copyright (c) 2026
+# All Rights Reserved.
+# Licensed under terms of the GPL-3.0 License.
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(WEB_PAGES_DIR "${CMAKE_CURRENT_LIST_DIR}/pages")

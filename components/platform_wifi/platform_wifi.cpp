@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 #include "platform_wifi.h"
 
 #include "app_config.h"
@@ -31,7 +42,7 @@ int64_t last_reconnect_us = 0;
 char current_ip[16] = "0.0.0.0";
 char last_event[32] = "boot";
 esp_netif_t* sta_netif = nullptr;
-char sta_hostname[kHostnameLen] = "mitsubishi-ac";
+char sta_hostname[kHostnameLen] = "kiri-bridge";
 
 bool hasConfiguredStaCredentials() {
     return std::strcmp(device_settings::wifiSsid(), "YOUR_WIFI_SSID") != 0 && device_settings::wifiSsid()[0] != '\0';
@@ -70,7 +81,7 @@ void buildHostname(char* out, size_t out_len, const char* source) {
     }
 
     if (written == 0) {
-        std::snprintf(out, out_len, "mitsubishi-ac");
+        std::snprintf(out, out_len, "kiri-bridge");
         return;
     }
 

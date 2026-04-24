@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 #include "platform_provisioning.h"
 
 #include "app_config.h"
@@ -83,7 +94,7 @@ void buildProvisioningServiceName(char* out, size_t out_len) {
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     std::snprintf(out,
                   out_len,
-                  "PROV_MITSUBISHI_%02X%02X%02X%02X%02X%02X",
+                  "PROV_KIRI_%02X%02X%02X%02X%02X%02X",
                   mac[0],
                   mac[1],
                   mac[2],

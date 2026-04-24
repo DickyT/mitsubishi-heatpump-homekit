@@ -1,3 +1,14 @@
+/****************************************************************************
+ * Kiri Bridge
+ * CN105 HomeKit controller for Mitsubishi heat pumps
+ * https://kiri.dkt.moe
+ * https://github.com/DickyT/kiri-homekit
+ *
+ * Copyright (c) 2026
+ * All Rights Reserved.
+ * Licensed under terms of the GPL-3.0 License.
+ ****************************************************************************/
+
 (function(){
   const manifest=__WEB_ASSET_MANIFEST__;
   const version=manifest.version||'dev';
@@ -29,6 +40,28 @@
     document.body.appendChild(script);
   }
 
+  function pageTitle(page){
+    if(page==='logs') return 'Logs';
+    if(page==='admin') return 'Admin';
+    return 'Control';
+  }
+
+  async function populateFooter(){
+    const version=document.getElementById('footer-version');
+    const page=document.body.dataset.page||'root';
+    try{
+      const response=await fetch('/api/status',{cache:'no-store'});
+      if(!response.ok) throw new Error('HTTP '+response.status);
+      const status=await response.json();
+      const device=(status.config&&status.config.device_name)||status.device||'Kiri Bridge';
+      document.title=pageTitle(page)+' | '+device+' | Kiri Bridge';
+      if(version) version.textContent=status.version||'--';
+    }catch(error){
+      document.title=pageTitle(page)+' | Kiri Bridge | Kiri Bridge';
+      if(version) version.textContent='--';
+    }
+  }
+
   async function boot(){
     const page=document.body.dataset.page||'root';
     const config=manifest.pages[page];
@@ -46,6 +79,7 @@
     app.innerHTML=await fetchSeries(config.body);
 
     app.setAttribute('data-ready','1');
+    populateFooter();
     runPageScript(await fetchSeries(config.js));
   }
 

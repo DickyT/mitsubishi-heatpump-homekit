@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# Kiri Bridge
+# CN105 HomeKit controller for Mitsubishi heat pumps
+# https://kiri.dkt.moe
+# https://github.com/DickyT/kiri-homekit
+#
+# Copyright (c) 2026
+# All Rights Reserved.
+# Licensed under terms of the GPL-3.0 License.
+
 """Project-local ESP-IDF command wrapper.
 
 This keeps the repository clean while using the global EIM-managed ESP-IDF
@@ -40,9 +49,9 @@ APP_ROOTS = {
 }
 
 APP_PROJECT_NAMES = {
-    "main": "mitsubishi_heatpump_homekit",
-    "installer": "mitsubishi_installer_probe",
-    "cn105-probe": "mitsubishi_installer_probe",
+    "main": "kiri_bridge",
+    "installer": "kiri_installer",
+    "cn105-probe": "kiri_installer",
 }
 
 TOOL_PATHS = [
