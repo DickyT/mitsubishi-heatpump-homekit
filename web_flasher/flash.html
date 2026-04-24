@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Flash Kiri Bridge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#050713;
+  --bg2:#0b1023;
+  --panel:rgba(12,17,37,.9);
+  --panel2:rgba(18,25,52,.92);
+  --edge:rgba(84,241,255,.22);
+  --edge2:rgba(255,66,210,.42);
+  --text:#e8fbff;
+  --muted:#8aa4c1;
+  --cyan:#54f1ff;
+  --pink:#ff42d2;
+  --lime:#b8ff37;
+  --red:#ff4b6e;
+  --amber:#ffba3a;
+  --radius:22px;
+  --font:"Avenir Next","Segoe UI","Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100dvh;
+  font-family:var(--font);
+  color:var(--text);
+  background:
+    radial-gradient(circle at 8% 0%,rgba(84,241,255,.18),transparent 25%),
+    radial-gradient(circle at 88% 10%,rgba(255,31,168,.18),transparent 22%),
+    linear-gradient(180deg,var(--bg),var(--bg2));
+  overflow-x:hidden;
+}
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background:
+    repeating-linear-gradient(90deg,rgba(84,241,255,.035) 0,rgba(84,241,255,.035) 1px,transparent 1px,transparent 46px),
+    repeating-linear-gradient(180deg,rgba(255,255,255,.018) 0,rgba(255,255,255,.018) 1px,transparent 1px,transparent 3px);
+  opacity:.42;
+}
+main{
+  position:relative;
+  z-index:1;
+  width:min(980px,calc(100vw - 28px));
+  margin:0 auto;
+  padding:28px 0 36px;
+}
+.hero{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:18px;
+  align-items:stretch;
+  margin-bottom:18px;
+}
+h1{
+  font-size:clamp(34px,6vw,64px);
+  line-height:.92;
+  letter-spacing:-.06em;
+  font-weight:900;
+  text-shadow:0 0 22px rgba(84,241,255,.18),0 0 34px rgba(255,66,210,.12);
+}
+.subtitle{
+  color:var(--muted);
+  font-size:15px;
+  line-height:1.6;
+  margin-top:14px;
+}
+.card{
+  position:relative;
+  overflow:hidden;
+  background:
+    linear-gradient(180deg,rgba(12,18,38,.94),rgba(8,13,28,.98)),
+    linear-gradient(90deg,rgba(84,241,255,.07),rgba(255,31,168,.06));
+  border:1px solid rgba(84,241,255,.16);
+  border-radius:var(--radius);
+  padding:22px;
+  margin-bottom:18px;
+  box-shadow:0 0 0 1px rgba(84,241,255,.08),0 24px 60px rgba(0,0,0,.46);
+}
+.card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(135deg,rgba(84,241,255,.08),transparent 30%,rgba(255,66,210,.07));
+  opacity:.72;
+}
+.card>*{position:relative;z-index:1}
+h2{
+  color:var(--cyan);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  margin-bottom:16px;
+  text-shadow:0 0 16px rgba(84,241,255,.25);
+}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(255,66,210,.24);
+  border-radius:999px;
+  padding:10px 13px;
+  color:var(--muted);
+  background:rgba(7,12,27,.72);
+  font-weight:800;
+  font-size:12px;
+}
+.pill strong{color:var(--text)}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.field span{
+  display:block;
+  color:var(--cyan);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.08em;
+  margin-bottom:8px;
+}
+input,select{
+  width:100%;
+  color:var(--text);
+  background:rgba(5,8,21,.92);
+  border:1px solid rgba(84,241,255,.18);
+  border-radius:16px;
+  padding:14px 16px;
+  font:inherit;
+  outline:none;
+}
+input[type=file]{cursor:pointer}
+button{
+  border:0;
+  border-radius:999px;
+  padding:14px 18px;
+  font:inherit;
+  font-weight:900;
+  cursor:pointer;
+  transition:transform .15s ease,filter .15s ease,opacity .15s ease;
+}
+button:hover{transform:translateY(-1px);filter:brightness(1.08)}
+button:disabled{opacity:.48;cursor:not-allowed;transform:none}
+.primary{
+  color:#06111d;
+  background:linear-gradient(135deg,var(--pink),var(--cyan));
+  box-shadow:0 14px 34px rgba(255,66,210,.18);
+}
+.secondary{
+  color:var(--text);
+  background:rgba(18,25,52,.88);
+  border:1px solid rgba(255,66,210,.22);
+}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
+.status{
+  display:grid;
+  gap:10px;
+  color:var(--muted);
+  font-size:14px;
+}
+.ok{color:var(--lime)}
+.warn{color:var(--amber)}
+.bad{color:var(--red)}
+table{
+  width:100%;
+  border-collapse:collapse;
+  overflow:hidden;
+  border-radius:16px;
+  margin-top:12px;
+}
+th,td{
+  text-align:left;
+  padding:10px 12px;
+  border-bottom:1px solid rgba(84,241,255,.1);
+  font-size:13px;
+  vertical-align:top;
+}
+th{color:var(--cyan);font-size:11px;text-transform:uppercase;letter-spacing:.12em}
+td{color:var(--muted);word-break:break-word}
+pre{
+  min-height:220px;
+  max-height:360px;
+  overflow:auto;
+  white-space:pre-wrap;
+  color:#8feaff;
+  background:rgba(5,8,21,.84);
+  border:1px solid rgba(84,241,255,.14);
+  border-radius:18px;
+  padding:16px;
+  font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+footer{
+  position:relative;
+  z-index:1;
+  color:var(--muted);
+  text-align:center;
+  font-size:12px;
+  line-height:1.7;
+  padding:0 0 28px;
+}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+@media(max-width:760px){
+  main{width:min(100vw - 20px,980px);padding-top:18px}
+  .hero,.grid{grid-template-columns:1fr}
+  .card{padding:18px;border-radius:18px}
+  button{width:100%}
+}
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="card">
+      <h1>Kiri Bridge<br>Web Flasher</h1>
+      <p class="subtitle">Flash a Kiri firmware package directly from your browser. For a fresh device, choose the installer package first; the installer will handle WiFi, CN105 probing, and the final app OTA handoff.</p>
+      <div class="actions">
+        <span class="pill"><strong>Requires</strong> Chrome or Edge with Web Serial</span>
+        <span class="pill"><strong>Package</strong> .kiri</span>
+      </div>
+    </div>
+    <div class="card status" id="summary">
+      <h2>Readiness</h2>
+      <div id="serial-state">Web Serial: checking...</div>
+      <div id="package-state">Package: not selected</div>
+      <div id="chip-state">Target: ESP32 Atom Lite</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>1. Select Package</h2>
+    <div class="grid">
+      <label class="field">
+        <span>Kiri package</span>
+        <input id="package-file" type="file" accept=".kiri,application/zip,application/octet-stream">
+      </label>
+      <label class="field">
+        <span>Flash baud rate</span>
+        <select id="baud">
+          <option value="115200">115200, safest</option>
+          <option value="460800" selected>460800, balanced</option>
+          <option value="921600">921600, fastest</option>
+        </select>
+      </label>
+    </div>
+    <div id="package-details"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. Flash Device</h2>
+    <p class="subtitle">Hold the Atom Lite button if your board needs bootloader mode, then connect USB and click flash. The page validates checksums before writing anything.</p>
+    <div class="actions">
+      <button id="flash-btn" class="primary" disabled>Connect and Flash</button>
+      <button id="clear-log-btn" class="secondary">Clear Log</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Console</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+<footer>
+  Kiri Bridge · CN105 HomeKit controller for Mitsubishi heat pumps ·
+  <a href="https://kiri.dkt.moe">kiri.dkt.moe</a>
+</footer>
+
+<script type="module">
+const kiriPackageFormat='kiri-firmware-package-v1';
+const kiriProjectId='kiri-bridge';
+const $=id=>document.getElementById(id);
+let selectedPackage=null;
+
+function log(line=''){
+  const box=$('log');
+  box.textContent+=line+'\\n';
+  box.scrollTop=box.scrollHeight;
+}
+
+function setPackageState(text,kind=''){
+  $('package-state').className=kind;
+  $('package-state').textContent='Package: '+text;
+}
+
+function setSerialState(){
+  const ok='serial' in navigator;
+  $('serial-state').className=ok?'ok':'bad';
+  $('serial-state').textContent=ok?'Web Serial: available':'Web Serial: unavailable. Use Chrome or Edge over HTTPS.';
+}
+
+function uint8ToBinaryString(bytes){
+  let result='';
+  const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    result+=String.fromCharCode(...bytes.subarray(i,i+chunk));
+  }
+  return result;
+}
+
+function sha256Hex(bytes){
+  const words=[];
+  for(let i=0;i<bytes.length;i+=1){
+    words[i>>>2]|=bytes[i]<<(24-(i%4)*8);
+  }
+  return CryptoJS.SHA256(CryptoJS.lib.WordArray.create(words,bytes.length)).toString(CryptoJS.enc.Hex);
+}
+
+function formatBytes(value){
+  if(value>1024*1024)return (value/1024/1024).toFixed(2)+' MB';
+  if(value>1024)return (value/1024).toFixed(1)+' KB';
+  return value+' B';
+}
+
+async function readEntry(zip,path,type='uint8array'){
+  const entry=zip.file(path);
+  if(!entry)throw new Error(`Package is missing ${path}`);
+  return entry.async(type);
+}
+
+async function parseKiriPackage(file){
+  if(!file.name.toLowerCase().endsWith('.kiri'))throw new Error('Choose a .kiri package.');
+  const zip=await JSZip.loadAsync(file);
+  const manifest=JSON.parse(await readEntry(zip,'manifest.json','string'));
+  if(manifest.format!==kiriPackageFormat)throw new Error('Unsupported package format.');
+  if(manifest.project!==kiriProjectId)throw new Error(`Wrong project: ${manifest.project||'unknown'}.`);
+  if(!Array.isArray(manifest.parts)||manifest.parts.length===0)throw new Error('Package has no flash parts.');
+
+  const parts=[];
+  for(const part of manifest.parts){
+    const bytes=await readEntry(zip,part.path,'uint8array');
+    if(Number(part.size)!==bytes.byteLength)throw new Error(`${part.path} size does not match manifest.`);
+    const hash=sha256Hex(bytes);
+    if(String(part.sha256||'').toLowerCase()!==hash)throw new Error(`${part.path} checksum does not match manifest.`);
+    parts.push({...part,bytes});
+  }
+  return {manifest,parts};
+}
+
+function renderPackageDetails(pkg){
+  const manifest=pkg.manifest;
+  const rows=pkg.parts.map(part=>`
+    <tr>
+      <td>${part.name||part.path}</td>
+      <td>0x${Number(part.offset).toString(16)}</td>
+      <td>${formatBytes(part.bytes.byteLength)}</td>
+      <td>${part.path}</td>
+    </tr>`).join('');
+  const variantClass=manifest.variant==='installer'?'ok':'warn';
+  const variantText=manifest.variant==='installer'
+    ? 'Installer package selected. This is recommended for first-time setup.'
+    : 'App package selected. This can be line-flashed, but fresh devices should usually start with the installer.';
+  $('package-details').innerHTML=`
+    <table>
+      <tbody>
+        <tr><th>Product</th><td>${manifest.product||'Kiri Bridge'}</td></tr>
+        <tr><th>Version</th><td>${manifest.version||'--'}</td></tr>
+        <tr><th>Variant</th><td class="${variantClass}">${manifest.variant||'--'} · ${variantText}</td></tr>
+        <tr><th>Target</th><td>${manifest.target||'esp32'} · flash ${manifest.flashSize||'keep'}</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>Part</th><th>Offset</th><th>Size</th><th>File</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function handlePackageSelection(){
+  const file=$('package-file').files&&$('package-file').files[0];
+  selectedPackage=null;
+  $('flash-btn').disabled=true;
+  $('package-details').innerHTML='';
+  if(!file){
+    setPackageState('not selected');
+    return;
+  }
+  try{
+    setPackageState('validating '+file.name,'warn');
+    selectedPackage=await parseKiriPackage(file);
+    renderPackageDetails(selectedPackage);
+    $('flash-btn').disabled=!('serial' in navigator);
+    setPackageState(`${file.name} ready`,'ok');
+    log(`Loaded ${file.name}`);
+  }catch(e){
+    setPackageState(e.message,'bad');
+    log('Package error: '+e.message);
+  }
+}
+
+function makeTerminal(){
+  return {
+    clean(){ $('log').textContent=''; },
+    writeLine(data){ log(String(data)); },
+    write(data){
+      const box=$('log');
+      box.textContent+=String(data);
+      box.scrollTop=box.scrollHeight;
+    }
+  };
+}
+
+async function flashSelectedPackage(){
+  if(!selectedPackage)return;
+  if(!('serial' in navigator)){
+    log('Web Serial is not available in this browser.');
+    return;
+  }
+  $('flash-btn').disabled=true;
+  try{
+    log('Loading esptool-js...');
+    const {ESPLoader,Transport}=await import('https://cdn.jsdelivr.net/npm/esptool-js@0.5.7/+esm');
+    const port=await navigator.serial.requestPort();
+    const transport=new Transport(port,true);
+    const esploader=new ESPLoader({
+      transport,
+      baudrate:Number($('baud').value),
+      terminal:makeTerminal(),
+      debugLogging:false
+    });
+    log('Connecting to ESP32 bootloader...');
+    await esploader.main();
+    const fileArray=selectedPackage.parts.map(part=>({
+      data:uint8ToBinaryString(part.bytes),
+      address:Number(part.offset)
+    }));
+    log('Writing flash...');
+    await esploader.writeFlash({
+      fileArray,
+      flashSize:'keep',
+      flashMode:'keep',
+      flashFreq:'keep',
+      eraseAll:false,
+      compress:true,
+      reportProgress:(fileIndex,written,total)=>{
+        const part=selectedPackage.parts[fileIndex];
+        const percent=total?Math.round((written/total)*100):0;
+        log(`${part.name||part.path}: ${percent}%`);
+      }
+    });
+    if(typeof esploader.after==='function'){
+      await esploader.after('hard_reset');
+    }
+    if(typeof transport.disconnect==='function'){
+      await transport.disconnect();
+    }
+    log('Flash complete. If you flashed the installer, connect to the PROV_KIRI_XX WiFi network or use Espressif BLE provisioning.');
+  }catch(e){
+    log('Flash failed: '+(e&&e.message?e.message:e));
+  }finally{
+    $('flash-btn').disabled=!selectedPackage||!('serial' in navigator);
+  }
+}
+
+setSerialState();
+$('package-file').addEventListener('change',handlePackageSelection);
+$('flash-btn').addEventListener('click',flashSelectedPackage);
+$('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
+log('Kiri Bridge Web Flasher ready.');
+</script>
+</body>
+</html>

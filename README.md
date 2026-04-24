@@ -217,16 +217,36 @@ with four images named like:
 <project_name>_<version>_<0xOFFSET>.bin
 ```
 
+It also exports a project package:
+
+```text
+<project_name>_<version>.kiri
+```
+
+The `.kiri` package is a zip bundle with a signed-by-checksum manifest, the
+bootloader, partition table, OTA data image, and app image. The firmware WebUI
+OTA flow accepts the app package and uploads only the validated app image to the
+next OTA partition.
+
 The installer/probe firmware always starts a no-password SoftAP named like its
 BLE provisioning service (`PROV_KIRI_XX`) and serves the installer WebUI
 on port `80`. It also supports Espressif BLE Wi-Fi provisioning, uses the same
 OTA partition table as the formal firmware, detects CN105 hardware settings,
 writes `device_cfg` NVS with a full overwrite strategy, then OTA-uploads the
-formal app binary:
+formal app package:
 
 ```text
-firmware_exports/<version>/kiri_bridge_<version>_0x20000.bin
+firmware_exports/<version>/kiri_bridge_<version>.kiri
 ```
+
+For browser-based first-time flashing, host or open:
+
+```text
+web_flasher/flash.html
+```
+
+That static page accepts a `.kiri` package, validates checksums in the browser,
+and flashes all package parts over Web Serial.
 
 Or use the project-specific auto-flash helper:
 
