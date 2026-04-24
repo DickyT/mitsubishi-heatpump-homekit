@@ -12,13 +12,13 @@ esp_err_t sendShell(httpd_req_t* req, const char* page) {
     char body[768] = {};
     std::snprintf(body,
                   sizeof(body),
-                  "<!doctype html><html lang=\"zh-Hans\"><head>"
+                  "<!doctype html><html lang=\"en\"><head>"
                   "<meta charset=\"utf-8\">"
                   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover\">"
                   "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
                   "<title>Mitsubishi AC</title>"
                   "</head><body data-page=\"%s\">"
-                  "<div id=\"app\"><main><h1>加载中</h1><div class=\"subtitle\">WebUI 正在加载...</div></main></div>"
+                  "<div id=\"app\"><main><h1>Loading</h1><div class=\"subtitle\">WebUI is loading...</div></main></div>"
                   "<script src=\"/assets/loader.js?v=%s\" defer></script>"
                   "</body></html>",
                   page,

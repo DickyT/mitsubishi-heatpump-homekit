@@ -62,7 +62,7 @@ The legacy app alias still works:
 8. Save step 1, then save step 2 so the installer writes NVS explicitly twice.
 9. Upload the formal firmware app binary from the exported package:
    `firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin`
-10. Click `重启应用 OTA`.
+10. Click `Reboot and Apply OTA`.
 
 After reboot, the formal firmware reads the NVS values written by the installer
 and starts normally with the same partition table.

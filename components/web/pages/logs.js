@@ -8,76 +8,76 @@ function setText(id,v){$(id).textContent=v;}
 async function loadLogs(){
   try{
     const r=await fetch('/api/logs');const j=await r.json();
-    setText('log-active',j.active?'写入中':'未启用');
+    setText('log-active',j.active?'Writing':'Disabled');
     setText('log-current',j.current||'-');
     setText('log-size',(j.current_bytes||0)+' bytes');
     setText('log-level',j.level||'-');
     logFiles=j.logs||[];
     const list=$('log-list');list.innerHTML='';
-    if(!j.logs||!j.logs.length){list.textContent='没有日志文件。';return;}
+    if(!j.logs||!j.logs.length){list.textContent='No log files.';return;}
     j.logs.forEach(log=>{
       const row=document.createElement('div');row.className='listrow';
       const meta=document.createElement('div');meta.className='listmeta';
-      meta.textContent=(log.current?'[当前] ':'')+log.name;
+      meta.textContent=(log.current?'[Current] ':'')+log.name;
       const small=document.createElement('small');small.textContent=log.size+' bytes';meta.appendChild(small);
       const actions=document.createElement('div');actions.className='actions';
-      const view=document.createElement('button');view.className='btn-secondary';view.textContent='查看';view.onclick=()=>loadLog(log.name);
-      const down=document.createElement('a');down.className='linkbtn';down.href='/api/log/file?file='+encodeURIComponent(log.name);down.textContent='下载';
+      const view=document.createElement('button');view.className='btn-secondary';view.textContent='View';view.onclick=()=>loadLog(log.name);
+      const down=document.createElement('a');down.className='linkbtn';down.href='/api/log/file?file='+encodeURIComponent(log.name);down.textContent='Download';
       const del=document.createElement('button');
       del.className='btn-danger';
-      del.textContent=log.current?'清空':'删除';
+      del.textContent=log.current?'Clear':'Delete';
       del.onclick=()=>log.current?clearCurrentLog():deleteLog(log.name);
       actions.appendChild(view);actions.appendChild(down);actions.appendChild(del);row.appendChild(meta);row.appendChild(actions);list.appendChild(row);
     });
     const current=j.logs.find(x=>x.current)||j.logs[0];if(current)loadLog(current.name);
-  }catch(e){$('log-list').textContent='读取日志失败: '+e;}
+  }catch(e){$('log-list').textContent='Failed to read logs: '+e;}
 }
 async function loadLog(name){
   selectedLog=name;
-  $('log-body').textContent='读取 '+name+' ...';
+  $('log-body').textContent='Reading '+name+' ...';
   try{const r=await fetch('/api/log/file?file='+encodeURIComponent(name));$('log-body').textContent=await r.text();}
-  catch(e){$('log-body').textContent='读取失败: '+e;}
+  catch(e){$('log-body').textContent='Read failed: '+e;}
 }
 async function deleteLog(name){
-  if(!confirm('删除日志 '+name+' ?'))return;
+  if(!confirm('Delete log '+name+'?'))return;
   try{
     const r=await fetch('/api/files/delete?path='+encodeURIComponent(name),{method:'POST'});
     const j=await r.json();
     if(!j.ok){
-      alert('删除失败: '+(j.message||j.error||'unknown'));
+      alert('Delete failed: '+(j.message||j.error||'unknown'));
       return;
     }
     if(selectedLog===name){
       selectedLog='';
-      $('log-body').textContent='日志已删除。';
+      $('log-body').textContent='Log deleted.';
     }
     loadLogs();
   }catch(e){
-    alert('删除失败: '+e);
+    alert('Delete failed: '+e);
   }
 }
 async function clearCurrentLog(){
-  if(!confirm('清空当前日志吗？日志会在同一个文件里继续写入。'))return;
+  if(!confirm('Clear the current log? Logging will continue in the same file.'))return;
   try{
     const r=await fetch('/api/maintenance/clear-logs',{method:'POST'});
     const j=await r.json();
     if(!j.ok){
-      alert('清空失败: '+(j.message||j.error||'unknown'));
+      alert('Clear failed: '+(j.message||j.error||'unknown'));
       return;
     }
-    $('log-body').textContent='当前日志已清空。';
+    $('log-body').textContent='Current log cleared.';
     liveOffset=0;
     loadLogs();
   }catch(e){
-    alert('清空失败: '+e);
+    alert('Clear failed: '+e);
   }
 }
 async function deleteAllLogs(){
   if(!logFiles.length){
-    alert('没有日志文件。');
+    alert('No log files.');
     return;
   }
-  if(!confirm('删除所有历史日志并清空当前日志吗？这个操作不可恢复。'))return;
+  if(!confirm('Delete all historical logs and clear the current log? This cannot be undone.'))return;
   let failed=0;
   for(const log of logFiles){
     if(log.current)continue;
@@ -98,13 +98,13 @@ async function deleteAllLogs(){
   }
   selectedLog='';
   liveOffset=0;
-  $('log-body').textContent=failed?'部分日志清理失败，请刷新后重试。':'所有日志已删除，当前日志已清空。';
+  $('log-body').textContent=failed?'Some logs could not be cleared. Refresh and try again.':'All logs deleted. Current log cleared.';
   loadLogs();
 }
 async function pollLive(){
   try{
     const r=await fetch('/api/log/live?offset='+liveOffset);const j=await r.json();
-    if(!j.ok){$('live-body').textContent='Live 失败: '+(j.error||'unknown');return;}
+    if(!j.ok){$('live-body').textContent='Live failed: '+(j.error||'unknown');return;}
     if(j.reset)$('live-body').textContent='';
     if(j.text)$('live-body').textContent+=j.text;
     liveOffset=j.nextOffset||0;

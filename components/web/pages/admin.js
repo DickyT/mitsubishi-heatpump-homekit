@@ -56,7 +56,7 @@ function updateCn105AdvancedSummary(){
 function setSettingsDirty(dirty){
   settingsDirty=dirty;
   $('cfg-save-btn').disabled=!dirty;
-  $('cfg-save-btn').textContent=dirty?'* 保存并重启':'保存并重启';
+  $('cfg-save-btn').textContent=dirty?'* Save and Reboot':'Save and Reboot';
   $('cn105-advanced-btn').classList.toggle('dirty',dirty);
   updateCn105AdvancedSummary();
 }
@@ -101,7 +101,7 @@ function closeCn105Modal(keepChanges,e){
 
 function renderTransportStatus(transportStatus){
   if(!transportStatus){
-    $('tp').textContent='暂无传输层状态';
+    $('tp').textContent='No transport status available';
     return;
   }
   $('tp').textContent=
@@ -118,7 +118,7 @@ async function loadTransport(){
     const j=await r.json();
     renderTransportStatus(j.cn105&&j.cn105.transport_status);
   }catch(e){
-    $('tp').textContent='错误: '+e;
+    $('tp').textContent='Error: '+e;
   }
 }
 
@@ -159,18 +159,18 @@ function formatDuration(ms){
 }
 
 function formatProvisioningStage(prov){
-  if(!prov)return '未启用';
+  if(!prov)return 'Disabled';
   const stage=prov.stage||'idle';
-  if(stage==='starting')return '正在打开 BLE 配网';
-  if(stage==='waiting')return '等待手机配网';
-  if(stage==='connecting')return '正在连接新 WiFi';
-  if(stage==='connected')return '已联网，即将重启';
-  if(stage==='failed')return '新 WiFi 连接失败';
-  if(stage==='timed-out')return '配网窗口已超时关闭';
-  if(stage==='save-failed')return '新 WiFi 保存失败';
-  if(stage==='start-failed')return 'BLE 配网启动失败';
-  if(stage==='init-failed')return 'BLE 配网初始化失败';
-  return prov.active?'BLE 配网进行中':'未激活';
+  if(stage==='starting')return 'Starting BLE provisioning';
+  if(stage==='waiting')return 'Waiting for phone provisioning';
+  if(stage==='connecting')return 'Connecting to new WiFi';
+  if(stage==='connected')return 'Connected, rebooting soon';
+  if(stage==='failed')return 'New WiFi connection failed';
+  if(stage==='timed-out')return 'Provisioning window timed out';
+  if(stage==='save-failed')return 'Failed to save new WiFi';
+  if(stage==='start-failed')return 'BLE provisioning failed to start';
+  if(stage==='init-failed')return 'BLE provisioning failed to initialize';
+  return prov.active?'BLE provisioning active':'Inactive';
 }
 
 function signalIcon(rssi){
@@ -198,8 +198,8 @@ function syncUptime(status){
 }
 
 function openNoticeModal(title,message){
-  $('notice-title').textContent=title||'操作失败';
-  $('notice-body').textContent=message||'请稍后重试。';
+  $('notice-title').textContent=title||'Action Failed';
+  $('notice-body').textContent=message||'Please try again later.';
   $('notice-close').disabled=false;
   $('notice-close').style.display='';
   $('notice-modal').classList.add('open');
@@ -207,8 +207,8 @@ function openNoticeModal(title,message){
 }
 
 function openRestartModal(title,message){
-  $('notice-title').textContent=title||'正在重启';
-  $('notice-body').textContent=message||'设备正在重启，页面将在 5 秒后自动刷新。';
+  $('notice-title').textContent=title||'Rebooting';
+  $('notice-body').textContent=message||'The device is rebooting. This page will refresh automatically in 5 seconds.';
   $('notice-close').disabled=true;
   $('notice-close').style.display='none';
   $('notice-modal').classList.add('open');
@@ -229,8 +229,8 @@ function closeNoticeModal(e){
 async function openDeviceCfgModal(){
   const modal=$('device-cfg-modal');
   const editor=$('device-cfg-editor');
-  $('device-cfg-msg').textContent='读取 device_cfg 中...';
-  editor.value='加载中...';
+  $('device-cfg-msg').textContent='Reading device_cfg...';
+  editor.value='Loading...';
   $('device-cfg-save').disabled=false;
   modal.classList.add('open');
   modal.setAttribute('aria-hidden','false');
@@ -239,15 +239,15 @@ async function openDeviceCfgModal(){
     const text=await r.text();
     if(!r.ok){
       editor.value='';
-      $('device-cfg-msg').textContent='读取失败: '+text;
+      $('device-cfg-msg').textContent='Read failed: '+text;
       return;
     }
     editor.value=text;
-    $('device-cfg-msg').textContent='请谨慎编辑。点击取消不会写入任何内容。';
+    $('device-cfg-msg').textContent='Edit carefully. Canceling writes nothing.';
     editor.focus();
   }catch(e){
     editor.value='';
-    $('device-cfg-msg').textContent='读取失败: '+e;
+    $('device-cfg-msg').textContent='Read failed: '+e;
   }
 }
 
@@ -265,25 +265,25 @@ async function saveDeviceCfgJson(){
   try{
     parsed=JSON.parse($('device-cfg-editor').value);
   }catch(e){
-    $('device-cfg-msg').textContent='JSON 格式错误: '+e.message;
+    $('device-cfg-msg').textContent='JSON format error: '+e.message;
     return;
   }
   $('device-cfg-save').disabled=true;
-  $('device-cfg-msg').textContent='正在写入 NVS...';
+  $('device-cfg-msg').textContent='Writing NVS...';
   try{
     const r=await fetch('/api/config/device-cfg-json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsed)});
     const j=await r.json();
     if(!j.ok){
       $('device-cfg-save').disabled=false;
-      $('device-cfg-msg').textContent='写入失败: '+(j.error||j.message||'unknown');
+      $('device-cfg-msg').textContent='Write failed: '+(j.error||j.message||'unknown');
       return;
     }
     closeDeviceCfgModal();
-    openRestartModal('NVS 已写入','device_cfg 已保存。设备正在重启，页面将在 5 秒后自动刷新。');
+    openRestartModal('NVS Saved','device_cfg has been saved. The device is rebooting and this page will refresh automatically in 5 seconds.');
     await fetch('/api/reboot',{method:'POST'}).catch(()=>{});
   }catch(e){
     $('device-cfg-save').disabled=false;
-    $('device-cfg-msg').textContent='写入失败: '+e;
+    $('device-cfg-msg').textContent='Write failed: '+e;
   }
 }
 
@@ -291,7 +291,7 @@ async function saveConfig(){
   const params=new URLSearchParams();
   const homekitCode=normalizeHomeKitCodeInput($('cfg-homekit-code').value.trim());
   if(homekitCode&&homekitCode.length!==8){
-    openNoticeModal('保存失败','HomeKit 配对码需要 8 位数字，例如 1111-2222。');
+    openNoticeModal('Save Failed','HomeKit pairing code must be 8 digits, for example 1111-2222.');
     return;
   }
   params.set('device_name',$('cfg-device-name').value.trim()||'Mitsubishi AC');
@@ -318,20 +318,20 @@ async function saveConfig(){
   params.set('poll_off_ms',$('cfg-poll-off').value);
     const button=$('cfg-save-btn');
     button.disabled=true;
-  $('msg').textContent='设置保存中，成功后会自动重启...';
+  $('msg').textContent='Saving settings. The device will reboot when successful...';
   try{
     const r=await fetch('/api/config/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()});
     const j=await r.json();
     if(!j.ok){
       button.disabled=false;
-      openNoticeModal('保存失败',j.error||j.message||'设备拒绝了这次设置保存。');
+      openNoticeModal('Save Failed',j.error||j.message||'The device rejected this settings save.');
       return;
     }
-    openRestartModal('设置已保存','设备正在重启，页面将在 5 秒后自动刷新。');
+    openRestartModal('Settings Saved','The device is rebooting. This page will refresh automatically in 5 seconds.');
     await fetch('/api/reboot',{method:'POST'}).catch(()=>{});
   }catch(e){
     button.disabled=false;
-    openNoticeModal('保存失败','请求没有成功发出或设备没有响应：'+e);
+    openNoticeModal('Save Failed','The request was not sent successfully or the device did not respond: '+e);
   }
 }
 
@@ -363,12 +363,12 @@ function openOtaModal(result){
   $('ota-modal-current').textContent=result.current_version||'--';
   $('ota-modal-new').textContent=result.uploaded_version||'--';
   $('ota-modal-partition').textContent=result.partition||'--';
-  $('ota-modal-status').textContent='固件已经上传完成。确认后设备会重启并切换到新的 OTA 分区。';
+  $('ota-modal-status').textContent='Firmware upload is complete. Confirm to reboot and switch to the new OTA partition.';
   $('ota-modal').querySelectorAll('button').forEach(button=>button.disabled=false);
   const warning=$('ota-modal-warning');
   if(result.same_or_older||result.rollback){
     warning.style.display='block';
-    warning.textContent='注意：新版本号小于或等于当前版本。系统不会禁止回退/重刷，但请确认这是你想要的固件。';
+    warning.textContent='Warning: the new version is less than or equal to the current version. Rollback or reinstall is allowed, but make sure this is the firmware you want.';
   }else{
     warning.style.display='none';
     warning.textContent='';
@@ -404,17 +404,17 @@ function uploadOta(){
   const fileInput=$('ota-file');
   const file=fileInput&&fileInput.files&&fileInput.files[0];
   if(!file){
-    setOtaMessage('请选择一个 .bin 固件文件。',true);
+    setOtaMessage('Select a .bin firmware file.',true);
     return;
   }
   const lowerName=(file.name||'').toLowerCase();
   if(!lowerName.endsWith('.bin')){
-    setOtaMessage('只允许上传 .bin 固件文件。',true);
+    setOtaMessage('Only .bin firmware files are allowed.',true);
     fileInput.value='';
     return;
   }
   if(!lowerName.endsWith('_0x20000.bin')){
-    setOtaMessage('请选择地址为 0x20000 的 app 固件。',true);
+    setOtaMessage('Select the app firmware at address 0x20000.',true);
     fileInput.value='';
     return;
   }
@@ -424,7 +424,7 @@ function uploadOta(){
   progress.value=0;
   otaUploading=true;
   fileInput.disabled=true;
-  setOtaMessage(`OTA 上传中: ${file.name}`);
+  setOtaMessage(`OTA uploading: ${file.name}`);
 
   const xhr=new XMLHttpRequest();
   xhr.open('POST','/api/ota/upload');
@@ -447,20 +447,20 @@ function uploadOta(){
       openOtaModal(result);
     }else{
       const err=(result&&result.error)||xhr.responseText||`HTTP ${xhr.status}`;
-      setOtaMessage('OTA 上传失败: '+err,true);
+      setOtaMessage('OTA upload failed: '+err,true);
     }
   };
   xhr.onerror=()=>{
     otaUploading=false;
     fileInput.disabled=false;
-    setOtaMessage('OTA 上传失败: 网络错误',true);
+    setOtaMessage('OTA upload failed: network error',true);
   };
   xhr.send(file);
 }
 
 async function confirmOtaReboot(){
   if(!otaUploadResult)return;
-  setOtaApplying('正在应用 OTA 更新，设备会重启。页面将在 5 秒后自动刷新。');
+  setOtaApplying('Applying OTA update. The device will reboot and this page will refresh automatically in 5 seconds.');
   setOtaMessage('');
   try{
     const r=await fetch('/api/ota/apply',{method:'POST'});
@@ -468,8 +468,8 @@ async function confirmOtaReboot(){
       const j=await r.json().catch(()=>({}));
       otaApplying=false;
       $('ota-modal').querySelectorAll('button').forEach(button=>button.disabled=false);
-      $('ota-modal-status').textContent='OTA 应用失败，请检查错误后重试或重新上传。';
-      setOtaMessage('OTA 应用失败: '+(j.error||`HTTP ${r.status}`),true);
+      $('ota-modal-status').textContent='OTA apply failed. Check the error, then retry or upload again.';
+      setOtaMessage('OTA apply failed: '+(j.error||`HTTP ${r.status}`),true);
       return;
     }
   }catch(e){
@@ -504,14 +504,14 @@ async function renderHomeKitQr(payload){
   const target=$('hk-qr');
   if(!target)return;
   if(!payload||payload==='-'){
-    target.textContent='当前没有可用的 Setup Payload。';
+    target.textContent='No Setup Payload is available.';
     return;
   }
-  target.textContent='二维码加载中...';
+  target.textContent='Loading QR code...';
   try{
     await ensureQrLibrary();
   }catch(e){
-    target.textContent='二维码库加载失败，请直接使用配对码。';
+    target.textContent='QR library failed to load. Use the pairing code instead.';
     return;
   }
   target.textContent='';
@@ -530,7 +530,7 @@ function openHomeKitModal(){
   if(!homekitStatus)return;
   $('hk-modal-code').textContent=formatHomeKitCode(homekitStatus.setup_code);
   $('hk-modal-device').textContent=homekitStatus.accessory_name||'--';
-  $('hk-modal-paired').textContent=(homekitStatus.paired_controllers||0)+' 个控制器';
+  $('hk-modal-paired').textContent=(homekitStatus.paired_controllers||0)+' controller(s)';
   $('hk-modal-payload').textContent=homekitStatus.setup_payload||'--';
   $('hk-modal').classList.add('open');
   $('hk-modal').setAttribute('aria-hidden','false');
@@ -549,18 +549,16 @@ async function loadInfo(){
     const prov=j.provisioning||{};
     $('i-device').textContent=j.device;
     $('i-version').textContent=j.version||'--';
-    $('i-runtime').textContent=j.cn105.transport==='real'?'真实 CN105':'Mock CN105';
+    $('i-runtime').textContent=j.cn105.transport==='real'?'Real CN105':'Mock CN105';
     syncUptime(j);
     $('i-wifi-info').textContent=`${j.wifi.ssid||'--'} | ${j.wifi.ip||'0.0.0.0'} | ${signalIcon(j.wifi.rssi)} ${j.wifi.rssi} dBm | BSSID ${j.wifi.bssid||'--'}`;
     $('i-mac').textContent=j.wifi.mac;
     $('i-fs').textContent=j.filesystem.used_bytes+' / '+j.filesystem.total_bytes+' bytes';
-    $('i-hk-status').textContent=j.homekit.started?'\u5df2\u542f\u52a8':'\u672a\u542f\u52a8';
+    $('i-hk-status').textContent=j.homekit.started?'Started':'Not started';
     $('i-hk-paired').textContent=j.homekit.paired_controllers;
     $('i-hk-code').textContent=formatHomeKitCode(j.homekit.setup_code);
     $('i-hk-model').textContent=j.homekit.model||'--';
     $('i-hk-fw').textContent=j.homekit.firmware_revision||'--';
-    $('i-log-current').textContent=j.log.current||'-';
-    $('i-log-level').textContent=j.log.level||'-';
     $('i-prov-state').textContent=formatProvisioningStage(prov);
     $('i-prov-service').textContent=prov.service_name||`GPIO${prov.button_gpio||39}`;
     $('i-prov-remaining').textContent=prov.active?formatDuration(prov.remaining_ms||0):'--';
@@ -571,7 +569,7 @@ async function loadInfo(){
       $('cfg-device-name').value=(j.config&&j.config.device_name)||j.device||'';
       $('cfg-wifi-ssid').value=(j.config&&j.config.wifi_ssid)||'';
       $('cfg-wifi-password').value='';
-      $('cfg-wifi-password').placeholder=(j.config&&j.config.wifi_password_set)?'已设置，留空则不修改':'未设置';
+      $('cfg-wifi-password').placeholder=(j.config&&j.config.wifi_password_set)?'Already set; leave blank to keep current':'Not set';
       $('cfg-homekit-code').value=formatHomeKitCode(j.config&&j.config.homekit_code);
       $('cfg-homekit-manufacturer').value=(j.config&&j.config.homekit_manufacturer)||'';
       $('cfg-homekit-model').value=(j.config&&j.config.homekit_model)||'';
@@ -594,22 +592,22 @@ async function loadInfo(){
       settingsLoaded=true;
       setSettingsDirty(false);
     }
-  }catch(e){$('msg').textContent='\u52a0\u8f7d\u5931\u8d25: '+e;}
+  }catch(e){$('msg').textContent='Load failed: '+e;}
 }
 async function reboot(){
-  if(!confirm('\u786e\u5b9a\u8981\u91cd\u542f\u8bbe\u5907\u5417\uff1f'))return;
-  openRestartModal('正在重启','设备正在重启，页面将在 5 秒后自动刷新。');
+  if(!confirm('Reboot the device?'))return;
+  openRestartModal('Rebooting','The device is rebooting. This page will refresh automatically in 5 seconds.');
   try{await fetch('/api/reboot',{method:'POST'});}
   catch(e){}
 }
 async function maintenance(url,label,prompt){
   if(!confirm(prompt))return;
-  $('msg').textContent=label+'\u6267\u884c\u4e2d...';
+  $('msg').textContent=label+' running...';
   try{
     const r=await fetch(url,{method:'POST'});const j=await r.json();
-    $('msg').textContent=(j.ok?'\u5b8c\u6210: ':'\u5931\u8d25: ')+(j.message||label)+(j.rebooting?'\n\u8bbe\u5907\u5c06\u91cd\u542f...':'');
+    $('msg').textContent=(j.ok?'Done: ':'Failed: ')+(j.message||label)+(j.rebooting?'\nDevice will reboot...':'');
     setTimeout(loadInfo,800);
-  }catch(e){$('msg').textContent=label+'\u8bf7\u6c42\u5931\u8d25: '+e;}
+  }catch(e){$('msg').textContent=label+' request failed: '+e;}
 }
 
 $('hk-modal-btn').addEventListener('click',openHomeKitModal);

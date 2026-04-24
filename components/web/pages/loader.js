@@ -36,13 +36,13 @@
       throw new Error('Unknown WebUI page: '+page);
     }
 
-    app.textContent='加载样式...';
+    app.textContent='Loading styles...';
     const css=await fetchSeries(manifest.css);
     const style=document.createElement('style');
     style.textContent=css;
     document.head.appendChild(style);
 
-    app.textContent='加载页面...';
+    app.textContent='Loading page...';
     app.innerHTML=await fetchSeries(config.body);
 
     app.setAttribute('data-ready','1');
@@ -51,7 +51,7 @@
 
   boot().catch(function(error){
     if(app){
-      app.innerHTML='<main><h1>WebUI 加载失败</h1><pre></pre></main>';
+      app.innerHTML='<main><h1>WebUI load failed</h1><pre></pre></main>';
       const pre=app.querySelector('pre');
       if(pre)pre.textContent=String(error&&error.stack?error.stack:error);
     }
