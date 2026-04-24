@@ -23,6 +23,11 @@ let otaApplying=false;
 let cn105ModalSnapshot=null;
 let settingsDirty=false;
 let cn105AdvancedDirty=false;
+let jsZipPromise=null;
+let cryptoJsPromise=null;
+
+const kiriPackageFormat='kiri-firmware-package-v1';
+const kiriProjectId='kiri-bridge';
 
 const cn105AdvancedFieldIds=[
   'cfg-cn105-rx-pin',
@@ -422,24 +427,144 @@ function handleOtaCancel(e){
   closeOtaModal(true);
 }
 
-function uploadOta(){
+function loadJSZip(){
+  if(window.JSZip)return Promise.resolve(window.JSZip);
+  if(jsZipPromise)return jsZipPromise;
+  jsZipPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    script.onload=()=>window.JSZip?resolve(window.JSZip):reject(new Error('JSZip did not initialize'));
+    script.onerror=()=>reject(new Error('Failed to load JSZip from cdnjs'));
+    document.head.appendChild(script);
+  });
+  return jsZipPromise;
+}
+
+function loadCryptoJS(){
+  if(window.CryptoJS)return Promise.resolve(window.CryptoJS);
+  if(cryptoJsPromise)return cryptoJsPromise;
+  cryptoJsPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js';
+    script.onload=()=>window.CryptoJS?resolve(window.CryptoJS):reject(new Error('CryptoJS did not initialize'));
+    script.onerror=()=>reject(new Error('Failed to load CryptoJS from cdnjs'));
+    document.head.appendChild(script);
+  });
+  return cryptoJsPromise;
+}
+
+async function sha256Hex(bytes){
+  if(window.crypto&&crypto.subtle){
+    const digest=await crypto.subtle.digest('SHA-256',bytes);
+    return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  const CryptoJS=await loadCryptoJS();
+  const words=[];
+  for(let i=0;i<bytes.length;i+=1){
+    words[i>>>2]|=bytes[i]<<(24-(i%4)*8);
+  }
+  return CryptoJS.SHA256(CryptoJS.lib.WordArray.create(words,bytes.length)).toString(CryptoJS.enc.Hex);
+}
+
+async function readZipText(zip,path){
+  const entry=zip.file(path);
+  if(!entry)throw new Error(`Package is missing ${path}`);
+  return entry.async('string');
+}
+
+async function readZipBytes(zip,path){
+  const entry=zip.file(path);
+  if(!entry)throw new Error(`Package is missing ${path}`);
+  return entry.async('uint8array');
+}
+
+function partitionFromManifest(manifest,label){
+  const partitions=manifest&&manifest.partitions;
+  return partitions&&partitions[label]?partitions[label]:null;
+}
+
+function partitionMatches(packagePartition,devicePartition){
+  if(!packagePartition||!devicePartition)return false;
+  return Number(packagePartition.offset)===Number(devicePartition.address)&&
+    Number(packagePartition.size)===Number(devicePartition.size);
+}
+
+async function validateKiriPackage(file){
+  const lowerName=(file.name||'').toLowerCase();
+  if(!lowerName.endsWith('.kiri'))throw new Error('Only .kiri firmware packages are allowed.');
+
+  setOtaMessage(`Validating package: ${file.name}`);
+  const JSZip=await loadJSZip();
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const manifest=JSON.parse(await readZipText(zip,'manifest.json'));
+
+  if(manifest.format!==kiriPackageFormat)throw new Error('This is not a supported Kiri firmware package.');
+  if(manifest.project!==kiriProjectId)throw new Error(`Wrong project package: ${manifest.project||'unknown'}.`);
+  if(manifest.variant!=='app')throw new Error('Upload the Kiri Bridge app package here, not the installer package.');
+  if(!manifest.app||manifest.app.path!=='app.bin')throw new Error('Package manifest does not describe app.bin.');
+
+  const appBytes=await readZipBytes(zip,manifest.app.path);
+  if(Number(manifest.app.size)!==appBytes.byteLength)throw new Error('Package app size does not match manifest.');
+  const appHash=await sha256Hex(appBytes);
+  if(String(manifest.app.sha256||'').toLowerCase()!==appHash)throw new Error('Package app checksum does not match manifest.');
+
+  const r=await fetch('/api/ota/info');
+  const otaInfo=await r.json().catch(()=>({}));
+  if(!r.ok||!otaInfo.ok)throw new Error(otaInfo.error||`OTA info request failed: HTTP ${r.status}`);
+  if(manifest.project_name!==otaInfo.project_name){
+    throw new Error(`Project mismatch: package=${manifest.project_name||'unknown'} device=${otaInfo.project_name||'unknown'}.`);
+  }
+  if(!otaInfo.next_partition||appBytes.byteLength>Number(otaInfo.next_partition.size||0)){
+    throw new Error('Package app is larger than the next OTA partition.');
+  }
+
+  const manifestOta0=partitionFromManifest(manifest,'ota_0');
+  const manifestOta1=partitionFromManifest(manifest,'ota_1');
+  if(!partitionMatches(manifestOta0,otaInfo.partitions&&otaInfo.partitions.ota_0)||
+     !partitionMatches(manifestOta1,otaInfo.partitions&&otaInfo.partitions.ota_1)){
+    throw new Error('Package partition table does not match this device. Use a package built for this firmware layout.');
+  }
+
+  return {manifest,appBytes,otaInfo};
+}
+
+function uploadAppImage(appBytes,name){
+  return new Promise((resolve,reject)=>{
+    const progress=$('ota-progress');
+    progress.style.display='block';
+    progress.value=0;
+
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','/api/ota/upload');
+    xhr.setRequestHeader('Content-Type','application/octet-stream');
+    xhr.upload.onprogress=e=>{
+      if(e.lengthComputable){
+        progress.value=Math.round((e.loaded/e.total)*100);
+      }
+    };
+    xhr.onload=()=>{
+      let result=null;
+      try{result=JSON.parse(xhr.responseText||'{}');}catch(e){}
+      if(xhr.status>=200&&xhr.status<300&&result&&result.ok){
+        progress.value=100;
+        progress.style.display='none';
+        resolve(result);
+      }else{
+        reject(new Error((result&&result.error)||xhr.responseText||`HTTP ${xhr.status}`));
+      }
+    };
+    xhr.onerror=()=>reject(new Error('network error'));
+    xhr.send(new Blob([appBytes],{type:'application/octet-stream'}));
+  });
+}
+
+async function uploadOta(){
   if(otaUploading)return;
   otaUploadResult=null;
   const fileInput=$('ota-file');
   const file=fileInput&&fileInput.files&&fileInput.files[0];
   if(!file){
-    setOtaMessage('Select a .bin firmware file.',true);
-    return;
-  }
-  const lowerName=(file.name||'').toLowerCase();
-  if(!lowerName.endsWith('.bin')){
-    setOtaMessage('Only .bin firmware files are allowed.',true);
-    fileInput.value='';
-    return;
-  }
-  if(!lowerName.endsWith('_0x20000.bin')){
-    setOtaMessage('Select the app firmware at address 0x20000.',true);
-    fileInput.value='';
+    setOtaMessage('Select a .kiri firmware package.',true);
     return;
   }
 
@@ -448,38 +573,23 @@ function uploadOta(){
   progress.value=0;
   otaUploading=true;
   fileInput.disabled=true;
-  setOtaMessage(`OTA uploading: ${file.name}`);
-
-  const xhr=new XMLHttpRequest();
-  xhr.open('POST','/api/ota/upload');
-  xhr.setRequestHeader('Content-Type','application/octet-stream');
-  xhr.upload.onprogress=e=>{
-    if(e.lengthComputable){
-      progress.value=Math.round((e.loaded/e.total)*100);
-    }
-  };
-  xhr.onload=()=>{
+  try{
+    const packageInfo=await validateKiriPackage(file);
+    setOtaMessage(`OTA uploading app image from ${file.name}`);
+    const result=await uploadAppImage(packageInfo.appBytes,file.name);
     otaUploading=false;
     fileInput.disabled=false;
-    let result=null;
-    try{result=JSON.parse(xhr.responseText||'{}');}catch(e){}
-    if(xhr.status>=200&&xhr.status<300&&result&&result.ok){
-      progress.value=100;
-      progress.style.display='none';
-      fileInput.value='';
-      setOtaMessage('');
-      openOtaModal(result);
-    }else{
-      const err=(result&&result.error)||xhr.responseText||`HTTP ${xhr.status}`;
-      setOtaMessage('OTA upload failed: '+err,true);
-    }
-  };
-  xhr.onerror=()=>{
+    fileInput.value='';
+    setOtaMessage('');
+    openOtaModal(result);
+  }catch(e){
     otaUploading=false;
     fileInput.disabled=false;
-    setOtaMessage('OTA upload failed: network error',true);
-  };
-  xhr.send(file);
+    progress.style.display='none';
+    progress.value=0;
+    fileInput.value='';
+    setOtaMessage('OTA upload failed: '+e.message,true);
+  }
 }
 
 async function confirmOtaReboot(){

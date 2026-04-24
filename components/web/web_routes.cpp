@@ -19,6 +19,7 @@
 #include "device_settings.h"
 #include "esp_app_desc.h"
 #include "esp_ota_ops.h"
+#include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -1253,6 +1254,72 @@ esp_err_t clearAllNvsHandler(httpd_req_t* req) {
     return sendMaintenanceResult(req, platform_maintenance::clearAllNvs());
 }
 
+void writePartitionJson(const esp_partition_t* partition, char* out, size_t out_size) {
+    if (out == nullptr || out_size == 0) {
+        return;
+    }
+    if (partition == nullptr) {
+        std::snprintf(out, out_size, "null");
+        return;
+    }
+    char esc_label[32] = {};
+    web_http::jsonEscape(partition->label, esc_label, sizeof(esc_label));
+    std::snprintf(out,
+                  out_size,
+                  "{\"label\":\"%s\",\"address\":%u,\"size\":%u}",
+                  esc_label,
+                  static_cast<unsigned>(partition->address),
+                  static_cast<unsigned>(partition->size));
+}
+
+esp_err_t otaInfoHandler(httpd_req_t* req) {
+    const esp_partition_t* running_partition = esp_ota_get_running_partition();
+    const esp_partition_t* boot_partition = esp_ota_get_boot_partition();
+    const esp_partition_t* next_partition = esp_ota_get_next_update_partition(nullptr);
+    const esp_partition_t* ota0 = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                                                           ESP_PARTITION_SUBTYPE_APP_OTA_0,
+                                                           nullptr);
+    const esp_partition_t* ota1 = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                                                           ESP_PARTITION_SUBTYPE_APP_OTA_1,
+                                                           nullptr);
+    const esp_app_desc_t* app_desc = esp_app_get_description();
+
+    char running_json[96] = {};
+    char boot_json[96] = {};
+    char next_json[96] = {};
+    char ota0_json[96] = {};
+    char ota1_json[96] = {};
+    writePartitionJson(running_partition, running_json, sizeof(running_json));
+    writePartitionJson(boot_partition, boot_json, sizeof(boot_json));
+    writePartitionJson(next_partition, next_json, sizeof(next_json));
+    writePartitionJson(ota0, ota0_json, sizeof(ota0_json));
+    writePartitionJson(ota1, ota1_json, sizeof(ota1_json));
+
+    char project_name[64] = {};
+    char version[64] = {};
+    web_http::jsonEscape(app_desc == nullptr ? "" : app_desc->project_name, project_name, sizeof(project_name));
+    web_http::jsonEscape(build_info::firmwareVersion(), version, sizeof(version));
+
+    char body[768] = {};
+    std::snprintf(body,
+                  sizeof(body),
+                  "{\"ok\":true,"
+                  "\"project_name\":\"%s\","
+                  "\"version\":\"%s\","
+                  "\"running_partition\":%s,"
+                  "\"boot_partition\":%s,"
+                  "\"next_partition\":%s,"
+                  "\"partitions\":{\"ota_0\":%s,\"ota_1\":%s}}",
+                  project_name,
+                  version,
+                  running_json,
+                  boot_json,
+                  next_json,
+                  ota0_json,
+                  ota1_json);
+    return web_http::sendText(req, "application/json", body);
+}
+
 esp_err_t otaUploadHandler(httpd_req_t* req) {
     if (req->content_len <= 0) {
         return web_http::sendJsonError(req, "empty OTA upload");
@@ -1398,6 +1465,7 @@ const web_http::Route ROUTES[] = {
     { "/api/maintenance/clear-logs", HTTP_POST, clearLogsHandler },
     { "/api/maintenance/clear-spiffs", HTTP_POST, clearSpiffsHandler },
     { "/api/maintenance/clear-all-nvs", HTTP_POST, clearAllNvsHandler },
+    { "/api/ota/info", HTTP_GET, otaInfoHandler },
     { "/api/ota/upload", HTTP_POST, otaUploadHandler },
     { "/api/ota/apply", HTTP_POST, otaApplyHandler },
     { "/api/logs", HTTP_GET, logsListHandler },
