@@ -20,9 +20,7 @@ const cn105AdvancedFieldIds=[
   'cfg-cn105-parity',
   'cfg-cn105-stop-bits',
   'cfg-cn105-rx-pullup',
-  'cfg-cn105-tx-open-drain',
-  'cfg-poll-active',
-  'cfg-poll-off'
+  'cfg-cn105-tx-open-drain'
 ];
 const settingsFieldIds=[
   'cfg-device-name',
@@ -33,10 +31,11 @@ const settingsFieldIds=[
   'cfg-homekit-manufacturer',
   'cfg-homekit-model',
   'cfg-homekit-serial',
-  'cfg-led-enabled',
   'cfg-led-pin',
   'cfg-cn105-mode',
   'cfg-log-level',
+  'cfg-poll-active',
+  'cfg-poll-off',
   ...cn105AdvancedFieldIds
 ];
 
@@ -51,13 +50,15 @@ function cn105FormatSummary(){
 }
 
 function updateCn105AdvancedSummary(){
-  $('cn105-advanced-btn').textContent=cn105FormatSummary();
+  $('cn105-advanced-btn').textContent=(settingsDirty?'* ':'')+cn105FormatSummary();
 }
 
 function setSettingsDirty(dirty){
   settingsDirty=dirty;
   $('cfg-save-btn').disabled=!dirty;
+  $('cfg-save-btn').textContent=dirty?'* 保存并重启':'保存并重启';
   $('cn105-advanced-btn').classList.toggle('dirty',dirty);
+  updateCn105AdvancedSummary();
 }
 
 function markSettingsDirty(){
@@ -302,7 +303,6 @@ async function saveConfig(){
   params.set('homekit_model',$('cfg-homekit-model').value.trim());
   params.set('homekit_serial',$('cfg-homekit-serial').value.trim());
   params.set('homekit_setup_id',$('cfg-homekit-setup-id').value.trim().toUpperCase());
-  params.set('led_enabled',$('cfg-led-enabled').value);
   params.set('led_pin',$('cfg-led-pin').value);
   params.set('cn105_mode',$('cfg-cn105-mode').value);
   params.set('cn105_rx_pin',$('cfg-cn105-rx-pin').value);
@@ -577,7 +577,6 @@ async function loadInfo(){
       $('cfg-homekit-model').value=(j.config&&j.config.homekit_model)||'';
       $('cfg-homekit-serial').value=(j.config&&j.config.homekit_serial)||'';
       $('cfg-homekit-setup-id').value=(j.config&&j.config.homekit_setup_id)||'';
-      $('cfg-led-enabled').value=(j.config&&j.config.led_enabled)===false?'0':'1';
       $('cfg-led-pin').value=(j.config&&j.config.led_pin)||27;
       $('cfg-cn105-mode').value=(j.config&&j.config.cn105_mode)||'real';
       $('cfg-cn105-rx-pin').value=(j.config&&j.config.cn105_rx_pin)||26;

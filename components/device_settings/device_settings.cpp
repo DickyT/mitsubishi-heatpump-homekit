@@ -22,7 +22,6 @@ constexpr char kDefaultHomeKitModel[] = "Mitsubishi Heat Pump";
 constexpr char kDefaultHomeKitSerial[] = "DKT-MITSUBISHI-HOMEKIT";
 constexpr char kDefaultHomeKitSetupId[] = "DKT1";
 constexpr bool kDefaultUseRealCn105 = false;
-constexpr bool kDefaultStatusLedEnabled = true;
 constexpr int kDefaultStatusLedPin = 27;
 constexpr int kDefaultCn105RxPin = 26;
 constexpr int kDefaultCn105TxPin = 32;
@@ -73,7 +72,6 @@ void loadDefaults() {
     copyString(settings.homeKitSerial, sizeof(settings.homeKitSerial), kDefaultHomeKitSerial);
     copyString(settings.homeKitSetupId, sizeof(settings.homeKitSetupId), kDefaultHomeKitSetupId);
     settings.useRealCn105 = kDefaultUseRealCn105;
-    settings.statusLedEnabled = kDefaultStatusLedEnabled;
     settings.statusLedPin = kDefaultStatusLedPin;
     settings.cn105RxPin = kDefaultCn105RxPin;
     settings.cn105TxPin = kDefaultCn105TxPin;
@@ -341,7 +339,6 @@ esp_err_t init() {
     }
 
     loadBoolSetting(handle, "use_real", &settings.useRealCn105, &wrote_defaults);
-    loadBoolSetting(handle, "led_on", &settings.statusLedEnabled, &wrote_defaults);
     loadI32Setting(handle, "led_pin", &settings.statusLedPin, validOutputGpio, &wrote_defaults);
     loadI32Setting(handle, "rx_pin", &settings.cn105RxPin, validGpio, &wrote_defaults);
     loadI32Setting(handle, "tx_pin", &settings.cn105TxPin, validOutputGpio, &wrote_defaults);
@@ -386,11 +383,10 @@ esp_err_t init() {
     refreshCn105FormatName();
     initialized = true;
     ESP_LOGI(TAG,
-             "Loaded settings: name=%s homekit_code=%s transport=%s led=%s ledPin=%d wifi=%s cn105=rx%d/tx%d/%d/%s/rxPull=%s/txOD=%s poll_on=%lu poll_off=%lu log=%s",
+             "Loaded settings: name=%s homekit_code=%s transport=%s ledPin=%d wifi=%s cn105=rx%d/tx%d/%d/%s/rxPull=%s/txOD=%s poll_on=%lu poll_off=%lu log=%s",
              settings.deviceName,
              setup_code_display,
              settings.useRealCn105 ? "real" : "mock",
-             settings.statusLedEnabled ? "on" : "off",
              settings.statusLedPin,
              settings.wifiSsid,
              settings.cn105RxPin,
@@ -451,10 +447,6 @@ const char* homeKitSetupId() {
 
 bool useRealCn105() {
     return settings.useRealCn105;
-}
-
-bool statusLedEnabled() {
-    return settings.statusLedEnabled;
 }
 
 int statusLedPin() {
@@ -639,7 +631,6 @@ bool save(const Settings& requested, bool* reboot_required, char* message, size_
     nvs_set_str(handle, "hk_serial", next.homeKitSerial);
     nvs_set_str(handle, "hk_setupid", next.homeKitSetupId);
     nvs_set_u8(handle, "use_real", next.useRealCn105 ? 1 : 0);
-    nvs_set_u8(handle, "led_on", next.statusLedEnabled ? 1 : 0);
     nvs_set_i32(handle, "led_pin", next.statusLedPin);
     nvs_set_i32(handle, "rx_pin", next.cn105RxPin);
     nvs_set_i32(handle, "tx_pin", next.cn105TxPin);

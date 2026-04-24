@@ -17,7 +17,6 @@ struct Settings {
     char homeKitSerial[64] = "";
     char homeKitSetupId[5] = "";
     bool useRealCn105 = false;
-    bool statusLedEnabled = true;
     int statusLedPin = 27;
     int cn105RxPin = 26;
     int cn105TxPin = 32;
@@ -46,7 +45,6 @@ const char* homeKitModel();
 const char* homeKitSerial();
 const char* homeKitSetupId();
 bool useRealCn105();
-bool statusLedEnabled();
 int statusLedPin();
 int cn105RxPin();
 int cn105TxPin();

@@ -106,6 +106,7 @@ The current codebase drives the board RGB LED with this policy:
 Implementation note:
 
 - LED control lives in `components/platform_led`
+- the status LED is always enabled; only the GPIO is configurable
 - the LED policy stays simple and diagnostic-first rather than becoming a second notification system
 
 ## CN105 Transport Notes

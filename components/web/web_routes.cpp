@@ -291,7 +291,6 @@ std::string deviceCfgJson() {
     body += "  \"hk_serial\": " + quotedJson(s.homeKitSerial) + ",\n";
     body += "  \"hk_setupid\": " + quotedJson(s.homeKitSetupId) + ",\n";
     body += "  \"use_real\": " + std::string(s.useRealCn105 ? "true" : "false") + ",\n";
-    body += "  \"led_on\": " + std::string(s.statusLedEnabled ? "true" : "false") + ",\n";
     body += "  \"led_pin\": " + std::to_string(s.statusLedPin) + ",\n";
     body += "  \"rx_pin\": " + std::to_string(s.cn105RxPin) + ",\n";
     body += "  \"tx_pin\": " + std::to_string(s.cn105TxPin) + ",\n";
@@ -443,11 +442,6 @@ bool applyDeviceCfgJson(const char* json, size_t len, device_settings::Settings*
         if (tokenEquals(json, key, "hk_setupid") && tokenText(json, value, out->homeKitSetupId, sizeof(out->homeKitSetupId))) { i = next; continue; }
         if (tokenEquals(json, key, "use_real") && parseJsonBoolValue(json, value, &boolean)) {
             out->useRealCn105 = boolean;
-            i = next;
-            continue;
-        }
-        if (tokenEquals(json, key, "led_on") && parseJsonBoolValue(json, value, &boolean)) {
-            out->statusLedEnabled = boolean;
             i = next;
             continue;
         }
@@ -670,7 +664,6 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   "\"homekit_model\":\"%s\","
                   "\"homekit_serial\":\"%s\","
                   "\"homekit_setup_id\":\"%s\","
-                  "\"led_enabled\":%s,"
                   "\"led_pin\":%d,"
                   "\"cn105_mode\":\"%s\","
                   "\"cn105_rx_pin\":%d,"
@@ -709,7 +702,6 @@ esp_err_t statusHandler(httpd_req_t* req) {
                   esc_config_hk_model,
                   esc_config_hk_serial,
                   esc_config_hk_setup_id,
-                  config.statusLedEnabled ? "true" : "false",
                   config.statusLedPin,
                   transport_mode,
                   config.cn105RxPin,
@@ -988,11 +980,6 @@ esp_err_t configSaveHandler(httpd_req_t* req) {
     if (web_http::queryValue(body, "homekit_setup_id", value, sizeof(value))) {
         std::strncpy(next.homeKitSetupId, value, sizeof(next.homeKitSetupId) - 1);
         next.homeKitSetupId[sizeof(next.homeKitSetupId) - 1] = '\0';
-    }
-    if (web_http::queryValue(body, "led_enabled", value, sizeof(value))) {
-        next.statusLedEnabled = std::strcmp(value, "0") != 0 &&
-                                std::strcmp(value, "false") != 0 &&
-                                std::strcmp(value, "off") != 0;
     }
     if (web_http::queryValue(body, "led_pin", value, sizeof(value))) {
         next.statusLedPin = std::atoi(value);

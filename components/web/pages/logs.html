@@ -2,12 +2,12 @@
 <h1>日志</h1>
 <div class="subtitle">每次开机会创建一个新的 SPIFFS 日志文件；空间不足时会先删旧日志，最后清空当前日志继续写。</div>
 <div class="card">
-<h3>当前日志</h3>
+<div class="card-title-row"><h3>当前日志</h3><button class="btn-danger btn-compact" onclick="deleteAllLogs()">删除所有日志</button></div>
 <div class="kvrow"><span class="kk">状态</span><span class="vv" id="log-active">--</span></div>
 <div class="kvrow"><span class="kk">文件</span><span class="vv" id="log-current">--</span></div>
 <div class="kvrow"><span class="kk">大小</span><span class="vv" id="log-size">--</span></div>
 <div class="kvrow"><span class="kk">日志等级</span><span class="vv" id="log-level">--</span></div>
-<div class="btns"><button class="btn-primary" onclick="openLive()">Live 当前日志</button><button class="btn-secondary" onclick="loadLogs()">刷新</button><button class="btn-danger" onclick="deleteAllLogs()">删除所有日志</button></div>
+<div class="btns"><button class="btn-primary" onclick="openLive()">Live 当前日志</button><button class="btn-secondary" onclick="loadLogs()">刷新</button></div>
 </div>
 <div class="card">
 <h3>日志文件</h3>

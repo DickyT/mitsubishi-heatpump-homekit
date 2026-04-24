@@ -47,11 +47,12 @@
 <label class="field"><span>HomeKit 厂商</span><input id="cfg-homekit-manufacturer" type="text" maxlength="63" placeholder="dkt smart home"></label>
 <label class="field"><span>HomeKit Model</span><input id="cfg-homekit-model" type="text" maxlength="63" placeholder="Mitsubishi Heat Pump"></label>
 <label class="field"><span>HomeKit Serial</span><input id="cfg-homekit-serial" type="text" maxlength="63" placeholder="DKT-MITSUBISHI-HOMEKIT"></label>
-<label class="field"><span>状态灯</span><select id="cfg-led-enabled"><option value="1">开启</option><option value="0">关闭</option></select></label>
 <label class="field"><span>状态灯 GPIO</span><input id="cfg-led-pin" type="number" min="0" max="33" step="1"></label>
 <label class="field"><span>日志等级</span><select id="cfg-log-level"><option value="error">error</option><option value="warn">warn</option><option value="info">info</option><option value="debug">debug</option><option value="verbose">verbose</option></select></label>
 <label class="field"><span>CN105 模式</span><select id="cfg-cn105-mode"><option value="real">真实 CN105</option><option value="mock">Mock</option></select></label>
 <label class="field"><span>CN105 高级设置</span><button class="config-summary-button" id="cn105-advanced-btn" type="button">8E1 2400 RX G26 TX G32</button></label>
+<label class="field"><span>开机轮询(ms)</span><input id="cfg-poll-active" type="number" min="1000" step="1000"></label>
+<label class="field"><span>关机轮询(ms)</span><input id="cfg-poll-off" type="number" min="5000" step="1000"></label>
 </div>
 <div class="btns">
 <button class="btn-primary" id="cfg-save-btn" type="button" disabled>保存并重启</button>
@@ -171,8 +172,6 @@
 <label class="field"><span>CN105 停止位</span><select id="cfg-cn105-stop-bits"><option value="1">1</option><option value="2">2</option></select></label>
 <label class="field"><span>CN105 RX 上拉</span><select id="cfg-cn105-rx-pullup"><option value="1">开启</option><option value="0">关闭</option></select></label>
 <label class="field"><span>CN105 TX 开漏</span><select id="cfg-cn105-tx-open-drain"><option value="0">关闭</option><option value="1">开启</option></select></label>
-<label class="field"><span>开机轮询(ms)</span><input id="cfg-poll-active" type="number" min="1000" step="1000"></label>
-<label class="field"><span>关机轮询(ms)</span><input id="cfg-poll-off" type="number" min="5000" step="1000"></label>
 </div>
 <div class="btns modal-actions">
 <button id="cn105-modal-confirm" class="btn-primary" type="button">确定</button>

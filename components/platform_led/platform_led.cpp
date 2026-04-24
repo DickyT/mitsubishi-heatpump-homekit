@@ -74,10 +74,6 @@ bool isCn105Healthy(const cn105_transport::Status& transport) {
 }
 
 Color selectColor() {
-    if (!device_settings::statusLedEnabled()) {
-        return kOff;
-    }
-
     const platform_provisioning::Status provisioning = platform_provisioning::getStatus();
     const bool blink_on =
         ((esp_timer_get_time() / 1000) / app_config::kStatusLedBlinkPeriodMs) % 2 == 0;
@@ -131,10 +127,6 @@ void ledTask(void*) {
 namespace platform_led {
 
 esp_err_t init() {
-    if (!device_settings::statusLedEnabled()) {
-        ESP_LOGI(TAG, "Status LED disabled by settings");
-        return ESP_OK;
-    }
     if (state.taskRunning) {
         return ESP_OK;
     }

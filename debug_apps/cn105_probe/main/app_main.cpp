@@ -67,7 +67,6 @@ struct InstallerSettings {
     char hk_serial[64] = "DKT-MITSUBISHI-HOMEKIT";
     char hk_setupid[5] = "DKT1";
     bool use_real = true;
-    bool led_on = true;
     int led_pin = 27;
     int rx_pin = 26;
     int tx_pin = 32;
@@ -520,7 +519,6 @@ void writeSettingsToNvs(const InstallerSettings& s) {
     writeString(handle, "hk_serial", s.hk_serial);
     writeString(handle, "hk_setupid", s.hk_setupid);
     ESP_ERROR_CHECK(nvs_set_u8(handle, "use_real", s.use_real ? 1 : 0));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "led_on", s.led_on ? 1 : 0));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "led_pin", s.led_pin));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "rx_pin", s.rx_pin));
     ESP_ERROR_CHECK(nvs_set_i32(handle, "tx_pin", s.tx_pin));
@@ -599,7 +597,6 @@ bool parseSettingsFromBody(const char* body, InstallerSettings& s, char* error, 
     if (formValue(body, "hk_serial", value, sizeof(value))) copyString(s.hk_serial, sizeof(s.hk_serial), value);
     if (formValue(body, "hk_setupid", value, sizeof(value))) copyString(s.hk_setupid, sizeof(s.hk_setupid), value);
     if (formValue(body, "use_real", value, sizeof(value))) s.use_real = !falseLike(value);
-    if (formValue(body, "led_on", value, sizeof(value))) s.led_on = !falseLike(value);
     if (formValue(body, "led_pin", value, sizeof(value))) s.led_pin = std::atoi(value);
     if (formValue(body, "rx_pin", value, sizeof(value))) s.rx_pin = std::atoi(value);
     if (formValue(body, "tx_pin", value, sizeof(value))) s.tx_pin = std::atoi(value);
@@ -650,7 +647,7 @@ std::string settingsJson(const InstallerSettings& s) {
                   sizeof(body),
                   "{\"device_name\":\"%s\",\"wifi_ssid\":\"%s\",\"wifi_pass\":\"%s\","
                   "\"hk_code\":\"%c%c%c%c-%c%c%c%c\",\"hk_mfr\":\"%s\",\"hk_model\":\"%s\","
-                  "\"hk_serial\":\"%s\",\"hk_setupid\":\"%s\",\"use_real\":%s,\"led_on\":%s,"
+                  "\"hk_serial\":\"%s\",\"hk_setupid\":\"%s\",\"use_real\":%s,"
                   "\"led_pin\":%d,\"rx_pin\":%d,\"tx_pin\":%d,\"baud\":%d,\"data_bits\":%d,"
                   "\"parity\":\"%c\",\"stop_bits\":%d,\"rx_pull\":%s,\"tx_od\":%s,"
                   "\"poll_on\":%lu,\"poll_off\":%lu,\"log_level\":\"%s\"}",
@@ -664,7 +661,6 @@ std::string settingsJson(const InstallerSettings& s) {
                   jsonEscape(s.hk_serial).c_str(),
                   jsonEscape(s.hk_setupid).c_str(),
                   s.use_real ? "true" : "false",
-                  s.led_on ? "true" : "false",
                   s.led_pin,
                   s.rx_pin,
                   s.tx_pin,
@@ -734,10 +730,10 @@ main{max-width:1120px;margin:auto;padding:24px 16px 90px}h1{font-size:clamp(32px
 </style></head><body><main>
 <h1>Installer / Probe</h1><div class="subtitle">1. 用 Espressif 手机 App 通过 BLE 配网。2. 打开本页检测 CN105。3. 保存配置到 NVS。4. 上传正式固件 OTA。</div>
 <section class="card"><h2>连接状态</h2><div id="status">加载中...</div></section>
-<section class="card" id="step1"><h2>第一步：CN105 硬件探测</h2><div class="step-note">先确认 RX/TX、波特率、状态灯和正式固件 CN105 模式。正式固件会固定使用稳定串口配置：26/32 思路、8E1、RX 上拉开启、TX 推挽。</div><div class="grid">
+<section class="card" id="step1"><h2>第一步：CN105 硬件探测</h2><div class="step-note">先确认 RX/TX、波特率、状态灯 GPIO 和正式固件 CN105 模式。正式固件会固定使用稳定串口配置：26/32 思路、8E1、RX 上拉开启、TX 推挽；状态灯固定启用。</div><div class="grid">
 <label class="field">CN105 RX GPIO<input id="rx_pin" type="number" value="26"></label><label class="field">CN105 TX GPIO<input id="tx_pin" type="number" value="32"></label>
 <label class="field">CN105 波特率<select id="baud"><option>2400</option><option>4800</option><option>9600</option></select></label><label class="field">正式固件串口配置<input value="8E1 / RX 上拉 / TX 推挽" disabled></label>
-<label class="field">状态灯 GPIO<input id="led_pin" type="number" value="27"></label><label class="field">状态灯<select id="led_on"><option value="1">开启</option><option value="0">关闭</option></select></label>
+<label class="field">状态灯 GPIO<input id="led_pin" type="number" value="27"></label>
 <label class="field">正式固件 CN105 模式<select id="use_real"><option value="1">真实 CN105</option><option value="0">Mock</option></select></label>
 </div><div class="btns"><button onclick="probe()">自动探测 CN105</button><button onclick="ledTest()">LED 五颜六色测试</button><button class="primary" onclick="saveStep1()">保存第一步并进入第二步</button></div><pre id="probe_out">还没有探测。</pre></section>
 <section class="card locked" id="step2"><h2>第二步：确认并写入正式固件 NVS</h2><div class="step-note">第一步保存后才能编辑这里。确认 WiFi、HomeKit 和运行参数后，再保存一次完整配置到 NVS。</div><div class="grid">
@@ -758,8 +754,8 @@ function initSteps(){setStepEnabled(2,false);setStepEnabled(3,false)}
 function placeholderWifi(value,placeholder){return !value||value===placeholder}
 function randomHomeKitCode(){const b=new Uint8Array(8);crypto.getRandomValues(b);const d=[...b].map(x=>String(x%10));return d.slice(0,4).join('')+'-'+d.slice(4).join('')}
 function randomizeHomeKitCode(){$('hk_code').value=randomHomeKitCode()}
-function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','led_on','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
-async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'已连接':'未连接'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>BLE 配网名</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div><div class="status-tile"><b>探测结果</b><span class="${j.probe&&j.probe.found?'ok':'bad'}">${j.probe&&j.probe.found?'已找到':'未找到'}</span><div>${esc((j.probe&&j.probe.summary)||'Not run yet')}</div></div></div><div class="json-grid"><div class="json-card"><h3>NVS 默认值</h3><pre>${pretty(j.defaults)}</pre></div><div class="json-card"><h3>上次 CN105 探测</h3><pre>${pretty(j.probe)}</pre></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0';$('led_on').value=j.defaults.led_on?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}}
+function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
+async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'已连接':'未连接'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>BLE 配网名</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div><div class="status-tile"><b>探测结果</b><span class="${j.probe&&j.probe.found?'ok':'bad'}">${j.probe&&j.probe.found?'已找到':'未找到'}</span><div>${esc((j.probe&&j.probe.summary)||'Not run yet')}</div></div></div><div class="json-grid"><div class="json-card"><h3>NVS 默认值</h3><pre>${pretty(j.defaults)}</pre></div><div class="json-card"><h3>上次 CN105 探测</h3><pre>${pretty(j.probe)}</pre></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}}
 async function probe(){set('probe_out','探测中，大概几十秒...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud}}
 async function ledTest(){const j=await (await fetch('/api/led-test',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({led_pin:val('led_pin')})})).json();set('probe_out',JSON.stringify(j,null,2))}
 async function writeSettings(outId,pending){set(outId,pending);try{const j=await (await fetch('/api/write-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params()})).json();set(outId,JSON.stringify(j,null,2));return !!j.ok}catch(e){set(outId,'保存失败: '+e);return false}}
