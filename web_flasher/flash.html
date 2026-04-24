@@ -163,6 +163,23 @@ button:disabled{opacity:.48;cursor:not-allowed;transform:none}
 }
 .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
 .step-hidden{display:none}
+.confirm-row{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  margin-top:16px;
+  color:var(--muted);
+  line-height:1.5;
+  font-size:14px;
+}
+.confirm-row input{
+  width:auto;
+  min-width:18px;
+  height:18px;
+  margin-top:2px;
+  accent-color:var(--pink);
+}
+.confirm-row span{display:block}
 .modal{
   position:fixed;
   inset:0;
@@ -250,7 +267,7 @@ a:hover{text-decoration:underline}
   <section class="hero">
     <div class="card">
       <h1>Kiri Bridge<br>Web Flasher</h1>
-      <p class="subtitle">Flash a Kiri firmware package directly from your browser. For a fresh device, choose the installer package first; the installer will handle WiFi, CN105 probing, and the final app OTA handoff.</p>
+      <p class="subtitle">Flash a Kiri firmware package directly from your browser.</p>
       <div class="actions">
         <span class="pill"><strong>Requires</strong> Chrome or Edge with Web Serial</span>
         <span class="pill"><strong>Package</strong> .kiri</span>
@@ -289,6 +306,11 @@ a:hover{text-decoration:underline}
   <section class="card step-hidden" id="step-flash">
     <h2>3. Flash Device</h2>
     <p class="subtitle">The page validates checksums before writing anything. Your Kiri hardware handles automatic flashing mode for you.</p>
+    <div id="flash-summary"></div>
+    <label class="confirm-row">
+      <input id="confirm-hardware" type="checkbox">
+      <span>I confirm this is my Kiri Bridge hardware and I want to flash the selected package to this ESP32.</span>
+    </label>
     <div class="actions">
       <button id="flash-btn" class="primary" disabled>Flash Firmware</button>
       <button id="back-package-btn" class="secondary">Change Package</button>
@@ -322,6 +344,7 @@ const kiriProjectId='kiri-bridge';
 const $=id=>document.getElementById(id);
 let selectedPackage=null;
 let selectedPort=null;
+let selectedDeviceInfo=null;
 let currentStep=1;
 let esptoolPromise=null;
 const flashBaudRate=115200;
@@ -350,7 +373,8 @@ function showStep(step){
   $('step-package').classList.toggle('step-hidden',step!==2);
   $('step-flash').classList.toggle('step-hidden',step!==3);
   $('package-file').disabled=step!==2;
-  $('flash-btn').disabled=step!==3||!selectedPort||!selectedPackage;
+  if(step===3)renderFlashSummary();
+  $('flash-btn').disabled=step!==3||!selectedPort||!selectedPackage||!$('confirm-hardware').checked;
 }
 
 async function closeReservedPort(){
@@ -407,6 +431,11 @@ function extractChipName(esploader){
   return 'ESP32';
 }
 
+function isAllowedClassicEsp32(chipName){
+  const normalized=String(chipName||'').toUpperCase();
+  return normalized==='ESP32'||normalized.includes('ESP32-PICO-D4');
+}
+
 async function readMac(esploader){
   if(typeof esploader.readMac==='function')return esploader.readMac();
   if(typeof esploader.read_mac==='function')return esploader.read_mac();
@@ -421,14 +450,94 @@ function normalizeMac(mac){
   return String(mac||'');
 }
 
+function bytesToAscii(bytes){
+  let text='';
+  for(const byte of bytes){
+    const value=Number(byte);
+    text+=value>=32&&value<=126?String.fromCharCode(value):' ';
+  }
+  return text;
+}
+
+function toBytes(data){
+  if(data instanceof Uint8Array)return data;
+  if(data instanceof ArrayBuffer)return new Uint8Array(data);
+  if(Array.isArray(data))return new Uint8Array(data);
+  if(typeof data==='string'){
+    const bytes=new Uint8Array(data.length);
+    for(let i=0;i<data.length;i+=1)bytes[i]=data.charCodeAt(i)&0xff;
+    return bytes;
+  }
+  return new Uint8Array();
+}
+
+async function readFlashBytes(esploader,address,size){
+  if(typeof esploader.readFlash==='function')return toBytes(await esploader.readFlash(address,size));
+  if(typeof esploader.read_flash==='function')return toBytes(await esploader.read_flash(address,size));
+  if(typeof esploader.readFlashData==='function')return toBytes(await esploader.readFlashData(address,size));
+  throw new Error('esptool-js readFlash API is unavailable');
+}
+
+async function detectExistingKiriFirmware(esploader){
+  const slots=[
+    {label:'ota_0',address:0x20000},
+    {label:'ota_1',address:0x1a0000}
+  ];
+  for(const slot of slots){
+    try{
+      const bytes=await readFlashBytes(esploader,slot.address,96*1024);
+      const text=bytesToAscii(bytes);
+      const projectMatch=text.match(/\bkiri_(bridge|installer)\b/);
+      if(projectMatch){
+        const versionMatch=text.match(/\b20\d{2}\.\d{4}\.\d{6}\b/);
+        return {
+          detected:true,
+          partition:slot.label,
+          project:projectMatch[0],
+          version:versionMatch?versionMatch[0]:'unknown'
+        };
+      }
+    }catch(e){
+      log(`Existing firmware scan skipped for ${slot.label}: ${e&&e.message?e.message:e}`);
+      break;
+    }
+  }
+  return {detected:false,partition:'',project:'',version:''};
+}
+
 function renderDeviceDetails(info){
+  const existing=info.existingKiri&&info.existingKiri.detected
+    ? `${info.existingKiri.project} ${info.existingKiri.version} on ${info.existingKiri.partition}`
+    : 'Not detected';
   $('device-details').innerHTML=`
     <table>
       <tbody>
         <tr><th>USB VID/PID</th><td>${info.usbVendorId||'--'} / ${info.usbProductId||'--'}</td></tr>
         <tr><th>Chip</th><td>${info.chipName}</td></tr>
         <tr><th>MAC</th><td>${info.mac||'--'}</td></tr>
+        <tr><th>Existing Kiri Firmware</th><td>${existing}</td></tr>
         <tr><th>Baud</th><td>${flashBaudRate}</td></tr>
+      </tbody>
+    </table>`;
+}
+
+function renderFlashSummary(){
+  if(!selectedDeviceInfo||!selectedPackage){
+    $('flash-summary').innerHTML='';
+    return;
+  }
+  const manifest=selectedPackage.manifest;
+  const existing=selectedDeviceInfo.existingKiri&&selectedDeviceInfo.existingKiri.detected
+    ? `${selectedDeviceInfo.existingKiri.project} ${selectedDeviceInfo.existingKiri.version} on ${selectedDeviceInfo.existingKiri.partition}`
+    : 'Not detected';
+  $('flash-summary').innerHTML=`
+    <table>
+      <tbody>
+        <tr><th>Device Chip</th><td>${selectedDeviceInfo.chipName}</td></tr>
+        <tr><th>Device MAC</th><td>${selectedDeviceInfo.mac||'--'}</td></tr>
+        <tr><th>Existing Kiri Firmware</th><td>${existing}</td></tr>
+        <tr><th>Package</th><td>${manifest.product||'Kiri Bridge'} ${manifest.version||'--'} (${manifest.variant||'--'})</td></tr>
+        <tr><th>Flash Parts</th><td>${selectedPackage.parts.length}</td></tr>
       </tbody>
     </table>`;
 }
@@ -443,21 +552,29 @@ async function verifyDevice(port,usbInfo){
     debugLogging:false
   });
   log('Connecting to ESP32 bootloader for verification...');
-  await esploader.main();
-  const chipName=extractChipName(esploader);
-  const mac=normalizeMac(await readMac(esploader));
-  if(typeof esploader.after==='function'){
-    await esploader.after('hard_reset');
-  }
-  if(typeof transport.disconnect==='function'){
-    await transport.disconnect();
-  }
-  if(!/ESP32/i.test(chipName)){
-    throw new Error(`Unexpected chip: ${chipName || 'unknown'}. Expected ESP32 / ESP32-PICO-D4.`);
+  let chipName='';
+  let mac='';
+  let existingKiri={detected:false,partition:'',project:'',version:''};
+  try{
+    await esploader.main();
+    chipName=extractChipName(esploader);
+    mac=normalizeMac(await readMac(esploader));
+    if(!isAllowedClassicEsp32(chipName)){
+      throw new Error(`Unexpected chip: ${chipName || 'unknown'}. Expected ESP32 / ESP32-PICO-D4.`);
+    }
+    existingKiri=await detectExistingKiriFirmware(esploader);
+  }finally{
+    if(typeof esploader.after==='function'){
+      try{await esploader.after('hard_reset');}catch(e){}
+    }
+    if(typeof transport.disconnect==='function'){
+      try{await transport.disconnect();}catch(e){}
+    }
   }
   return {
     chipName,
     mac,
+    existingKiri,
     usbVendorId:usbInfo.usbVendorId?`0x${usbInfo.usbVendorId.toString(16).padStart(4,'0')}`:'',
     usbProductId:usbInfo.usbProductId?`0x${usbInfo.usbProductId.toString(16).padStart(4,'0')}`:''
   };
@@ -467,9 +584,12 @@ async function resetToSerialStep(){
   await closeReservedPort();
   selectedPort=null;
   selectedPackage=null;
+  selectedDeviceInfo=null;
   $('package-file').value='';
   $('package-details').innerHTML='';
   $('device-details').innerHTML='';
+  $('flash-summary').innerHTML='';
+  $('confirm-hardware').checked=false;
   $('continue-package-btn').classList.add('step-hidden');
   setPackageState('not selected');
   setSerialState();
@@ -483,6 +603,8 @@ function resetToPackageStep(){
   selectedPackage=null;
   $('package-file').value='';
   $('package-details').innerHTML='';
+  $('flash-summary').innerHTML='';
+  $('confirm-hardware').checked=false;
   setPackageState('not selected');
   log('Back to step 2. Select a package again.');
   showStep(2);
@@ -505,6 +627,7 @@ async function selectSerialPort(){
     const deviceInfo=await verifyDevice(port,usbInfo);
     await port.open({baudRate:flashBaudRate});
     selectedPort=port;
+    selectedDeviceInfo=deviceInfo;
     $('serial-state').className='ok';
     $('serial-state').textContent=`Serial: verified and reserved at ${flashBaudRate} baud`;
     $('chip-state').className='ok';
@@ -625,6 +748,7 @@ async function handlePackageSelection(){
     selectedPackage=await parseKiriPackage(file);
     renderPackageDetails(selectedPackage);
     setPackageState(`${file.name} ready`,'ok');
+    $('confirm-hardware').checked=false;
     log(`Loaded ${file.name}`);
     showStep(3);
   }catch(e){
@@ -651,6 +775,10 @@ async function flashSelectedPackage(){
   if(!selectedPackage)return;
   if(!selectedPort){
     log('Select a serial port first.');
+    return;
+  }
+  if(!$('confirm-hardware').checked){
+    log('Confirm the hardware checkbox before flashing.');
     return;
   }
   $('flash-btn').disabled=true;
@@ -707,6 +835,7 @@ $('back-serial-btn').addEventListener('click',resetToSerialStep);
 $('back-package-btn').addEventListener('click',resetToPackageStep);
 $('package-file').addEventListener('change',handlePackageSelection);
 $('flash-btn').addEventListener('click',flashSelectedPackage);
+$('confirm-hardware').addEventListener('change',()=>showStep(currentStep));
 $('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
 $('error-close-btn').addEventListener('click',closeErrorModal);
 log('Kiri Bridge Web Flasher ready.');
