@@ -11,8 +11,8 @@ It replaces the old serial-only CN105 probe. The app now provides:
   provisioning name, such as `PROV_MITSUBISHI_90`.
 - Captive portal DNS for SoftAP users. If the OS does not auto-open the portal,
   browse to `http://192.168.4.1/`.
-- An installer WebUI on both ports `80` and `8080` over SoftAP and over the
-  provisioned STA network.
+- An installer WebUI on port `80` over SoftAP and over the provisioned STA
+  network.
 - CN105 auto-probing from the browser using user-selected RX/TX GPIO pins.
 - LED GPIO color test for WS2812-style status LEDs.
 - Full-overwrite writes to the formal firmware's `device_cfg` NVS namespace.
@@ -70,8 +70,7 @@ The legacy app alias still works:
    captive portal or open `http://192.168.4.1/`.
 4. For BLE setup, use Espressif's mobile provisioning app with the BLE service
    name printed in serial logs, Security 1, and Proof of Possession `abcd1234`.
-5. The WebUI is available on both `http://<installer-ip>/` and
-   `http://<installer-ip>:8080/`.
+5. The WebUI is available at `http://<installer-ip>/`.
 6. Run CN105 auto-probe with the physical RX/TX GPIO pins.
 7. Test the status LED GPIO if needed.
 8. Save step 1 so the installer writes the full `device_cfg` NVS set.

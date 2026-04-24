@@ -48,7 +48,6 @@ constexpr int WIFI_CONNECTED_BIT = BIT0;
 constexpr const char* kDeviceCfgNamespace = "device_cfg";
 constexpr const char* kProvisioningPop = "abcd1234";
 constexpr uint16_t kHttpPrimaryPort = 80;
-constexpr uint16_t kHttpSecondaryPort = 8080;
 constexpr uint16_t kDnsPort = 53;
 constexpr char kApIp[] = "192.168.4.1";
 constexpr char kCaptivePortalUrl[] = "http://192.168.4.1/";
@@ -56,7 +55,6 @@ constexpr char kCaptivePortalUrl[] = "http://192.168.4.1/";
 EventGroupHandle_t wifi_event_group = nullptr;
 esp_netif_t* ap_netif = nullptr;
 httpd_handle_t server_80 = nullptr;
-httpd_handle_t server_8080 = nullptr;
 TaskHandle_t dns_task = nullptr;
 char wifi_ip[16] = "0.0.0.0";
 char wifi_ssid[33] = "";
@@ -1030,31 +1028,26 @@ void registerRoutes(httpd_handle_t handle) {
     }
 }
 
-void startOneWebServer(uint16_t port, httpd_handle_t* handle) {
-    if (*handle != nullptr) {
+void startWebServer() {
+    if (server_80 != nullptr) {
         return;
     }
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = kHttpPrimaryPort;
     config.stack_size = 12288;
     config.max_uri_handlers = 16;
     config.max_open_sockets = 4;
     config.lru_purge_enable = true;
     config.uri_match_fn = httpd_uri_match_wildcard;
-    ESP_ERROR_CHECK(httpd_start(handle, &config));
-    registerRoutes(*handle);
+    ESP_ERROR_CHECK(httpd_start(&server_80, &config));
+    registerRoutes(server_80);
     ESP_LOGI(TAG,
              "Installer WebUI ready on port %u: AP=http://%s:%u/ STA=http://%s:%u/",
-             static_cast<unsigned>(port),
+             static_cast<unsigned>(config.server_port),
              kApIp,
-             static_cast<unsigned>(port),
+             static_cast<unsigned>(config.server_port),
              wifi_ip,
-             static_cast<unsigned>(port));
-}
-
-void startWebServer() {
-    startOneWebServer(kHttpPrimaryPort, &server_80);
-    startOneWebServer(kHttpSecondaryPort, &server_8080);
+             static_cast<unsigned>(config.server_port));
 }
 
 void captiveDnsTask(void*) {
@@ -1274,5 +1267,5 @@ extern "C" void app_main(void) {
     }
 
     startWifiProvisioning();
-    ESP_LOGI(TAG, "Installer WebUI is available on SoftAP %s at http://%s/ and :8080", provisioning_service_name, kApIp);
+    ESP_LOGI(TAG, "Installer WebUI is available on SoftAP %s at http://%s/", provisioning_service_name, kApIp);
 }

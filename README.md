@@ -214,10 +214,10 @@ with four images named like:
 
 The installer/probe firmware always starts a no-password SoftAP named like its
 BLE provisioning service (`PROV_MITSUBISHI_XX`) and serves the installer WebUI
-on both ports `80` and `8080`. It also supports Espressif BLE Wi-Fi
-provisioning, uses the same OTA partition table as the formal firmware, detects
-CN105 hardware settings, writes `device_cfg` NVS with a full overwrite strategy,
-then OTA-uploads the formal app binary:
+on port `80`. It also supports Espressif BLE Wi-Fi provisioning, uses the same
+OTA partition table as the formal firmware, detects CN105 hardware settings,
+writes `device_cfg` NVS with a full overwrite strategy, then OTA-uploads the
+formal app binary:
 
 ```text
 firmware_exports/<version>/mitsubishi_heatpump_homekit_<version>_0x20000.bin
