@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Flash Kiri Bridge</title>
+<title>Kiri Bridge Firmware Installer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 <style>
@@ -180,6 +180,47 @@ button:disabled{opacity:.48;cursor:not-allowed;transform:none}
   accent-color:var(--pink);
 }
 .confirm-row span{display:block}
+.progress-panel{
+  display:none;
+  margin-top:16px;
+  padding:14px;
+  border:1px solid rgba(84,241,255,.16);
+  border-radius:18px;
+  background:rgba(5,8,21,.62);
+}
+.progress-panel.active{display:block}
+.progress-meta{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:10px;
+}
+.progress-track{
+  height:14px;
+  overflow:hidden;
+  border:1px solid rgba(84,241,255,.18);
+  border-radius:999px;
+  background:rgba(8,13,28,.92);
+}
+.progress-fill{
+  width:0%;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,var(--pink),var(--cyan),var(--lime));
+  box-shadow:0 0 22px rgba(84,241,255,.28);
+  transition:width .18s ease;
+}
+.progress-detail{
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.5;
+  margin-top:10px;
+}
 .modal{
   position:fixed;
   inset:0;
@@ -206,6 +247,11 @@ button:disabled{opacity:.48;cursor:not-allowed;transform:none}
   box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(255,75,110,.14);
 }
 .modal-panel h2{color:var(--red)}
+#success-modal .modal-panel{
+  border-color:rgba(184,255,55,.35);
+  box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(184,255,55,.12);
+}
+#success-modal .modal-panel h2{color:var(--lime)}
 .status{
   display:grid;
   gap:10px;
@@ -266,70 +312,92 @@ a:hover{text-decoration:underline}
 <main>
   <section class="hero">
     <div class="card">
-      <h1>Kiri Bridge<br>Web Flasher</h1>
-      <p class="subtitle">Flash a Kiri firmware package directly from your browser.</p>
+      <h1>Kiri Bridge<br>Firmware Installer</h1>
+      <p class="subtitle">A guided USB installer for Kiri Bridge. First we verify the ESP32, then you choose a Kiri firmware or OTA file, and finally the browser writes it directly to the device.</p>
       <div class="actions">
-        <span class="pill"><strong>Requires</strong> Chrome or Edge with Web Serial</span>
-        <span class="pill"><strong>Package</strong> .kiri</span>
+        <span class="pill"><strong>Browser</strong> Chrome or Edge</span>
+        <span class="pill"><strong>Connection</strong> USB serial</span>
+        <span class="pill"><strong>Firmware / OTA</strong> .kiri file</span>
       </div>
     </div>
     <div class="card status" id="summary">
-      <h2>Readiness</h2>
-      <div id="serial-state">Web Serial: checking...</div>
-      <div id="package-state">Package: not selected</div>
-      <div id="chip-state">Target: ESP32 Atom Lite</div>
+      <h2>Installer Status</h2>
+      <div id="serial-state">Device: waiting for USB verification</div>
+      <div id="package-state">Firmware / OTA: not selected</div>
+      <div id="chip-state">Hardware: not verified</div>
     </div>
   </section>
 
   <section class="card" id="step-serial">
-    <h2>1. Select Serial Port</h2>
-    <p class="subtitle">Choose the USB serial device first. Kiri verifies the ESP32 bootloader at 115200 baud, then reserves the port for this installer flow.</p>
+    <h2>Step 1 · Verify Hardware</h2>
+    <p class="subtitle">Plug in the Kiri Bridge over USB and let the browser check the ESP32 bootloader at 115200 baud. This lightweight verification reads the chip type and MAC only. The port stays reserved afterward so the next steps cannot accidentally switch devices.</p>
     <div class="actions">
-      <button id="serial-btn" class="primary">Select and Verify Device</button>
-      <button id="continue-package-btn" class="primary step-hidden">Continue to Package</button>
+      <button id="serial-btn" class="primary">Verify USB Device</button>
+      <button id="continue-package-btn" class="primary step-hidden">Continue to Firmware / OTA</button>
     </div>
     <div id="device-details"></div>
   </section>
 
   <section class="card step-hidden" id="step-package">
-    <h2>2. Select Package</h2>
+    <h2>Step 2 · Choose Firmware / OTA</h2>
+    <p class="subtitle">Select the Kiri firmware or OTA file you want to install. The browser checks the manifest, file list, sizes, and checksums before continuing.</p>
     <label class="field">
-      <span>Kiri package</span>
-      <input id="package-file" type="file" accept=".kiri,application/zip,application/octet-stream">
+      <span>Firmware / OTA file</span>
+      <input id="package-file" type="file" accept=".kiri">
     </label>
     <div id="package-details"></div>
     <div class="actions">
-      <button id="back-serial-btn" class="secondary">Change Serial Port</button>
+      <button id="back-serial-btn" class="secondary">Release Device and Start Over</button>
     </div>
   </section>
 
   <section class="card step-hidden" id="step-flash">
-    <h2>3. Flash Device</h2>
-    <p class="subtitle">The page validates checksums before writing anything. Your Kiri hardware handles automatic flashing mode for you.</p>
+    <h2>Step 3 · Confirm and Install</h2>
+    <p class="subtitle">Review the verified hardware and selected firmware or OTA bundle. Installation writes the bootloader, partition table, OTA metadata, and app image to this ESP32.</p>
     <div id="flash-summary"></div>
+    <div id="flash-progress" class="progress-panel" aria-live="polite">
+      <div class="progress-meta">
+        <span id="flash-progress-label">Ready to install</span>
+        <span id="flash-progress-percent">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="flash-progress-fill" class="progress-fill"></div>
+      </div>
+      <div id="flash-progress-detail" class="progress-detail">Waiting for confirmation.</div>
+    </div>
     <label class="confirm-row">
       <input id="confirm-hardware" type="checkbox">
-      <span>I confirm this is my Kiri Bridge hardware and I want to flash the selected package to this ESP32.</span>
+      <span>I confirm this is my Kiri Bridge hardware and I want to install the selected firmware / OTA bundle on this ESP32.</span>
     </label>
     <div class="actions">
-      <button id="flash-btn" class="primary" disabled>Flash Firmware</button>
-      <button id="back-package-btn" class="secondary">Change Package</button>
+      <button id="flash-btn" class="primary" disabled>Install Firmware / OTA</button>
+      <button id="back-package-btn" class="secondary">Choose Another Firmware / OTA</button>
       <button id="clear-log-btn" class="secondary">Clear Log</button>
     </div>
   </section>
 
   <section class="card">
-    <h2>Console</h2>
+    <h2>Installer Log</h2>
     <pre id="log"></pre>
   </section>
 </main>
 <div id="error-modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
-    <h2 id="error-title">Device Verification Failed</h2>
+    <h2 id="error-title">Hardware Verification Failed</h2>
     <p id="error-body" class="subtitle">Unknown error.</p>
     <div class="actions">
       <button id="error-close-btn" class="secondary">OK</button>
+    </div>
+  </div>
+</div>
+<div id="success-modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <h2 id="success-title">Firmware Installed</h2>
+    <p id="success-body" class="subtitle">The firmware was written successfully. The USB port has been released. If the device flashes blue, it has entered provisioning mode. If not, unplug it and plug it back in once.</p>
+    <div class="actions">
+      <button id="success-close-btn" class="primary">OK</button>
     </div>
   </div>
 </div>
@@ -348,6 +416,8 @@ let selectedDeviceInfo=null;
 let currentStep=1;
 let esptoolPromise=null;
 const flashBaudRate=115200;
+let currentFlashPercent=0;
+let installSucceeded=false;
 
 function log(line=''){
   const box=$('log');
@@ -355,15 +425,19 @@ function log(line=''){
   box.scrollTop=box.scrollHeight;
 }
 
+function sleep(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
+}
+
 function setPackageState(text,kind=''){
   $('package-state').className=kind;
-  $('package-state').textContent='Package: '+text;
+  $('package-state').textContent='Firmware / OTA: '+text;
 }
 
 function setSerialState(){
   const ok='serial' in navigator;
   $('serial-state').className=ok?'ok':'bad';
-  $('serial-state').textContent=ok?'Web Serial: available, no port selected':'Web Serial: unavailable. Use Chrome or Edge over HTTPS.';
+  $('serial-state').textContent=ok?'Device: ready for USB verification':'Device: Web Serial is unavailable. Use Chrome or Edge over HTTPS.';
   $('serial-btn').disabled=!ok;
 }
 
@@ -384,12 +458,26 @@ async function closeReservedPort(){
       await selectedPort.close();
     }
   }catch(e){
-    log('Serial close warning: '+(e&&e.message?e.message:e));
+    log('USB release warning: '+(e&&e.message?e.message:e));
   }
 }
 
+async function pulseRunReset(transport){
+  if(!transport||typeof transport.setDTR!=='function'||typeof transport.setRTS!=='function')return false;
+  log('Pulsing EN reset and releasing GPIO0 to run firmware...');
+  await transport.setDTR(false);
+  await sleep(50);
+  await transport.setRTS(true);
+  await sleep(150);
+  await transport.setRTS(false);
+  await sleep(150);
+  await transport.setDTR(false);
+  await sleep(250);
+  return true;
+}
+
 function openErrorModal(title,message){
-  $('error-title').textContent=title||'Device Verification Failed';
+  $('error-title').textContent=title||'Hardware Verification Failed';
   $('error-body').textContent=message||'Unknown error.';
   $('error-modal').classList.add('open');
   $('error-modal').setAttribute('aria-hidden','false');
@@ -398,6 +486,18 @@ function openErrorModal(title,message){
 function closeErrorModal(){
   $('error-modal').classList.remove('open');
   $('error-modal').setAttribute('aria-hidden','true');
+}
+
+function openSuccessModal(title,message){
+  $('success-title').textContent=title||'Firmware Installed';
+  $('success-body').textContent=message||'The firmware was written successfully. The USB port has been released. If the device flashes blue, it has entered provisioning mode. If not, unplug it and plug it back in once.';
+  $('success-modal').classList.add('open');
+  $('success-modal').setAttribute('aria-hidden','false');
+}
+
+function closeSuccessModal(){
+  $('success-modal').classList.remove('open');
+  $('success-modal').setAttribute('aria-hidden','true');
 }
 
 function loadEsptool(){
@@ -440,6 +540,7 @@ async function readMac(esploader){
   if(typeof esploader.readMac==='function')return esploader.readMac();
   if(typeof esploader.read_mac==='function')return esploader.read_mac();
   if(typeof esploader.getMAC==='function')return esploader.getMAC();
+  if(esploader.chip&&typeof esploader.chip.readMac==='function')return esploader.chip.readMac(esploader);
   return '';
 }
 
@@ -450,72 +551,13 @@ function normalizeMac(mac){
   return String(mac||'');
 }
 
-function bytesToAscii(bytes){
-  let text='';
-  for(const byte of bytes){
-    const value=Number(byte);
-    text+=value>=32&&value<=126?String.fromCharCode(value):' ';
-  }
-  return text;
-}
-
-function toBytes(data){
-  if(data instanceof Uint8Array)return data;
-  if(data instanceof ArrayBuffer)return new Uint8Array(data);
-  if(Array.isArray(data))return new Uint8Array(data);
-  if(typeof data==='string'){
-    const bytes=new Uint8Array(data.length);
-    for(let i=0;i<data.length;i+=1)bytes[i]=data.charCodeAt(i)&0xff;
-    return bytes;
-  }
-  return new Uint8Array();
-}
-
-async function readFlashBytes(esploader,address,size){
-  if(typeof esploader.readFlash==='function')return toBytes(await esploader.readFlash(address,size));
-  if(typeof esploader.read_flash==='function')return toBytes(await esploader.read_flash(address,size));
-  if(typeof esploader.readFlashData==='function')return toBytes(await esploader.readFlashData(address,size));
-  throw new Error('esptool-js readFlash API is unavailable');
-}
-
-async function detectExistingKiriFirmware(esploader){
-  const slots=[
-    {label:'ota_0',address:0x20000},
-    {label:'ota_1',address:0x1a0000}
-  ];
-  for(const slot of slots){
-    try{
-      const bytes=await readFlashBytes(esploader,slot.address,96*1024);
-      const text=bytesToAscii(bytes);
-      const projectMatch=text.match(/\bkiri_(bridge|installer)\b/);
-      if(projectMatch){
-        const versionMatch=text.match(/\b20\d{2}\.\d{4}\.\d{6}\b/);
-        return {
-          detected:true,
-          partition:slot.label,
-          project:projectMatch[0],
-          version:versionMatch?versionMatch[0]:'unknown'
-        };
-      }
-    }catch(e){
-      log(`Existing firmware scan skipped for ${slot.label}: ${e&&e.message?e.message:e}`);
-      break;
-    }
-  }
-  return {detected:false,partition:'',project:'',version:''};
-}
-
 function renderDeviceDetails(info){
-  const existing=info.existingKiri&&info.existingKiri.detected
-    ? `${info.existingKiri.project} ${info.existingKiri.version} on ${info.existingKiri.partition}`
-    : 'Not detected';
   $('device-details').innerHTML=`
     <table>
       <tbody>
         <tr><th>USB VID/PID</th><td>${info.usbVendorId||'--'} / ${info.usbProductId||'--'}</td></tr>
         <tr><th>Chip</th><td>${info.chipName}</td></tr>
         <tr><th>MAC</th><td>${info.mac||'--'}</td></tr>
-        <tr><th>Existing Kiri Firmware</th><td>${existing}</td></tr>
         <tr><th>Baud</th><td>${flashBaudRate}</td></tr>
       </tbody>
     </table>`;
@@ -527,18 +569,25 @@ function renderFlashSummary(){
     return;
   }
   const manifest=selectedPackage.manifest;
-  const existing=selectedDeviceInfo.existingKiri&&selectedDeviceInfo.existingKiri.detected
-    ? `${selectedDeviceInfo.existingKiri.project} ${selectedDeviceInfo.existingKiri.version} on ${selectedDeviceInfo.existingKiri.partition}`
-    : 'Not detected';
+  const rows=selectedPackage.parts.map(part=>`
+    <tr>
+      <td>${part.name||part.path}</td>
+      <td>0x${Number(part.offset).toString(16)}</td>
+      <td>${formatBytes(part.bytes.byteLength)}</td>
+      <td>${part.path}</td>
+    </tr>`).join('');
   $('flash-summary').innerHTML=`
     <table>
       <tbody>
         <tr><th>Device Chip</th><td>${selectedDeviceInfo.chipName}</td></tr>
         <tr><th>Device MAC</th><td>${selectedDeviceInfo.mac||'--'}</td></tr>
-        <tr><th>Existing Kiri Firmware</th><td>${existing}</td></tr>
-        <tr><th>Package</th><td>${manifest.product||'Kiri Bridge'} ${manifest.version||'--'} (${manifest.variant||'--'})</td></tr>
-        <tr><th>Flash Parts</th><td>${selectedPackage.parts.length}</td></tr>
+        <tr><th>Selected Firmware / OTA</th><td>${manifest.product||'Kiri Bridge'} ${manifest.version||'--'} (${manifest.variant||'--'})</td></tr>
+        <tr><th>Images to Write</th><td>${selectedPackage.parts.length}</td></tr>
       </tbody>
+    </table>
+    <table>
+      <thead><tr><th>Image</th><th>Offset</th><th>Size</th><th>File</th></tr></thead>
+      <tbody>${rows}</tbody>
     </table>`;
 }
 
@@ -551,18 +600,19 @@ async function verifyDevice(port,usbInfo){
     terminal:makeTerminal(),
     debugLogging:false
   });
-  log('Connecting to ESP32 bootloader for verification...');
+  log('Verifying ESP32 bootloader at 115200 baud...');
+  log('Reading chip type and MAC.');
   let chipName='';
   let mac='';
-  let existingKiri={detected:false,partition:'',project:'',version:''};
   try{
-    await esploader.main();
-    chipName=extractChipName(esploader);
+    await esploader.detectChip();
+    chipName=esploader.chip&&typeof esploader.chip.getChipDescription==='function'
+      ? await esploader.chip.getChipDescription(esploader)
+      : extractChipName(esploader);
     mac=normalizeMac(await readMac(esploader));
     if(!isAllowedClassicEsp32(chipName)){
       throw new Error(`Unexpected chip: ${chipName || 'unknown'}. Expected ESP32 / ESP32-PICO-D4.`);
     }
-    existingKiri=await detectExistingKiriFirmware(esploader);
   }finally{
     if(typeof esploader.after==='function'){
       try{await esploader.after('hard_reset');}catch(e){}
@@ -574,7 +624,6 @@ async function verifyDevice(port,usbInfo){
   return {
     chipName,
     mac,
-    existingKiri,
     usbVendorId:usbInfo.usbVendorId?`0x${usbInfo.usbVendorId.toString(16).padStart(4,'0')}`:'',
     usbProductId:usbInfo.usbProductId?`0x${usbInfo.usbProductId.toString(16).padStart(4,'0')}`:''
   };
@@ -582,6 +631,12 @@ async function verifyDevice(port,usbInfo){
 
 async function resetToSerialStep(){
   await closeReservedPort();
+  resetInstallerState();
+  log('USB device released. Back to hardware verification.');
+  showStep(1);
+}
+
+function resetInstallerState(){
   selectedPort=null;
   selectedPackage=null;
   selectedDeviceInfo=null;
@@ -590,13 +645,14 @@ async function resetToSerialStep(){
   $('device-details').innerHTML='';
   $('flash-summary').innerHTML='';
   $('confirm-hardware').checked=false;
+  resetFlashProgress();
   $('continue-package-btn').classList.add('step-hidden');
   setPackageState('not selected');
   setSerialState();
-  $('serial-btn').textContent='Select and Verify Device';
+  $('chip-state').className='';
+  $('chip-state').textContent='Hardware: not verified';
+  $('serial-btn').textContent='Verify USB Device';
   $('serial-btn').disabled=!("serial" in navigator);
-  log('Serial port released. Back to step 1.');
-  showStep(1);
 }
 
 function resetToPackageStep(){
@@ -605,14 +661,15 @@ function resetToPackageStep(){
   $('package-details').innerHTML='';
   $('flash-summary').innerHTML='';
   $('confirm-hardware').checked=false;
+  resetFlashProgress();
   setPackageState('not selected');
-  log('Back to step 2. Select a package again.');
+  log('Back to firmware / OTA selection.');
   showStep(2);
 }
 
 async function selectSerialPort(){
   if(!('serial' in navigator)){
-    log('Web Serial is not available in this browser.');
+    log('Web Serial is not available in this browser. Use Chrome or Edge over HTTPS.');
     return;
   }
   let port=null;
@@ -623,18 +680,18 @@ async function selectSerialPort(){
     $('serial-btn').disabled=true;
     $('continue-package-btn').classList.add('step-hidden');
     $('serial-state').className='warn';
-    $('serial-state').textContent='Serial: verifying ESP32 bootloader...';
+    $('serial-state').textContent='Device: verifying ESP32 bootloader...';
     const deviceInfo=await verifyDevice(port,usbInfo);
     await port.open({baudRate:flashBaudRate});
     selectedPort=port;
     selectedDeviceInfo=deviceInfo;
     $('serial-state').className='ok';
-    $('serial-state').textContent=`Serial: verified and reserved at ${flashBaudRate} baud`;
+    $('serial-state').textContent=`Device: verified and reserved at ${flashBaudRate} baud`;
     $('chip-state').className='ok';
-    $('chip-state').textContent=`Target: ${deviceInfo.chipName} ${deviceInfo.mac ? '('+deviceInfo.mac+')' : ''}`;
+    $('chip-state').textContent=`Hardware: ${deviceInfo.chipName} ${deviceInfo.mac ? '('+deviceInfo.mac+')' : ''}`;
     renderDeviceDetails(deviceInfo);
-    log(`Verified ${deviceInfo.chipName}${deviceInfo.mac?' MAC '+deviceInfo.mac:''}. Serial port reserved at ${flashBaudRate} baud.`);
-    $('serial-btn').textContent='Device Verified';
+    log(`Verified ${deviceInfo.chipName}${deviceInfo.mac?' MAC '+deviceInfo.mac:''}. USB connection reserved at ${flashBaudRate} baud.`);
+    $('serial-btn').textContent='Hardware Verified';
     $('serial-btn').disabled=true;
     $('continue-package-btn').classList.remove('step-hidden');
     showStep(1);
@@ -643,15 +700,15 @@ async function selectSerialPort(){
       try{
         if(port.readable||port.writable)await port.close();
       }catch(closeError){
-        log('Serial cleanup warning: '+(closeError&&closeError.message?closeError.message:closeError));
+        log('USB cleanup warning: '+(closeError&&closeError.message?closeError.message:closeError));
       }
     }
     await closeReservedPort();
     selectedPort=null;
     $('serial-state').className='bad';
-    $('serial-state').textContent='Serial: verification failed';
-    log('Serial selection failed: '+(e&&e.message?e.message:e));
-    openErrorModal('Device Verification Failed',e&&e.message?e.message:String(e));
+    $('serial-state').textContent='Device: verification failed';
+    log('Hardware verification failed: '+(e&&e.message?e.message:e));
+    openErrorModal('Hardware Verification Failed',e&&e.message?e.message:String(e));
     showStep(1);
   }finally{
     if(!selectedPort)$('serial-btn').disabled=!('serial' in navigator);
@@ -681,19 +738,50 @@ function formatBytes(value){
   return value+' B';
 }
 
+function setFlashProgress(percent,label,detail,active=true){
+  const safePercent=Math.max(0,Math.min(100,Math.round(Number(percent)||0)));
+  currentFlashPercent=safePercent;
+  $('flash-progress').classList.toggle('active',active);
+  $('flash-progress-fill').style.width=safePercent+'%';
+  $('flash-progress-percent').textContent=safePercent+'%';
+  $('flash-progress-label').textContent=label||'Installing firmware';
+  $('flash-progress-detail').textContent=detail||'';
+}
+
+function resetFlashProgress(){
+  setFlashProgress(0,'Ready to install','Waiting for confirmation.',false);
+}
+
+function updateFlashProgress(fileIndex,written,total){
+  if(!selectedPackage)return;
+  const parts=selectedPackage.parts;
+  const totalBytes=parts.reduce((sum,part)=>sum+part.bytes.byteLength,0)||1;
+  const completedBytes=parts.slice(0,fileIndex).reduce((sum,part)=>sum+part.bytes.byteLength,0);
+  const currentPart=parts[fileIndex]||parts[0];
+  const imagePercent=total?Math.max(0,Math.min(1,written/total)):0;
+  const currentBytes=(currentPart?currentPart.bytes.byteLength:0)*imagePercent;
+  const overall=((completedBytes+currentBytes)/totalBytes)*100;
+  const imageName=currentPart?(currentPart.name||currentPart.path):'firmware image';
+  setFlashProgress(
+    overall,
+    `Installing ${imageName}`,
+    `Image ${fileIndex+1} of ${parts.length} · ${Math.round(imagePercent*100)}% of this image`
+  );
+}
+
 async function readEntry(zip,path,type='uint8array'){
   const entry=zip.file(path);
-  if(!entry)throw new Error(`Package is missing ${path}`);
+  if(!entry)throw new Error(`Firmware file is missing ${path}`);
   return entry.async(type);
 }
 
 async function parseKiriPackage(file){
-  if(!file.name.toLowerCase().endsWith('.kiri'))throw new Error('Choose a .kiri package.');
+  if(!file.name.toLowerCase().endsWith('.kiri'))throw new Error('Choose a .kiri firmware / OTA file.');
   const zip=await JSZip.loadAsync(file);
   const manifest=JSON.parse(await readEntry(zip,'manifest.json','string'));
-  if(manifest.format!==kiriPackageFormat)throw new Error('Unsupported package format.');
+  if(manifest.format!==kiriPackageFormat)throw new Error('Unsupported Kiri firmware / OTA format.');
   if(manifest.project!==kiriProjectId)throw new Error(`Wrong project: ${manifest.project||'unknown'}.`);
-  if(!Array.isArray(manifest.parts)||manifest.parts.length===0)throw new Error('Package has no flash parts.');
+  if(!Array.isArray(manifest.parts)||manifest.parts.length===0)throw new Error('This firmware / OTA file does not contain flashable images.');
 
   const parts=[];
   for(const part of manifest.parts){
@@ -717,19 +805,19 @@ function renderPackageDetails(pkg){
     </tr>`).join('');
   const variantClass=manifest.variant==='installer'?'ok':'warn';
   const variantText=manifest.variant==='installer'
-    ? 'Installer package selected. This is recommended for first-time setup.'
-    : 'App package selected. This can be line-flashed, but fresh devices should usually start with the installer.';
+    ? 'Installer selected. Use this for first-time setup, recovery, WiFi provisioning, and CN105 probing.'
+    : 'Main app selected. Use this when you want to install the production HomeKit firmware directly over USB.';
   $('package-details').innerHTML=`
     <table>
       <tbody>
         <tr><th>Product</th><td>${manifest.product||'Kiri Bridge'}</td></tr>
         <tr><th>Version</th><td>${manifest.version||'--'}</td></tr>
-        <tr><th>Variant</th><td class="${variantClass}">${manifest.variant||'--'} · ${variantText}</td></tr>
-        <tr><th>Target</th><td>${manifest.target||'esp32'} · flash ${manifest.flashSize||'keep'}</td></tr>
+        <tr><th>Firmware Role</th><td class="${variantClass}">${manifest.variant||'--'} · ${variantText}</td></tr>
+        <tr><th>Hardware Target</th><td>${manifest.target||'esp32'} · flash ${manifest.flashSize||'keep'}</td></tr>
       </tbody>
     </table>
     <table>
-      <thead><tr><th>Part</th><th>Offset</th><th>Size</th><th>File</th></tr></thead>
+      <thead><tr><th>Image</th><th>Offset</th><th>Size</th><th>File</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -738,23 +826,24 @@ async function handlePackageSelection(){
   const file=$('package-file').files&&$('package-file').files[0];
   selectedPackage=null;
   $('package-details').innerHTML='';
+  resetFlashProgress();
   if(!file){
     setPackageState('not selected');
     showStep(2);
     return;
   }
   try{
-    setPackageState('validating '+file.name,'warn');
+    setPackageState('checking '+file.name,'warn');
     selectedPackage=await parseKiriPackage(file);
     renderPackageDetails(selectedPackage);
     setPackageState(`${file.name} ready`,'ok');
     $('confirm-hardware').checked=false;
-    log(`Loaded ${file.name}`);
+    log(`Firmware / OTA selected: ${file.name}`);
     showStep(3);
   }catch(e){
     selectedPackage=null;
     setPackageState(e.message,'bad');
-    log('Package error: '+e.message);
+    log('Firmware / OTA selection failed: '+e.message);
     showStep(2);
   }
 }
@@ -774,19 +863,21 @@ function makeTerminal(){
 async function flashSelectedPackage(){
   if(!selectedPackage)return;
   if(!selectedPort){
-    log('Select a serial port first.');
+    log('Verify a USB device before installing firmware / OTA.');
     return;
   }
   if(!$('confirm-hardware').checked){
-    log('Confirm the hardware checkbox before flashing.');
+    log('Confirm the hardware checkbox before installing firmware / OTA.');
     return;
   }
   $('flash-btn').disabled=true;
+  installSucceeded=false;
   try{
-    log('Loading esptool-js...');
+    setFlashProgress(0,'Preparing install','Loading USB installer engine...');
+    log('Loading USB installer engine...');
     const {ESPLoader,Transport}=await loadEsptool();
     await closeReservedPort();
-    log('Reserved serial port handed to esptool-js.');
+    log('Verified USB device handed to the installer engine.');
     const transport=new Transport(selectedPort,true);
     const esploader=new ESPLoader({
       transport,
@@ -794,13 +885,14 @@ async function flashSelectedPackage(){
       terminal:makeTerminal(),
       debugLogging:false
     });
-    log('Connecting to ESP32 bootloader...');
+    log('Reconnecting to ESP32 bootloader...');
     await esploader.main();
     const fileArray=selectedPackage.parts.map(part=>({
       data:uint8ToBinaryString(part.bytes),
       address:Number(part.offset)
     }));
-    log('Writing flash...');
+    log('Writing firmware images...');
+    setFlashProgress(0,'Writing firmware images','Starting flash write...');
     await esploader.writeFlash({
       fileArray,
       flashSize:'keep',
@@ -811,20 +903,31 @@ async function flashSelectedPackage(){
       reportProgress:(fileIndex,written,total)=>{
         const part=selectedPackage.parts[fileIndex];
         const percent=total?Math.round((written/total)*100):0;
+        updateFlashProgress(fileIndex,written,total);
         log(`${part.name||part.path}: ${percent}%`);
       }
     });
-    if(typeof esploader.after==='function'){
+    const resetPulsed=await pulseRunReset(transport);
+    if(!resetPulsed&&typeof esploader.after==='function'){
       await esploader.after('hard_reset');
     }
     if(typeof transport.disconnect==='function'){
       await transport.disconnect();
     }
-    log('Flash complete. If you flashed the installer, connect to the PROV_KIRI_XX WiFi network or use Espressif BLE provisioning.');
+    setFlashProgress(100,'Install complete','Device is rebooting.');
+    log('Install complete. The USB port has been released. If the device does not reboot, unplug and plug it back in once.');
+    installSucceeded=true;
+    resetInstallerState();
+    showStep(1);
+    openSuccessModal(
+      'Firmware Installed',
+      'The firmware was written successfully. The USB port has been released. If the device flashes blue, it has entered provisioning mode. If not, unplug it and plug it back in once.'
+    );
   }catch(e){
-    log('Flash failed: '+(e&&e.message?e.message:e));
+    setFlashProgress(currentFlashPercent,'Install failed',e&&e.message?e.message:String(e));
+    log('Install failed: '+(e&&e.message?e.message:e));
   }finally{
-    showStep(currentStep);
+    if(!installSucceeded)showStep(currentStep);
   }
 }
 
@@ -838,7 +941,8 @@ $('flash-btn').addEventListener('click',flashSelectedPackage);
 $('confirm-hardware').addEventListener('change',()=>showStep(currentStep));
 $('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
 $('error-close-btn').addEventListener('click',closeErrorModal);
-log('Kiri Bridge Web Flasher ready.');
+$('success-close-btn').addEventListener('click',closeSuccessModal);
+log('Kiri Bridge Firmware Installer ready.');
 </script>
 </body>
 </html>
