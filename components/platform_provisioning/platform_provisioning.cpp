@@ -318,12 +318,6 @@ esp_err_t startProvisioningSession() {
     }
 
     wifi_prov_mgr_reset_provisioning();
-    uint8_t custom_service_uuid[] = {
-        0xb4, 0xdf, 0x5a, 0x1c, 0x3f, 0x6b, 0xf4, 0xbf,
-        0xea, 0x4a, 0x82, 0x03, 0x04, 0x90, 0x1a, 0x02,
-    };
-    wifi_prov_scheme_ble_set_service_uuid(custom_service_uuid);
-
     char service_name[40] = {};
     {
         platform_lock::ScopedLock lock(state.lock);
