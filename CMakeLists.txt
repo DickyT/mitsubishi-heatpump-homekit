@@ -11,10 +11,14 @@ cmake_minimum_required(VERSION 3.16)
 
 include(${CMAKE_CURRENT_LIST_DIR}/build_version.cmake OPTIONAL)
 
+if(NOT DEFINED KIRI_PROJECT_NAME)
+    set(KIRI_PROJECT_NAME kiri_bridge)
+endif()
+
 set(HOMEKIT_PATH ${CMAKE_CURRENT_LIST_DIR}/external/esp-homekit-sdk)
 set(EXTRA_COMPONENT_DIRS
     ${HOMEKIT_PATH}/components
     ${HOMEKIT_PATH}/components/homekit)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(kiri_bridge)
+project(${KIRI_PROJECT_NAME})

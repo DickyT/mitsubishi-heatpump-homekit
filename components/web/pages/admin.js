@@ -28,6 +28,7 @@ let cryptoJsPromise=null;
 
 const kiriPackageFormat='kiri-firmware-package-v1';
 const kiriProjectId='kiri-bridge';
+const legacyProjectNames=new Set(['mitsubishi_heatpump_homekit']);
 
 const cn105AdvancedFieldIds=[
   'cfg-cn105-rx-pin',
@@ -483,6 +484,11 @@ function partitionFromManifest(manifest,label){
   return partitions&&partitions[label]?partitions[label]:null;
 }
 
+function isCompatibleProjectName(packageProjectName,deviceProjectName){
+  if(packageProjectName===deviceProjectName)return true;
+  return packageProjectName==='kiri_bridge'&&legacyProjectNames.has(deviceProjectName);
+}
+
 function partitionMatches(packagePartition,devicePartition){
   if(!packagePartition||!devicePartition)return false;
   return Number(packagePartition.offset)===Number(devicePartition.address)&&
@@ -511,7 +517,7 @@ async function validateKiriPackage(file){
   const r=await fetch('/api/ota/info');
   const otaInfo=await r.json().catch(()=>({}));
   if(!r.ok||!otaInfo.ok)throw new Error(otaInfo.error||`OTA info request failed: HTTP ${r.status}`);
-  if(manifest.project_name!==otaInfo.project_name){
+  if(!isCompatibleProjectName(manifest.project_name,otaInfo.project_name)){
     throw new Error(`Project mismatch: package=${manifest.project_name||'unknown'} device=${otaInfo.project_name||'unknown'}.`);
   }
   if(!otaInfo.next_partition||appBytes.byteLength>Number(otaInfo.next_partition.size||0)){

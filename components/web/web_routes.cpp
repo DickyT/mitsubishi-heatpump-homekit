@@ -127,6 +127,17 @@ uint64_t appDescStamp(const esp_app_desc_t& desc) {
     return stamp_from_version > 0 ? stamp_from_version : compileStamp(desc.date, desc.time);
 }
 
+bool isCompatibleOtaProjectName(const char* uploaded_project, const char* current_project) {
+    if (uploaded_project == nullptr || current_project == nullptr) {
+        return false;
+    }
+    if (std::strcmp(uploaded_project, current_project) == 0) {
+        return true;
+    }
+    return std::strcmp(uploaded_project, "kiri_bridge") == 0 &&
+           std::strcmp(current_project, "mitsubishi_heatpump_homekit") == 0;
+}
+
 void versionFromAppDesc(const esp_app_desc_t& desc, char* out, size_t out_len) {
     if (desc.version[0] != '\0') {
         std::snprintf(out, out_len, "%s", desc.version);
@@ -1383,7 +1394,8 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
     }
 
     const esp_app_desc_t* current_desc = esp_app_get_description();
-    if (current_desc != nullptr && std::strcmp(uploaded_desc.project_name, current_desc->project_name) != 0) {
+    if (current_desc != nullptr &&
+        !isCompatibleOtaProjectName(uploaded_desc.project_name, current_desc->project_name)) {
         char message[192] = {};
         std::snprintf(message,
                       sizeof(message),

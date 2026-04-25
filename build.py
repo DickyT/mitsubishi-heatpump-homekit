@@ -213,6 +213,7 @@ def run_idf(
     quiet_first: bool = False,
     project_root: Path = REPO_ROOT,
     forced_version: str | None = None,
+    project_name_override: str | None = None,
 ) -> int:
     if command_needs_build(args):
         if forced_version is not None:
@@ -220,12 +221,16 @@ def run_idf(
         else:
             generate_project_version(project_root)
 
-    cmd = [str(IDF_PYTHON), str(IDF_SCRIPT), *args]
+    idf_args = list(args)
+    if project_root == REPO_ROOT:
+        idf_args = [f"-DKIRI_PROJECT_NAME={project_name_override or APP_PROJECT_NAMES['main']}", *idf_args]
+
+    cmd = [str(IDF_PYTHON), str(IDF_SCRIPT), *idf_args]
     env = build_env()
     if not quiet_first:
         return subprocess.call(cmd, cwd=project_root, env=env)
 
-    print(f"Running quietly: idf.py {' '.join(args)}", flush=True)
+    print(f"Running quietly: idf.py {' '.join(idf_args)}", flush=True)
     result = subprocess.run(
         cmd,
         cwd=project_root,
@@ -235,7 +240,7 @@ def run_idf(
         text=True,
     )
     if result.returncode == 0:
-        print(f"Quiet run succeeded: idf.py {' '.join(args)}", flush=True)
+        print(f"Quiet run succeeded: idf.py {' '.join(idf_args)}", flush=True)
         return 0
 
     print(
@@ -472,8 +477,15 @@ def build_and_export(
     app: str,
     quiet_first: bool,
     forced_version: str | None = None,
+    project_name_override: str | None = None,
 ) -> Path | None:
-    rc = run_idf(["build"], quiet_first=quiet_first, project_root=project_root, forced_version=forced_version)
+    rc = run_idf(
+        ["build"],
+        quiet_first=quiet_first,
+        project_root=project_root,
+        forced_version=forced_version,
+        project_name_override=project_name_override,
+    )
     if rc != 0:
         return None
     return export_artifacts(project_root, app)
@@ -578,7 +590,12 @@ def flash(args: argparse.Namespace) -> int:
     if args.no_build:
         manifest = load_manifest(latest_export_manifest(args.app))
     else:
-        manifest_path = build_and_export(args.project_root, args.app, args.quiet_first)
+        manifest_path = build_and_export(
+            args.project_root,
+            args.app,
+            args.quiet_first,
+            project_name_override=getattr(args, "project_name_override", None),
+        )
         if manifest_path is None:
             return 1
         manifest = load_manifest(manifest_path)
@@ -633,6 +650,7 @@ def main() -> int:
     argv = sys.argv[1:]
 
     app = "main"
+    project_name_override: str | None = None
     normalized_argv: list[str] = []
     skip = False
     for index, arg in enumerate(argv):
@@ -643,6 +661,12 @@ def main() -> int:
             if index + 1 >= len(argv):
                 fail("Missing value after --app")
             app = argv[index + 1]
+            skip = True
+            continue
+        if arg == "--project-name":
+            if index + 1 >= len(argv):
+                fail("Missing value after --project-name")
+            project_name_override = argv[index + 1]
             skip = True
             continue
         normalized_argv.append(arg)
@@ -680,6 +704,7 @@ def main() -> int:
         parsed.quiet_first = parsed.quiet_first or quiet_first
         parsed.project_root = project_root
         parsed.app = app
+        parsed.project_name_override = project_name_override
         return flash(parsed)
 
     if len(argv) > 0 and argv[0] == "serial-log":
@@ -695,7 +720,7 @@ def main() -> int:
         return build_all(quiet_first=quiet_first)
 
     args = argv or ["build"]
-    rc = run_idf(args, quiet_first=quiet_first, project_root=project_root)
+    rc = run_idf(args, quiet_first=quiet_first, project_root=project_root, project_name_override=project_name_override)
     if rc == 0 and command_needs_build(args):
         export_artifacts(project_root, app)
     return rc
