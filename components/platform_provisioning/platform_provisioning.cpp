@@ -33,7 +33,6 @@
 namespace {
 
 const char* TAG = "platform_provision";
-constexpr const char* kProvisioningPop = "abcd1234";
 constexpr char kPlaceholderSsid[] = "YOUR_WIFI_SSID";
 
 struct State {
@@ -333,8 +332,8 @@ esp_err_t startProvisioningSession() {
         }
     }
 
-    err = wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1,
-                                           kProvisioningPop,
+    err = wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_0,
+                                           nullptr,
                                            service_name,
                                            nullptr);
     if (err != ESP_OK) {
@@ -351,10 +350,9 @@ esp_err_t startProvisioningSession() {
     }
 
     ESP_LOGI(TAG,
-             "BLE provisioning window opened for %lus: service=%s pop=%s",
+             "BLE provisioning window opened for %lus: service=%s security=0",
              static_cast<unsigned long>(app_config::kProvisioningSessionMs / 1000),
-             service_name,
-             kProvisioningPop);
+             service_name);
     return ESP_OK;
 }
 

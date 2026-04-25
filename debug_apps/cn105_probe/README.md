@@ -5,8 +5,8 @@ hardware validation.
 
 It replaces the old serial-only CN105 probe. The app now provides:
 
-- BLE Wi-Fi provisioning through Espressif's mobile provisioning app using
-  Security 1 and PoP `abcd1234`.
+- BLE Wi-Fi provisioning through Espressif's mobile provisioning app or Web
+  Bluetooth using Security 0.
 - A no-password installer SoftAP on every boot. The AP SSID matches the BLE
   provisioning name, such as `PROV_KIRI_90`.
 - Captive portal DNS for SoftAP users. If the OS does not auto-open the portal,
@@ -68,8 +68,8 @@ The legacy app alias still works:
 2. Connect either through the installer SoftAP or through BLE provisioning.
 3. For SoftAP setup, join `PROV_KIRI_XX` with no password and use the
    captive portal or open `http://192.168.4.1/`.
-4. For BLE setup, use Espressif's mobile provisioning app with the BLE service
-   name printed in serial logs, Security 1, and Proof of Possession `abcd1234`.
+4. For BLE setup, use Espressif's mobile provisioning app or the browser BLE
+   pairing page with the BLE service name printed in serial logs and Security 0.
 5. The WebUI is available at `http://<installer-ip>/`.
 6. Run CN105 auto-probe with the physical RX/TX GPIO pins.
 7. Test the status LED GPIO if needed.
