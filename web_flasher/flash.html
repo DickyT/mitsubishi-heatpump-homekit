@@ -416,13 +416,13 @@ a:hover{text-decoration:underline}
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
     <h2 id="success-title">Firmware Installed</h2>
-    <p id="success-body" class="subtitle">The firmware was written successfully. The USB port has been released. If the device flashes blue, it has entered provisioning mode. If not, unplug it and plug it back in once.</p>
+    <p id="success-body" class="subtitle">The firmware was written successfully and the USB port has been released. This page will not reboot the device automatically.</p>
     <div id="success-provision-guide" class="modal-guide step-hidden">
       <strong>Next: WiFi provisioning</strong>
       <ol>
-        <li>Wait for the Kiri Bridge LED to rapidly flash blue.</li>
-        <li>If it does not flash blue after a few seconds, unplug the device and plug it back in once.</li>
-        <li>Open BLE WiFi Provisioning and follow the blue LED confirmation step.</li>
+        <li>Manually restart the Kiri Bridge by holding the side reset button, power cycling it, or plugging it into the heat pump.</li>
+        <li>When the LED rapidly flashes blue, open BLE WiFi Provisioning.</li>
+        <li>If the LED does not flash blue, restart the device once more and wait a few seconds.</li>
       </ol>
     </div>
     <div class="actions">
@@ -453,10 +453,6 @@ function log(line=''){
   const box=$('log');
   box.textContent+=line+'\n';
   box.scrollTop=box.scrollHeight;
-}
-
-function sleep(ms){
-  return new Promise(resolve=>setTimeout(resolve,ms));
 }
 
 function setPackageState(text,kind=''){
@@ -508,7 +504,7 @@ function closeErrorModal(){
 
 function openSuccessModal(title,message,showProvisioning=false){
   $('success-title').textContent=title||'Firmware Installed';
-  $('success-body').textContent=message||'The firmware was written successfully. The USB port has been released and the device is rebooting.';
+  $('success-body').textContent=message||'The firmware was written successfully. The USB port has been released. Restart the device manually before using it.';
   $('success-provision-btn').classList.toggle('step-hidden',!showProvisioning);
   $('success-provision-guide').classList.toggle('step-hidden',!showProvisioning);
   $('success-modal').classList.add('open');
@@ -518,19 +514,6 @@ function openSuccessModal(title,message,showProvisioning=false){
 function closeSuccessModal(){
   $('success-modal').classList.remove('open');
   $('success-modal').setAttribute('aria-hidden','true');
-}
-
-async function pulseRunReset(transport){
-  if(!transport||typeof transport.setDTR!=='function'||typeof transport.setRTS!=='function')return false;
-  log('Pulsing EN reset and releasing GPIO0 to run firmware...');
-  await transport.setDTR(false);
-  await sleep(30);
-  await transport.setRTS(true);
-  await sleep(80);
-  await transport.setRTS(false);
-  await sleep(30);
-  await transport.setDTR(false);
-  return true;
 }
 
 function loadEsptool(){
@@ -954,7 +937,6 @@ async function flashSelectedPackage(){
         log(`${part.name||part.path}: ${percent}%`);
       }
     });
-    await pulseRunReset(transport);
     if(typeof transport.disconnect==='function'){
       try{
         await transport.disconnect();
@@ -962,8 +944,8 @@ async function flashSelectedPackage(){
         log('USB release warning: '+(disconnectError&&disconnectError.message?disconnectError.message:disconnectError));
       }
     }
-    setFlashProgress(100,'Install complete','Device reset pulse sent and USB released.');
-    log('Install complete. The reset pulse was sent and the USB port has been released.');
+    setFlashProgress(100,'Install complete','USB released. Restart the device manually.');
+    log('Install complete. The USB port has been released. Restart the device manually.');
     installSucceeded=true;
     resetInstallerState();
     showStep(1);
@@ -971,8 +953,8 @@ async function flashSelectedPackage(){
     openSuccessModal(
       isInstaller?'Installer Firmware Installed':'Firmware Installed',
       isInstaller
-        ? 'Installer firmware was written successfully. The device is rebooting. When the LED rapidly flashes blue, open BLE WiFi Provisioning.'
-        : 'The firmware was written successfully. The device is rebooting into the installed firmware.',
+        ? 'Installer firmware was written successfully. Restart the device by holding the side reset button, power cycling it, or plugging it into the heat pump. When the LED rapidly flashes blue, open BLE WiFi Provisioning.'
+        : 'The firmware was written successfully. Restart the device manually by holding the side reset button, power cycling it, or plugging it into the heat pump.',
       isInstaller
     );
   }catch(e){

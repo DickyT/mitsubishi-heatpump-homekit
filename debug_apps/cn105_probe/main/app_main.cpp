@@ -58,15 +58,16 @@ constexpr TickType_t kLoopDelayTicks = pdMS_TO_TICKS(10);
 constexpr uint32_t kRxByteTimeoutMs = 140;
 constexpr int WIFI_CONNECTED_BIT = BIT0;
 constexpr const char* kDeviceCfgNamespace = "device_cfg";
+constexpr const char* kProvisioningPop = "abcd1234";
 constexpr int kAtomLiteStatusLedGpio = 27;
-constexpr uint16_t kHttpPrimaryPort = 80;
+constexpr uint16_t kHttpPrimaryPort = 8080;
 constexpr uint16_t kDnsPort = 53;
 constexpr char kApIp[] = "192.168.4.1";
-constexpr char kCaptivePortalUrl[] = "http://192.168.4.1/";
+constexpr char kCaptivePortalUrl[] = "http://192.168.4.1:8080/";
 
 EventGroupHandle_t wifi_event_group = nullptr;
 esp_netif_t* ap_netif = nullptr;
-httpd_handle_t server_80 = nullptr;
+httpd_handle_t web_server = nullptr;
 TaskHandle_t dns_task = nullptr;
 char wifi_ip[16] = "0.0.0.0";
 char wifi_ssid[33] = "";
@@ -915,7 +916,7 @@ function restoreCn105(values){if(!values)return;for(const [id,value] of Object.e
 function openCn105Modal(){cn105Snapshot=captureCn105();$('cn105_modal').classList.add('open');$('cn105_modal').setAttribute('aria-hidden','false');updateCn105Summary()}
 function closeCn105Modal(keep,event){event?.preventDefault();if(!keep)restoreCn105(cn105Snapshot);cn105Snapshot=null;updateCn105Summary();$('cn105_modal').classList.remove('open');$('cn105_modal').setAttribute('aria-hidden','true')}
 function params(){const p=new URLSearchParams();['device_name','wifi_ssid','wifi_pass','hk_code','hk_setupid','hk_mfr','hk_model','hk_serial','rx_pin','tx_pin','led_pin','baud','data_bits','parity','stop_bits','rx_pull','tx_od','use_real','poll_on','poll_off','log_level'].forEach(id=>p.set(id,val(id)));return p}
-async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi STA</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'Connected':'Not Connected'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>Installer AP</b><span>${esc(j.wifi.ap_ssid)}</span><div>${esc(j.wifi.ap_ip)}</div></div><div class="status-tile"><b>BLE Service</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0';$('rx_pull').value=j.defaults.rx_pull?'1':'0';$('tx_od').value=j.defaults.tx_od?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}updateCn105Summary()}
+async function load(){const j=await (await fetch('/api/status')).json();$('status').innerHTML=`<div class="status-grid"><div class="status-tile"><b>WiFi STA</b><span class="${j.wifi.connected?'ok':'bad'}">${j.wifi.connected?'Connected':'Not Connected'}</span><div>${esc(j.wifi.ssid||'--')}</div><div>${esc(j.wifi.ip||'--')}</div></div><div class="status-tile"><b>Installer AP</b><span>${esc(j.wifi.ap_ssid)}</span><div>${esc(j.wifi.ap_ip)}</div></div><div class="status-tile"><b>BLE Service</b><span>${esc(j.provisioning.service_name)}</span></div><div class="status-tile"><b>Security</b><span>${esc(j.provisioning.security)}</span><div>PoP: ${esc(j.provisioning.pop)}</div></div></div>`;for(const [k,v] of Object.entries(j.defaults)){if($(k))$(k).value=v}if(j.defaults){$('use_real').value=j.defaults.use_real?'1':'0';$('rx_pull').value=j.defaults.rx_pull?'1':'0';$('tx_od').value=j.defaults.tx_od?'1':'0'}if($('hk_code').value==='1111-2233')randomizeHomeKitCode();if(j.probe&&j.probe.found){$('rx_pin').value=j.probe.rx_pin;$('tx_pin').value=j.probe.tx_pin;$('baud').value=j.probe.baud}updateCn105Summary()}
 async function probe(){set('probe_out','Probing. This may take a few dozen seconds...');const p=new URLSearchParams({rx_pin:val('rx_pin'),tx_pin:val('tx_pin')});const j=await (await fetch('/api/probe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p})).json();set('probe_out',JSON.stringify(j,null,2));if(j.ok&&j.result){$('baud').value=j.result.baud;updateCn105Summary()}}
 async function ledTest(){const j=await (await fetch('/api/led-test',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({led_pin:val('led_pin')})})).json();set('step1_out',JSON.stringify(j,null,2))}
 async function writeSettings(outId,pending){set(outId,pending);try{const j=await (await fetch('/api/write-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params()})).json();set(outId,JSON.stringify(j,null,2));return !!j.ok}catch(e){set(outId,'Save failed: '+e);return false}}
@@ -945,7 +946,8 @@ esp_err_t statusHandler(httpd_req_t* req) {
     body += ",\"ap_ssid\":\"" + jsonEscape(provisioning_service_name) + "\",\"ap_ip\":\"" + jsonEscape(kApIp) + "\"}";
     body += ",\"provisioning\":{\"service_name\":\"";
     body += provisioning_service_name;
-    body += "\",\"security\":\"Security 0\",\"pop\":\"";
+    body += "\",\"security\":\"Security 1\",\"pop\":\"";
+    body += kProvisioningPop;
     body += "\"},\"version\":\"";
     body += jsonEscape(esp_app_get_description()->version);
     body += "\",\"defaults\":";
@@ -1103,7 +1105,7 @@ void registerRoutes(httpd_handle_t handle) {
 }
 
 void startWebServer() {
-    if (server_80 != nullptr) {
+    if (web_server != nullptr) {
         return;
     }
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -1113,8 +1115,8 @@ void startWebServer() {
     config.max_open_sockets = 4;
     config.lru_purge_enable = true;
     config.uri_match_fn = httpd_uri_match_wildcard;
-    ESP_ERROR_CHECK(httpd_start(&server_80, &config));
-    registerRoutes(server_80);
+    ESP_ERROR_CHECK(httpd_start(&web_server, &config));
+    registerRoutes(web_server);
     ESP_LOGI(TAG,
              "Installer WebUI ready on port %u: AP=http://%s:%u/ STA=http://%s:%u/",
              static_cast<unsigned>(config.server_port),
@@ -1319,13 +1321,15 @@ void startWifiProvisioning() {
     // even if this board has stale Wi-Fi provisioning data from an older test.
     wifi_prov_mgr_reset_provisioning();
 
-    ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_0, nullptr, provisioning_service_name, nullptr));
+    const wifi_prov_security1_params_t* security_params = kProvisioningPop;
+    ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, security_params, provisioning_service_name, nullptr));
     configureSoftAp();
     startCaptiveDns();
     startWebServer();
     ESP_LOGI(TAG,
-             "BLE provisioning started. Use Espressif app or Web Bluetooth, service name: %s security=0",
-             provisioning_service_name);
+             "BLE provisioning started. Use Espressif app, service name: %s security=1 pop=%s",
+             provisioning_service_name,
+             kProvisioningPop);
 }
 
 }  // namespace
