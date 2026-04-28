@@ -27,7 +27,7 @@ struct Settings {
     char homeKitModel[64] = "";
     char homeKitSerial[64] = "";
     char homeKitSetupId[5] = "";
-    bool useRealCn105 = false;
+    bool useRealCn105 = true;
     int statusLedPin = 27;
     int cn105RxPin = 26;
     int cn105TxPin = 32;
@@ -39,7 +39,7 @@ struct Settings {
     int cn105BaudRate = 2400;
     uint32_t pollIntervalActiveMs = 15000;
     uint32_t pollIntervalOffMs = 60000;
-    esp_log_level_t logLevel = ESP_LOG_INFO;
+    esp_log_level_t logLevel = ESP_LOG_ERROR;
 };
 
 esp_err_t init();

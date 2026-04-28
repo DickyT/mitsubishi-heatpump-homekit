@@ -19,7 +19,7 @@ namespace app_config {
 inline constexpr char kDeviceName[] = "Kiri Bridge";
 inline constexpr char kPhaseName[] = "ESP-IDF stable baseline";
 
-inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_VERBOSE;
+inline constexpr esp_log_level_t kDefaultLogLevel = ESP_LOG_ERROR;
 inline constexpr uint32_t kHeartbeatIntervalMs = 5000;
 inline constexpr uint16_t kWebServerPort = 8080;
 inline constexpr uint32_t kWebServerStackBytes = 12288;

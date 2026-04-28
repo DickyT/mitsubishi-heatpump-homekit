@@ -560,92 +560,6 @@ void writeSettingsToNvs(const InstallerSettings& s) {
     nvs_close(handle);
 }
 
-void loadStringFromNvs(nvs_handle_t handle, const char* key, char* out, size_t out_len) {
-    if (out == nullptr || out_len == 0) {
-        return;
-    }
-    size_t len = out_len;
-    const esp_err_t err = nvs_get_str(handle, key, out, &len);
-    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW(TAG, "Failed to read NVS string %s: %s", key, esp_err_to_name(err));
-    }
-}
-
-void loadI32FromNvs(nvs_handle_t handle, const char* key, int* out) {
-    int32_t value = 0;
-    const esp_err_t err = nvs_get_i32(handle, key, &value);
-    if (err == ESP_OK) {
-        *out = static_cast<int>(value);
-    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW(TAG, "Failed to read NVS i32 %s: %s", key, esp_err_to_name(err));
-    }
-}
-
-void loadU32FromNvs(nvs_handle_t handle, const char* key, uint32_t* out) {
-    uint32_t value = 0;
-    const esp_err_t err = nvs_get_u32(handle, key, &value);
-    if (err == ESP_OK) {
-        *out = value;
-    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW(TAG, "Failed to read NVS u32 %s: %s", key, esp_err_to_name(err));
-    }
-}
-
-void loadU8FromNvs(nvs_handle_t handle, const char* key, uint8_t* out) {
-    uint8_t value = 0;
-    const esp_err_t err = nvs_get_u8(handle, key, &value);
-    if (err == ESP_OK) {
-        *out = value;
-    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW(TAG, "Failed to read NVS u8 %s: %s", key, esp_err_to_name(err));
-    }
-}
-
-void loadSettingsFromNvs(InstallerSettings& s) {
-    nvs_handle_t handle = 0;
-    const esp_err_t err = nvs_open(kDeviceCfgNamespace, NVS_READONLY, &handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        return;
-    }
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to open device_cfg NVS: %s", esp_err_to_name(err));
-        return;
-    }
-
-    loadStringFromNvs(handle, "device_name", s.device_name, sizeof(s.device_name));
-    loadStringFromNvs(handle, "wifi_ssid", s.wifi_ssid, sizeof(s.wifi_ssid));
-    loadStringFromNvs(handle, "wifi_pass", s.wifi_pass, sizeof(s.wifi_pass));
-    loadStringFromNvs(handle, "hk_code", s.hk_code, sizeof(s.hk_code));
-    loadStringFromNvs(handle, "hk_mfr", s.hk_mfr, sizeof(s.hk_mfr));
-    loadStringFromNvs(handle, "hk_model", s.hk_model, sizeof(s.hk_model));
-    loadStringFromNvs(handle, "hk_serial", s.hk_serial, sizeof(s.hk_serial));
-    loadStringFromNvs(handle, "hk_setupid", s.hk_setupid, sizeof(s.hk_setupid));
-    uint8_t use_real = s.use_real ? 1 : 0;
-    loadU8FromNvs(handle, "use_real", &use_real);
-    s.use_real = use_real != 0;
-    loadI32FromNvs(handle, "led_pin", &s.led_pin);
-    loadI32FromNvs(handle, "rx_pin", &s.rx_pin);
-    loadI32FromNvs(handle, "tx_pin", &s.tx_pin);
-    loadI32FromNvs(handle, "baud", &s.baud);
-    loadI32FromNvs(handle, "data_bits", &s.data_bits);
-    char parity_value[4] = {};
-    loadStringFromNvs(handle, "parity", parity_value, sizeof(parity_value));
-    if (parity_value[0] != '\0') {
-        s.parity = parity_value[0];
-    }
-    loadI32FromNvs(handle, "stop_bits", &s.stop_bits);
-    uint8_t rx_pull = s.rx_pull ? 1 : 0;
-    loadU8FromNvs(handle, "rx_pull", &rx_pull);
-    s.rx_pull = rx_pull != 0;
-    uint8_t tx_od = s.tx_od ? 1 : 0;
-    loadU8FromNvs(handle, "tx_od", &tx_od);
-    s.tx_od = tx_od != 0;
-    loadU32FromNvs(handle, "poll_on", &s.poll_on);
-    loadU32FromNvs(handle, "poll_off", &s.poll_off);
-    loadU8FromNvs(handle, "log_level", &s.log_level);
-    nvs_close(handle);
-}
-
 const char* logLevelName(uint8_t level) {
     switch (level) {
         case ESP_LOG_ERROR:
@@ -792,7 +706,7 @@ std::string settingsJson(const InstallerSettings& s) {
 
 InstallerSettings defaultSettings() {
     InstallerSettings s{};
-    loadSettingsFromNvs(s);
+    // Installer is a recovery path: do not inherit potentially broken app NVS.
     if (wifi_ssid[0] != '\0') {
         copyString(s.wifi_ssid, sizeof(s.wifi_ssid), wifi_ssid);
     }
