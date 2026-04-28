@@ -2,315 +2,122 @@
 
 CN105 HomeKit controller for Mitsubishi heat pumps.
 
-ESP32-based Mitsubishi CN105 heat pump bridge, now being rebuilt on **ESP-IDF + Espressif ESP HomeKit SDK**.
+Kiri Bridge is an ESP32 firmware and hardware kit for bringing supported
+Mitsubishi heat pumps into Apple HomeKit through the indoor unit's CN105 port.
+It is local-first, browser-provisioned, and designed to be recoverable without
+command line tools.
 
 - Website: <https://kiri.dkt.moe>
+- WiFi setup: <https://kiri.dkt.moe/ble_provisioning.html>
+- Firmware recovery: <https://kiri.dkt.moe/flash.html>
 - Source: <https://github.com/DickyT/kiri-homekit>
+
+## What It Does
+
+- Controls supported Mitsubishi heat pumps through the CN105 connector.
+- Exposes the heat pump to Apple HomeKit.
+- Provides a local WebUI at `http://<device-ip>:8080/`.
+- Supports browser-based BLE WiFi provisioning.
+- Supports browser-based firmware recovery with `.kiri` packages.
+- Runs locally without a required cloud service.
+
+## Hardware Kit
+
+The intended user path assumes a prebuilt Kiri Bridge kit:
+
+- M5Stack ATOM Lite controller
+- two CN105 cable options
+- pre-flashed Kiri Bridge installer or firmware
+- browser-based setup and recovery flow
+
+Order links are not public yet. The website currently shows an order interest
+modal with a contact email.
+
+## For Buyers
+
+If you bought a Kiri Bridge, start here:
+
+- [Installation Guide](./INSTALL.md)
+- [Firmware Recovery Guide](./FLASHING.md)
+
+Normal setup is:
+
+1. Power on the Kiri Bridge.
+2. Wait for the LED to rapidly blink blue.
+3. Open <https://kiri.dkt.moe/ble_provisioning.html>.
+4. Provision 2.4 GHz WiFi.
+5. Open the device portal at `http://<device-ip>:8080/`.
+6. Pair with Apple Home.
+7. Connect the CN105 cable to the Mitsubishi indoor unit.
+
+If normal setup fails, use the browser flasher at
+<https://kiri.dkt.moe/flash.html> with the latest installer package from
+GitHub Releases.
+
+## Firmware Releases
+
+Release packages are published as `.kiri` files:
+
+- `kiri_installer_<version>.kiri`: recovery and first-time restore path.
+- `kiri_bridge_<version>.kiri`: production firmware.
+
+Users should download release packages from GitHub Releases. Building from
+source is for developers and is not required for normal installation.
 
 ## Current Status
 
-Current baseline: **ESP-IDF platform, WebUI, CN105 offline core, HomeKit bridge, and real CN105 transport implementation are in place**.
+Kiri Bridge is actively developed. The current ESP-IDF firmware includes:
 
-[`PLAN.md`](./PLAN.md) now describes the repository in terms of current status and remaining validation work. Older `M7/M8` wording should be treated as historical migration context, not the current forward plan.
+- real CN105 UART transport enabled by default
+- Apple HomeKit bridge
+- local WebUI
+- BLE WiFi provisioning
+- installer/recovery firmware
+- browser flasher and provisioning pages
+- SPIFFS-backed diagnostics and logs
 
-Completed baseline:
-
-- Old Arduino/HomeSpan implementation has been removed from `main`
-- `main` is now an ESP-IDF project skeleton
-- Componentized platform services are in place: logging, SPIFFS, CN105 UART, and STA-only Wi-Fi
-- CN105 UART is initialized as `UART1 RX=GPIO26 TX=GPIO32 2400 8E1`
-- SPIFFS is mounted on a custom 4MB flash partition table
-- ESP-IDF logs are mirrored to a per-boot SPIFFS log file after filesystem mount
-- Wi-Fi power save is disabled; Wi-Fi failure stays in STA/reconnect mode and does not start a fallback AP
-- ESP-IDF WebUI is available on port `8080`; HomeKit/HAP owns port `80`
-- `GET /`, `GET /api/health`, and `GET /api/status` are available for platform verification
-- WebUI pages use tiny HTML shells plus build-time gzip static asset fragments under `/assets/*`; the browser loader fetches fragments serially to avoid large chunked HTML responses and concurrent static asset bursts on ESP32
-- CN105 offline protocol core is available with SET payload builder, packet decode, and mock state
-- WebUI feature layer is available: `/` is the virtual remote, `/debug` is the raw decode/API console, `/logs` is log viewing/live tail, and `/files` is the SPIFFS file manager
-- HomeKit SDK bridge is integrated and can run over the shared CN105 state model
-- Project-facing temperature APIs use Fahrenheit; the protocol core converts to CN105 Celsius payload bytes internally
-- The migration target is ESP-IDF + Espressif `esp-homekit-sdk`, not HomeSpan or Matter
-- Real CN105 transport code is present and is now the default build mode; `mock` transport remains available as a fallback/dev mode
-
-Not restored yet:
-
-- final long-run hardware validation of the default real CN105 transport path
-
-The previous working Arduino implementation is preserved in git history and branches for reference.
-
-## Current Baseline Verification
-
-Verify that the full ESP-IDF baseline is healthy with real CN105 transport enabled by default.
-
-The current baseline is considered healthy when:
-
-- it builds successfully
-- it flashes successfully
-- serial output shows the custom 4MB partition table
-- serial output shows SPIFFS mounted
-- serial output shows persistent logging enabled at a per-boot `/spiffs/*-log.txt` file
-- serial output shows CN105 UART initialized on `rx=26 tx=32`
-- serial output shows STA Wi-Fi connected, or STA reconnect attempts if Wi-Fi is unavailable
-- heartbeat logs include Wi-Fi mode, IP, RSSI, MAC, and last event
-- `http://<esp-ip>:8080/` loads
-- `http://<esp-ip>:8080/api/health` returns JSON
-- `http://<esp-ip>:8080/api/status` returns JSON with Wi-Fi, SPIFFS, CN105 UART status, and HomeKit status
-- CN105 offline self-test logs `77F SET roundtrip`
-- `GET http://<esp-ip>:8080/api/cn105/mock/build-set?...temperature_f=77...&apply=1` builds and applies a mock SET packet that reads back as `77F`
-- `http://<esp-ip>:8080/debug` loads and raw decode returns JSON
-- `http://<esp-ip>:8080/logs` shows SPIFFS log files and live current log output
-- `http://<esp-ip>:8080/files` can list, download, upload, create, and delete SPIFFS files
-- serial output shows HomeKit started with setup code and setup payload
-- Apple Home can pair, then WebUI and HomeKit show the same mock power/mode/temperature state after refresh
-- serial output shows CN105 connect/info polling and the WebUI runtime mode reflects `真实 CN105`
+Final long-run validation across more Mitsubishi indoor unit models is still
+ongoing.
 
 ## Repository Layout
 
-- [`CMakeLists.txt`](./CMakeLists.txt): ESP-IDF project root
-- [`main/app_main.cpp`](./main/app_main.cpp): app bootstrap entrypoint
-- [`components/app_config`](./components/app_config): centralized compile-time config
-- [`components/platform_fs`](./components/platform_fs): SPIFFS mount, safe path helpers, and file manager operations
-- [`components/platform_led`](./components/platform_led): board status RGB LED policy for Wi-Fi/CN105 health
-- [`components/platform_log`](./components/platform_log): ESP-IDF log setup, persistent log mirroring, log pruning, and live log reads
-- [`components/platform_uart`](./components/platform_uart): CN105 UART setup
-- [`components/platform_wifi`](./components/platform_wifi): Wi-Fi STA-only setup and network heartbeat status
-- [`components/web`](./components/web): minimal ESP-IDF HTTP/WebUI foundation
-- [`components/web/tools/build_assets.py`](./components/web/tools/build_assets.py): build-time gzip splitter for WebUI shell assets
-- [`components/core_cn105`](./components/core_cn105): offline CN105 protocol core and mock state
-- [`components/homekit_bridge`](./components/homekit_bridge): Espressif HomeKit SDK binding over mock CN105 state
-- [`debug_apps/cn105_probe`](./debug_apps/cn105_probe): standalone minimal ESP-IDF CN105 UART probe app for low-level wiring and handshake tests
-- [`partitions.csv`](./partitions.csv): custom 4MB flash partition table
-- [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local project guide and hardware rules
-- [`original_version`](./original_version): upstream MitsubishiCN105ESPHome reference as a submodule
-- [`external/esp-homekit-sdk`](./external/esp-homekit-sdk): Espressif HomeKit SDK submodule
+- [`site`](./site): static website pages for `kiri.dkt.moe`
+- [`INSTALL.md`](./INSTALL.md): buyer installation guide
+- [`FLASHING.md`](./FLASHING.md): buyer firmware recovery guide
+- [`main`](./main): production ESP-IDF app entrypoint
+- [`components`](./components): firmware components
+- [`debug_apps/cn105_probe`](./debug_apps/cn105_probe): installer/probe firmware
+- [`partitions.csv`](./partitions.csv): 4MB flash partition table
+- [`build.py`](./build.py): project build/export helper
+- [`PLAN.md`](./PLAN.md): current engineering notes
+- [`CODEX_GUIDE.md`](./CODEX_GUIDE.md): local development guide
+- [`original_version`](./original_version): reference implementation submodule
+- [`external/esp-homekit-sdk`](./external/esp-homekit-sdk): HomeKit SDK submodule
 
-## WebUI Maintenance Note
+## Development Notes
 
-The production WebUI and the installer/probe WebUI are intentionally separate
-right now:
+This project targets ESP-IDF and Espressif ESP HomeKit SDK. The production
+firmware and installer firmware intentionally have separate WebUIs today:
 
-- production firmware UI lives in [`components/web/pages`](./components/web/pages)
-  and is built into gzip asset fragments
-- installer/probe UI is embedded in
-  [`debug_apps/cn105_probe/main/app_main.cpp`](./debug_apps/cn105_probe/main/app_main.cpp)
+- production WebUI lives in `components/web/pages`
+- installer WebUI is embedded in `debug_apps/cn105_probe/main/app_main.cpp`
 
-They do not share a real component system yet. When changing Device Settings,
-CN105 settings, OTA upload/apply flow, pairing/setup copy, or safety warnings,
-evaluate whether the same behavior needs to be updated in both UIs.
+When changing settings, OTA, HomeKit pairing, safety copy, or CN105 behavior,
+check whether both UIs need the same behavior.
 
-## Hardware Assumptions
+## Support
 
-- ESP32 or M5Stack ATOM Lite class device
-- Debug logs stay on the default serial console
-- CN105 UART remains reserved for:
-  - `GPIO26` as `RX`
-  - `GPIO32` as `TX`
-- ESP32 is externally powered by USB/5V
+For installation and hardware questions, see [SUPPORT.md](./SUPPORT.md).
 
-CN105 wiring target remains:
+For bug reports, please use GitHub Issues and include firmware version, hardware
+details, Mitsubishi indoor unit model if known, and logs when available.
 
-- `Pin2` -> `GND`
-- `Pin4 (TX)` -> `ESP32 GPIO26 (RX)`
-- `Pin5 (RX)` -> `ESP32 GPIO32 (TX)`
+## Contributing
 
-## LED Status Policy
+Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md)
+before opening a pull request.
 
-The current codebase drives the board RGB LED with this policy:
+## License
 
-- `green solid`: Wi-Fi connected and CN105 link healthy
-- `blue solid`: Wi-Fi is not connected
-- `orange solid`: Wi-Fi is connected, but CN105 is not connected
-- `red solid`: both Wi-Fi and CN105 are unavailable
-
-Implementation note:
-
-- LED control lives in `components/platform_led`
-- the status LED is always enabled; only the GPIO is configurable
-- the LED policy stays simple and diagnostic-first rather than becoming a second notification system
-
-## CN105 Transport Notes
-
-Recent hardware debugging produced a few implementation details that are now
-reflected in the main firmware:
-
-- CN105 `CONNECT ACK` packets (`0x7A` / `0x7B`) must be framed using the packet
-  header length field, i.e. `byte[4] + 6`, rather than assuming a fixed
-  8-byte response. Real hardware can return a valid 7-byte ACK such as
-  `FC 7A 01 30 01 00 54`.
-- The current real-transport baseline for the tested M5Stack ATOM Lite wiring
-  is:
-  - `UART1`
-  - `2400 8E1`
-  - `GPIO26` as `RX`
-  - `GPIO32` as `TX`
-  - CN105 `RX` pullup enabled on the ESP32 side
-- The standalone probe app at [`debug_apps/cn105_probe`](./debug_apps/cn105_probe)
-  exists specifically to validate pinout, baud, pullup behavior, and
-  `0x5A`/`0x5B` connect behavior against unknown indoor units.
-
-## CN105 Polling Strategy
-
-The real CN105 transport does not use one fixed poll interval anymore.
-
-Current behavior:
-
-- if the indoor unit is `ON`, status polling runs every `15` seconds
-- if the indoor unit is `OFF`, status polling slows to every `60` seconds
-- if HomeKit or the WebUI sends a `POWER ON` command, the transport immediately
-  returns to fast polling before the next state roundtrip completes
-- if HomeKit or the WebUI sends a `POWER OFF` command, the transport stays
-  conservative and only falls back to the slow interval after a later
-  `0x02 settings` response confirms the indoor unit is really `OFF`
-
-The defaults are seeded into NVS by `device_settings` on first boot, and existing
-NVS values are not overwritten by later firmware boots:
-
-- active polling: `15000 ms`
-- off polling: `60000 ms`
-
-## Verification
-
-This project uses the global EIM-managed ESP-IDF `v5.4.1` install at:
-
-```text
-/Users/dkt/.espressif/v5.4.1/esp-idf
-```
-
-You can activate the environment manually with:
-
-```bash
-source "/Users/dkt/.espressif/tools/activate_idf_v5.4.1.sh"
-```
-
-Then the current baseline can be tested with the usual flow:
-
-```bash
-idf.py set-target esp32
-idf.py build
-idf.py flash monitor
-```
-
-For this project, the preferred local wrapper is:
-
-```bash
-./build.py build
-./build.py flash monitor
-```
-
-For the standalone installer/probe firmware, use:
-
-```bash
-./build.py --app installer build
-./build.py --app installer flash-auto --monitor
-./build.py buildall
-```
-
-Each successful build exports a flash-ready package into:
-
-```text
-firmware_exports/<version>/
-```
-
-with four images named like:
-
-```text
-<project_name>_<version>_<0xOFFSET>.bin
-```
-
-It also exports a project package:
-
-```text
-<project_name>_<version>.kiri
-```
-
-The `.kiri` package is a zip bundle with a signed-by-checksum manifest, the
-bootloader, partition table, OTA data image, and app image. The firmware WebUI
-OTA flow accepts the app package and uploads only the validated app image to the
-next OTA partition.
-
-The installer/probe firmware always starts a no-password SoftAP named like its
-BLE provisioning service (`PROV_KIRI_XX`) and serves the installer WebUI
-on port `8080`. It also supports Espressif BLE Wi-Fi provisioning, uses the same
-OTA partition table as the formal firmware, detects CN105 hardware settings,
-writes `device_cfg` NVS with a full overwrite strategy, then OTA-uploads the
-formal app package:
-
-```text
-firmware_exports/<version>/kiri_bridge_<version>.kiri
-```
-
-For browser-based first-time flashing, host or open:
-
-```text
-site/flash.html
-```
-
-That static page accepts a `.kiri` package, validates checksums in the browser,
-and flashes all package parts over Web Serial.
-
-Or use the project-specific auto-flash helper:
-
-```bash
-./build.py flash-auto --monitor
-./build.py flash-auto --port /dev/cu.usbserial-xxxx --monitor
-./build.py flash-auto --no-build
-./build.py serial-log --seconds 15
-```
-
-For quieter Codex/tool runs, use `--quiet-first`. It captures the first `idf.py` run and only reruns with verbose output if the quiet attempt fails:
-
-```bash
-./build.py --quiet-first build
-./build.py --quiet-first flash-auto --no-build
-```
-
-`flash-auto --no-build` flashes the latest exported package for the selected app
-instead of reading directly from the live `build/` directory.
-
-`buildall` builds both `main` and `installer` in one pass and forces them to
-share the same exported firmware version folder.
-
-The project default flash baud is `115200` for the current M5Stack/ESP32 board.
-`serial-log` also overwrites an ignored local copy at `serial_logs/latest-serial.log` by default.
-
-## Runtime Configuration
-
-User-editable settings live in NVS under the `device_cfg` namespace. On first
-boot, the firmware writes placeholder/default values only for missing keys; if a
-key already exists, it is preserved. The current default Wi-Fi values are
-placeholder strings, so a fresh formal firmware flash will stay offline until an
-installer/probe firmware or WebUI save writes real Wi-Fi credentials into NVS.
-
-If no real SSID is configured, the device stays offline and does not start a
-fallback AP. If STA connection fails, it keeps retrying in STA mode.
-
-Expected serial output:
-
-- custom partition table with `factory` and `spiffs`
-- `SPIFFS mounted`
-- `Persistent log enabled (async): /boot-...-log.txt` or a timestamped `/YYYY-MM-DD-HH-MM-SS-log.txt`
-- `Initializing CN105 UART: uart=1 rx=26 tx=32 baud=2400 format=8E1 rxPull=on txOD=off`
-- `WiFi power save disabled`
-- `CN105 offline self-test passed: 77F SET roundtrip`
-- `HomeKit started: name=Kiri Bridge setup_code=<random/generated> ...`
-- `WebUI ready: http://<esp-ip>:8080/`
-- either `Connected to ...` or reconnect/offline STA status
-- a repeating platform heartbeat every 5 seconds with Wi-Fi status
-
-## Upstream Reference
-
-- Upstream reference: [echavet/MitsubishiCN105ESPHome](https://github.com/echavet/MitsubishiCN105ESPHome)
-- HomeKit SDK target: [espressif/esp-homekit-sdk](https://github.com/espressif/esp-homekit-sdk)
-- HomeKit SDK common examples: [esp-homekit-sdk/examples/common](https://github.com/espressif/esp-homekit-sdk/tree/master/examples/common)
-
-## Next Planned Step
-
-Finish the last hardware-oriented checkpoint:
-
-- flash the current build
-- open WebUI on `http://<esp-ip>:8080/`
-- pair Apple Home using setup code `111-22-333`
-- verify Home App changes show in WebUI after refresh
-- verify WebUI changes update HomeKit characteristics
-- verify real connect/info/set flow with CN105 wiring connected
-- keep `mock` transport only as a fallback/dev mode if you need isolated WebUI/HomeKit testing
+Kiri Bridge firmware source is licensed under the GNU General Public License
+version 3. See [LICENSE](./LICENSE).

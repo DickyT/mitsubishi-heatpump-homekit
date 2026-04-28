@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a Kiri Bridge firmware, WebUI, setup, or recovery problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Kiri Bridge. Please do not include WiFi passwords, HomeKit setup codes, or private network details.
+  - type: input
+    id: firmware-version
+    attributes:
+      label: Firmware version
+      description: Find this in the WebUI footer, release filename, or serial log.
+      placeholder: "2026.0427.222310"
+    validations:
+      required: true
+  - type: dropdown
+    id: firmware-kind
+    attributes:
+      label: Firmware type
+      options:
+        - Production firmware
+        - Installer firmware
+        - Web flasher
+        - BLE provisioning page
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      placeholder: "Kiri Bridge kit / M5Stack ATOM Lite / custom ESP32"
+    validations:
+      required: true
+  - type: input
+    id: indoor-unit
+    attributes:
+      label: Mitsubishi indoor unit model
+      placeholder: "MSZ-..., unknown is okay"
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the visible behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Power on Kiri Bridge
+        2. Open ...
+        3. Click ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs. Remove secrets before posting.
+      render: text
+  - type: input
+    id: browser-os
+    attributes:
+      label: Browser and OS
+      placeholder: "Chrome 147 on macOS 15, Safari on iOS, etc."
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed WiFi passwords, HomeKit setup codes, and private network details.
+          required: true
+        - label: I checked the latest release or current documentation.
+          required: false
