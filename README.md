@@ -230,7 +230,7 @@ next OTA partition.
 
 The installer/probe firmware always starts a no-password SoftAP named like its
 BLE provisioning service (`PROV_KIRI_XX`) and serves the installer WebUI
-on port `80`. It also supports Espressif BLE Wi-Fi provisioning, uses the same
+on port `8080`. It also supports Espressif BLE Wi-Fi provisioning, uses the same
 OTA partition table as the formal firmware, detects CN105 hardware settings,
 writes `device_cfg` NVS with a full overwrite strategy, then OTA-uploads the
 formal app package:
@@ -242,7 +242,7 @@ firmware_exports/<version>/kiri_bridge_<version>.kiri
 For browser-based first-time flashing, host or open:
 
 ```text
-web_flasher/flash.html
+site/flash.html
 ```
 
 That static page accepts a `.kiri` package, validates checksums in the browser,
