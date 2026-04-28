@@ -341,14 +341,6 @@ a:hover{text-decoration:underline}
     </div>
   </section>
 
-  <section class="card">
-    <h2>New Kiri Bridge?</h2>
-    <p class="subtitle">If you just received your Kiri Bridge and it already flashes blue after power-on, you probably do not need to flash firmware. Go straight to BLE WiFi provisioning.</p>
-    <div class="actions">
-      <button class="primary" id="open-provisioning-btn">Open BLE WiFi Provisioning</button>
-    </div>
-  </section>
-
   <section class="card" id="step-serial">
     <h2>Step 1 · Verify Hardware</h2>
     <p class="subtitle">Plug in the Kiri Bridge over USB and let the browser check the ESP32 bootloader at 115200 baud. This lightweight verification reads the chip type and MAC only. The port stays reserved afterward so the next steps cannot accidentally switch devices.</p>
@@ -976,7 +968,6 @@ $('confirm-hardware').addEventListener('change',()=>showStep(currentStep));
 $('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
 $('error-close-btn').addEventListener('click',closeErrorModal);
 $('success-close-btn').addEventListener('click',closeSuccessModal);
-$('open-provisioning-btn').addEventListener('click',()=>{window.location.href='ble_provisioning.html';});
 $('success-provision-btn').addEventListener('click',()=>{window.location.href='ble_provisioning.html';});
 log('Kiri Bridge Firmware Installer ready.');
 </script>
