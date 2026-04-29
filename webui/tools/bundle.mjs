@@ -1,9 +1,19 @@
-// Kiri Bridge — esbuild bundle script.
-// Compiles Preact+TS sources to a single JS bundle and a single CSS file.
-// Outputs to dist/, where build_assets.py picks them up for chunking + gzip.
+// Kiri Bridge — esbuild bundler for the embedded WebUI.
+//
+// Targets:
+//   --target main       (default): emits dist/app.js + dist/app.css.
+//                       Loaded chunk-by-chunk by loader.js into the SPA shell.
+//   --target installer: emits dist/installer.html, a single self-contained
+//                       page (CSS + JS inlined) for the captive-portal flow.
+//
+// Both targets run terser AFTER esbuild for an extra mangle/dead-code pass,
+// then check size guards so future imports cannot accidentally bloat the
+// firmware.
 
 import { build } from "esbuild";
-import { mkdirSync, existsSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { minify } from "terser";
+import { mkdirSync, existsSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,75 +21,134 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const distDir = resolve(root, "dist");
 
-const args = new Set(process.argv.slice(2));
-const target = args.has("--target") ? process.argv[process.argv.indexOf("--target") + 1] : "main";
+const args = process.argv.slice(2);
+const target = (() => {
+  const i = args.indexOf("--target");
+  return i >= 0 ? args[i + 1] : "main";
+})();
 
 if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
 
-const common = {
-  bundle: true,
-  format: target === "installer" ? "iife" : "esm",
-  platform: "browser",
-  target: ["es2020"],
-  minify: true,
-  sourcemap: false,
-  legalComments: "none",
-  jsx: "automatic",
-  jsxImportSource: "preact",
-  treeShaking: true,
-  loader: { ".css": "css" },
-  drop: ["console", "debugger"],
+const gzSize = (path) => gzipSync(readFileSync(path), { level: 9 }).byteLength;
+
+const SIZE_LIMITS = {
+  main: { jsGz: 30 * 1024, cssGz: 8 * 1024 },
+  installer: { htmlGz: 18 * 1024 },
 };
 
-const entry = target === "installer"
-  ? resolve(root, "src/installer.tsx")
-  : resolve(root, "src/main.tsx");
-
-const outJs = resolve(distDir, target === "installer" ? "installer.js" : "app.js");
-const outCss = resolve(distDir, target === "installer" ? "installer.css" : "app.css");
-
-const result = await build({
-  ...common,
-  entryPoints: [entry],
-  outfile: outJs,
-  metafile: true,
-});
-
-const jsBytes = readFileSync(outJs).byteLength;
-let cssBytes = 0;
-if (existsSync(outCss)) cssBytes = readFileSync(outCss).byteLength;
-
-const gzipSize = (path) => {
-  const { gzipSync } = require("node:zlib");
-  return gzipSync(readFileSync(path), { level: 9 }).byteLength;
-};
-
-const { gzipSync } = await import("node:zlib");
-const gz = (path) => gzipSync(readFileSync(path), { level: 9 }).byteLength;
-
-const jsGz = gz(outJs);
-const cssGz = existsSync(outCss) ? gz(outCss) : 0;
-
-console.log(`[bundle] target=${target}`);
-console.log(`[bundle]   js  ${jsBytes.toLocaleString()} B  /  gz ${jsGz.toLocaleString()} B`);
-if (cssBytes) console.log(`[bundle]   css ${cssBytes.toLocaleString()} B  /  gz ${cssGz.toLocaleString()} B`);
-
-// Size guard. Adjust thresholds as the app grows; this catches accidental bloat
-// (eg someone imports moment.js by mistake).
-const JS_GZ_LIMIT = 30 * 1024;
-const CSS_GZ_LIMIT = 8 * 1024;
-if (jsGz > JS_GZ_LIMIT) {
-  console.error(`[bundle] FAIL: js gzip ${jsGz} exceeds ${JS_GZ_LIMIT}`);
-  process.exit(1);
-}
-if (cssGz > CSS_GZ_LIMIT) {
-  console.error(`[bundle] FAIL: css gzip ${cssGz} exceeds ${CSS_GZ_LIMIT}`);
-  process.exit(1);
+if (target === "main") {
+  await buildMain();
+} else if (target === "installer") {
+  await buildInstaller();
+} else {
+  console.error(`Unknown target: ${target}`);
+  process.exit(2);
 }
 
-writeFileSync(resolve(distDir, "meta.json"), JSON.stringify({
-  target,
-  js: { path: outJs.replace(root + "/", ""), bytes: jsBytes, gz: jsGz },
-  css: cssBytes ? { path: outCss.replace(root + "/", ""), bytes: cssBytes, gz: cssGz } : null,
-}, null, 2));
+// ---------- main target ----------
+
+async function buildMain() {
+  const entry = resolve(root, "src/main.tsx");
+  const outJs = resolve(distDir, "app.js");
+  const outCss = resolve(distDir, "app.css");
+
+  await build({
+    entryPoints: [entry],
+    outfile: outJs,
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    minify: true,
+    sourcemap: false,
+    legalComments: "none",
+    jsx: "automatic",
+    jsxImportSource: "preact",
+    treeShaking: true,
+    loader: { ".css": "css" },
+    drop: ["console", "debugger"],
+  });
+
+  // Extra terser pass on the JS bundle.
+  const minified = await minify(readFileSync(outJs, "utf8"), {
+    module: true,
+    compress: { passes: 2, pure_getters: true, unsafe: true, unsafe_arrows: true },
+    mangle: true,
+    format: { comments: false },
+  });
+  if (minified.code) writeFileSync(outJs, minified.code);
+
+  const jsBytes = readFileSync(outJs).byteLength;
+  const cssBytes = existsSync(outCss) ? readFileSync(outCss).byteLength : 0;
+  const jsGz = gzSize(outJs);
+  const cssGz = cssBytes ? gzSize(outCss) : 0;
+
+  console.log(`[bundle] target=main`);
+  console.log(`[bundle]   js  ${jsBytes.toLocaleString()} B  /  gz ${jsGz.toLocaleString()} B`);
+  if (cssBytes) console.log(`[bundle]   css ${cssBytes.toLocaleString()} B  /  gz ${cssGz.toLocaleString()} B`);
+
+  enforce(`main js gz`, jsGz, SIZE_LIMITS.main.jsGz);
+  enforce(`main css gz`, cssGz, SIZE_LIMITS.main.cssGz);
+}
+
+// ---------- installer target ----------
+
+async function buildInstaller() {
+  const entry = resolve(root, "src/installer.tsx");
+  const outJs = resolve(distDir, "installer.js");
+  const outCss = resolve(distDir, "installer.css");
+  const outHtml = resolve(distDir, "installer.html");
+
+  await build({
+    entryPoints: [entry],
+    outfile: outJs,
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: ["es2020"],
+    minify: true,
+    sourcemap: false,
+    legalComments: "none",
+    jsx: "automatic",
+    jsxImportSource: "preact",
+    treeShaking: true,
+    loader: { ".css": "css" },
+    drop: ["console", "debugger"],
+  });
+
+  const minified = await minify(readFileSync(outJs, "utf8"), {
+    compress: { passes: 2, pure_getters: true, unsafe: true, unsafe_arrows: true },
+    mangle: true,
+    format: { comments: false },
+  });
+  if (minified.code) writeFileSync(outJs, minified.code);
+
+  const css = existsSync(outCss) ? readFileSync(outCss, "utf8") : "";
+  const js = readFileSync(outJs, "utf8");
+
+  const html = [
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">`,
+    `<title>Installer | Kiri Bridge</title>`,
+    `<style>${css}</style>`,
+    `</head><body><div id="app"></div><script>${js}</script></body></html>`,
+  ].join("");
+  writeFileSync(outHtml, html);
+
+  const htmlBytes = Buffer.byteLength(html);
+  const htmlGz = gzSize(outHtml);
+
+  console.log(`[bundle] target=installer`);
+  console.log(`[bundle]   js   ${readFileSync(outJs).byteLength.toLocaleString()} B`);
+  console.log(`[bundle]   css  ${readFileSync(outCss).byteLength.toLocaleString()} B`);
+  console.log(`[bundle]   html ${htmlBytes.toLocaleString()} B  /  gz ${htmlGz.toLocaleString()} B`);
+
+  enforce(`installer html gz`, htmlGz, SIZE_LIMITS.installer.htmlGz);
+}
+
+function enforce(label, value, limit) {
+  if (value > limit) {
+    console.error(`[bundle] FAIL: ${label} ${value} exceeds ${limit}`);
+    process.exit(1);
+  }
+}

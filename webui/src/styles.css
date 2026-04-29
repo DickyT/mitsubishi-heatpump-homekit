@@ -191,6 +191,30 @@ nav.tabs svg{width:18px;height:18px}
 .listmeta small{display:block;margin-top:4px;font-family:var(--mono);font-size:11px;color:var(--ink-faint);letter-spacing:.04em}
 .actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 
+/* Installer page primitives (reused by src/installer.tsx) */
+.nav-bar{position:sticky;top:0;z-index:40;background:rgba(10,10,10,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav-inner{width:min(var(--max),calc(100vw - var(--gutter)*2));margin:0 auto;min-height:52px;display:flex;align-items:center;gap:24px}
+.brand{display:inline-flex;align-items:center;gap:10px;font-size:15px;font-weight:500;color:var(--ink)}
+.brand-mark{display:inline-block;width:9px;height:9px;background:var(--accent)}
+.brand-page{font-family:var(--mono);font-size:11px;font-weight:400;letter-spacing:.04em;color:var(--ink-faint);margin-left:6px}
+.brand-page::before{content:"·";margin-right:8px;color:var(--ink-faint)}
+.status-row{display:flex;flex-wrap:wrap;gap:24px;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:24px}
+.status-row .stat{display:inline-flex;align-items:center;gap:8px;padding:0;border:0;background:transparent}
+.status-row .key{color:var(--ink-faint);font-weight:500}
+.status-row .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex-shrink:0}
+.status-row .dot.ok{background:var(--ok);box-shadow:0 0 8px rgba(124,255,203,.55)}
+.status-row .dot.warn{background:var(--warn);box-shadow:0 0 8px rgba(255,211,138,.6)}
+.status-row .dot.bad{background:var(--bad);box-shadow:0 0 8px rgba(255,122,138,.55)}
+.installer-step{padding:32px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:64px 1fr;gap:24px}
+.installer-step:first-of-type{border-top:0}
+.installer-step.locked{opacity:.4;pointer-events:none}
+.installer-step-num{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:.04em}
+.installer-step h2{font-family:var(--sans);font-size:20px;font-weight:400;letter-spacing:-.01em;text-transform:none;color:var(--ink);margin-bottom:6px}
+.installer-step-hint{color:var(--ink-dim);font-size:14px;margin-bottom:18px;max-width:60ch}
+.inline-control{display:grid;grid-template-columns:1fr auto;gap:10px}
+.config-summary{width:100%;justify-content:flex-start;text-transform:none;letter-spacing:.04em;font-size:13px;text-align:left}
+.config-summary.dirty{color:var(--accent);border-color:var(--accent)}
+
 /* Responsive */
 @media(min-width:760px){
   body{padding-bottom:32px}
@@ -207,6 +231,7 @@ nav.tabs svg{width:18px;height:18px}
 @media(max-width:720px){
   main{padding:18px 0 24px}
   .stats,.row,.row3,.grid2{grid-template-columns:1fr}
+  .installer-step{grid-template-columns:48px 1fr;gap:16px;padding:24px 0}
   .stat:nth-child(2n){border-left:0}
   .modal{align-items:stretch;padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
   .modal-panel{width:100%;max-height:none;min-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)));padding:20px;display:flex;flex-direction:column}
