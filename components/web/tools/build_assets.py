@@ -14,6 +14,11 @@ import json
 import re
 from pathlib import Path
 
+try:
+    import brotli  # type: ignore
+except ImportError:  # pragma: no cover
+    brotli = None
+
 
 MAX_CHUNK_BYTES = 900
 
@@ -59,17 +64,26 @@ def gzip_bytes(text: str) -> bytes:
     return gzip.compress(text.encode("utf-8"), compresslevel=9, mtime=0)
 
 
+def brotli_bytes(text: str) -> bytes:
+    if brotli is None:
+        raise SystemExit(
+            "Python 'brotli' package is required. Install with:\n"
+            "  pip3 install --user --break-system-packages brotli"
+        )
+    return brotli.compress(text.encode("utf-8"), quality=11)
+
+
 def asset_name(asset_path: str) -> str:
     name = asset_path.strip("/")
     for old, new in (("/", "_"), (".", "_"), ("-", "_")):
         name = name.replace(old, new)
-    return "asset_" + name + "_gz"
+    return "asset_" + name + "_br"
 
 
 def write_asset(out_dir: Path, url_path: str, text: str, content_type: str, assets: list[dict]) -> None:
     name = asset_name(url_path)
     file_path = out_dir / name
-    file_path.write_bytes(gzip_bytes(text))
+    file_path.write_bytes(brotli_bytes(text))
     assets.append({
         "url": url_path,
         "name": name,

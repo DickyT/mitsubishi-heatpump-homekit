@@ -9,9 +9,9 @@
     "build:installer": "node tools/bundle.mjs --target installer"
   },
   "devDependencies": {
+    "@preact/signals": "^2.0.0",
     "esbuild": "^0.24.0",
     "preact": "^10.25.0",
-    "@preact/signals": "^2.0.0",
     "terser": "^5.36.0",
     "typescript": "^5.6.3"
   }

@@ -82,7 +82,7 @@ esp_err_t sendAsset(httpd_req_t* req) {
 
     const size_t len = static_cast<size_t>(asset->end - asset->start);
     httpd_resp_set_type(req, asset->contentType);
-    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_set_hdr(req, "Content-Encoding", "br");
     httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=3600, immutable");
     return httpd_resp_send(req, reinterpret_cast<const char*>(asset->start), len);
 }
