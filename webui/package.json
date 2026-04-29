@@ -1,0 +1,18 @@
+{
+  "name": "kiri-bridge-webui",
+  "version": "1.0.0",
+  "description": "Kiri Bridge embedded WebUI (Preact + esbuild). Built into the ESP32 firmware as gzipped chunks.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/bundle.mjs",
+    "build:installer": "node tools/bundle.mjs --target installer"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "preact": "^10.25.0",
+    "@preact/signals": "^2.0.0",
+    "terser": "^5.36.0",
+    "typescript": "^5.6.3"
+  }
+}

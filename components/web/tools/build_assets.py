@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-# Kiri Bridge
-# CN105 HomeKit controller for Mitsubishi heat pumps
-# https://kiri.dkt.moe
-# https://github.com/DickyT/kiri-homekit
+# Kiri Bridge — build gzip-compressed WebUI asset fragments for ESP-IDF embedding.
 #
-# Copyright (c) 2026
-# All Rights Reserved.
-# Licensed under terms of the GPL-3.0 License.
-
-"""Build gzip-compressed WebUI asset fragments for ESP-IDF embedding."""
+# Input: pages/loader.js (template) + pages/app.js + pages/app.css produced by esbuild.
+# Output: per-chunk gzipped assets in <out-dir> + a generated cpp file that exposes
+# them through web_assets::find(path).
 
 from __future__ import annotations
 
@@ -20,7 +15,6 @@ import re
 from pathlib import Path
 
 
-PAGES = ("root", "logs", "admin")
 MAX_CHUNK_BYTES = 900
 
 
@@ -35,24 +29,11 @@ def strip_leading_source_header(text: str) -> str:
     return text
 
 
-def compact_html(text: str) -> str:
-    text = strip_leading_source_header(text)
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-    text = re.sub(r">\s+<", "><", text)
-    return "\n".join(line.strip() for line in text.splitlines() if line.strip())
-
-
-def compact_css(text: str) -> str:
-    text = strip_leading_source_header(text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"\s*([{}:;,>+~])\s*", r"\1", text)
-    return text.strip()
-
-
 def compact_js(text: str) -> str:
+    # esbuild already minifies app.js. We only strip the loader.js source header
+    # so we don't accidentally double-minify the bundled output.
     text = strip_leading_source_header(text)
-    return "\n".join(line.rstrip() for line in text.splitlines() if line.strip())
+    return text
 
 
 def chunk_text(text: str, max_bytes: int = MAX_CHUNK_BYTES) -> list[str]:
@@ -174,7 +155,7 @@ def generate_cpp(out_dir: Path, assets: list[dict], version: str) -> Path:
     return cpp_path
 
 
-def generate_manifest(out_dir: Path, assets: list[dict], cpp_path: Path) -> Path:
+def generate_manifest_cmake(out_dir: Path, assets: list[dict], cpp_path: Path) -> Path:
     manifest_path = out_dir / "web_assets_manifest.cmake"
     files = "\n".join(f'    "{asset["file"]}"' for asset in assets)
     manifest_path.write_text(
@@ -192,7 +173,7 @@ def generate_manifest(out_dir: Path, assets: list[dict], cpp_path: Path) -> Path
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pages-dir", required=True)
+    parser.add_argument("--pages-dir", required=True, help="Directory holding loader.js + app.js + app.css")
     parser.add_argument("--out-dir", required=True)
     args = parser.parse_args()
 
@@ -200,35 +181,30 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    inputs = [pages_dir / "loader.js", pages_dir / "style.css"]
-    for page in PAGES:
-        inputs.extend([pages_dir / f"{page}.html", pages_dir / f"{page}.js"])
+    loader_path = pages_dir / "loader.js"
+    app_js_path = pages_dir / "app.js"
+    app_css_path = pages_dir / "app.css"
+    for path in (loader_path, app_js_path, app_css_path):
+        if not path.exists():
+            raise SystemExit(f"Missing input asset: {path}")
 
     digest = hashlib.sha256()
-    for path in inputs:
+    for path in (loader_path, app_js_path, app_css_path):
         digest.update(path.name.encode("utf-8"))
         digest.update(path.read_bytes())
     version = digest.hexdigest()[:12]
 
     assets: list[dict] = []
-    manifest = {"version": version, "css": [], "pages": {}}
+    manifest = {"version": version, "css": [], "js": []}
+    manifest["css"] = add_chunked_assets(out_dir, "app", "css", read_text(app_css_path), "text/css; charset=utf-8", assets)
+    manifest["js"] = add_chunked_assets(out_dir, "app", "js", read_text(app_js_path), "application/javascript; charset=utf-8", assets)
 
-    manifest["css"] = add_chunked_assets(out_dir, "style", "css", compact_css(read_text(pages_dir / "style.css")), "text/css; charset=utf-8", assets)
-
-    for page in PAGES:
-        body = compact_html(read_text(pages_dir / f"{page}.html"))
-        js = compact_js(read_text(pages_dir / f"{page}.js"))
-        manifest["pages"][page] = {
-            "body": add_chunked_assets(out_dir, f"{page}.body", "html", body, "text/html; charset=utf-8", assets),
-            "js": add_chunked_assets(out_dir, page, "js", js, "application/javascript; charset=utf-8", assets),
-        }
-
-    loader_template = compact_js(read_text(pages_dir / "loader.js"))
+    loader_template = compact_js(read_text(loader_path))
     loader = loader_template.replace("__WEB_ASSET_MANIFEST__", json.dumps(manifest, separators=(",", ":"), ensure_ascii=False))
     write_asset(out_dir, "/assets/loader.js", loader, "application/javascript; charset=utf-8", assets)
 
     cpp_path = generate_cpp(out_dir, assets, version)
-    generate_manifest(out_dir, assets, cpp_path)
+    generate_manifest_cmake(out_dir, assets, cpp_path)
     return 0
 
 
