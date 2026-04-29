@@ -3,370 +3,74 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Kiri Bridge Firmware Installer</title>
+<title>Firmware Recovery | Kiri Bridge</title>
+<meta name="description" content="Recover or install Kiri Bridge firmware from a browser over USB serial using a verified .kiri firmware package.">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
-<style>
-:root{
-  color-scheme:dark;
-  --bg:#050713;
-  --bg2:#0b1023;
-  --panel:rgba(12,17,37,.9);
-  --panel2:rgba(18,25,52,.92);
-  --edge:rgba(84,241,255,.22);
-  --edge2:rgba(255,66,210,.42);
-  --text:#e8fbff;
-  --muted:#8aa4c1;
-  --cyan:#54f1ff;
-  --pink:#ff42d2;
-  --lime:#b8ff37;
-  --red:#ff4b6e;
-  --amber:#ffba3a;
-  --radius:22px;
-  --font:"Avenir Next","Segoe UI","Helvetica Neue",sans-serif;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{
-  min-height:100dvh;
-  font-family:var(--font);
-  color:var(--text);
-  background:
-    radial-gradient(circle at 8% 0%,rgba(84,241,255,.18),transparent 25%),
-    radial-gradient(circle at 88% 10%,rgba(255,31,168,.18),transparent 22%),
-    linear-gradient(180deg,var(--bg),var(--bg2));
-  overflow-x:hidden;
-}
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  pointer-events:none;
-  background:
-    repeating-linear-gradient(90deg,rgba(84,241,255,.035) 0,rgba(84,241,255,.035) 1px,transparent 1px,transparent 46px),
-    repeating-linear-gradient(180deg,rgba(255,255,255,.018) 0,rgba(255,255,255,.018) 1px,transparent 1px,transparent 3px);
-  opacity:.42;
-}
-main{
-  position:relative;
-  z-index:1;
-  width:min(980px,calc(100vw - 28px));
-  margin:0 auto;
-  padding:28px 0 36px;
-}
-.hero{
-  display:grid;
-  grid-template-columns:1.2fr .8fr;
-  gap:18px;
-  align-items:stretch;
-  margin-bottom:18px;
-}
-h1{
-  font-size:clamp(34px,6vw,64px);
-  line-height:.92;
-  letter-spacing:-.06em;
-  font-weight:900;
-  text-shadow:0 0 22px rgba(84,241,255,.18),0 0 34px rgba(255,66,210,.12);
-}
-.subtitle{
-  color:var(--muted);
-  font-size:15px;
-  line-height:1.6;
-  margin-top:14px;
-}
-.card{
-  position:relative;
-  overflow:hidden;
-  background:
-    linear-gradient(180deg,rgba(12,18,38,.94),rgba(8,13,28,.98)),
-    linear-gradient(90deg,rgba(84,241,255,.07),rgba(255,31,168,.06));
-  border:1px solid rgba(84,241,255,.16);
-  border-radius:var(--radius);
-  padding:22px;
-  margin-bottom:18px;
-  box-shadow:0 0 0 1px rgba(84,241,255,.08),0 24px 60px rgba(0,0,0,.46);
-}
-.card::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:linear-gradient(135deg,rgba(84,241,255,.08),transparent 30%,rgba(255,66,210,.07));
-  opacity:.72;
-}
-.card>*{position:relative;z-index:1}
-h2{
-  color:var(--cyan);
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.22em;
-  text-transform:uppercase;
-  margin-bottom:16px;
-  text-shadow:0 0 16px rgba(84,241,255,.25);
-}
-.pill{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  border:1px solid rgba(255,66,210,.24);
-  border-radius:999px;
-  padding:10px 13px;
-  color:var(--muted);
-  background:rgba(7,12,27,.72);
-  font-weight:800;
-  font-size:12px;
-}
-.pill strong{color:var(--text)}
-.grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
-}
-.field span{
-  display:block;
-  color:var(--cyan);
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.08em;
-  margin-bottom:8px;
-}
-input,select{
-  width:100%;
-  color:var(--text);
-  background:rgba(5,8,21,.92);
-  border:1px solid rgba(84,241,255,.18);
-  border-radius:16px;
-  padding:14px 16px;
-  font:inherit;
-  outline:none;
-}
-input[type=file]{cursor:pointer}
-button{
-  border:0;
-  border-radius:999px;
-  padding:14px 18px;
-  font:inherit;
-  font-weight:900;
-  cursor:pointer;
-  transition:transform .15s ease,filter .15s ease,opacity .15s ease;
-}
-button:hover{transform:translateY(-1px);filter:brightness(1.08)}
-button:disabled{opacity:.48;cursor:not-allowed;transform:none}
-.primary{
-  color:#06111d;
-  background:linear-gradient(135deg,var(--pink),var(--cyan));
-  box-shadow:0 14px 34px rgba(255,66,210,.18);
-}
-.secondary{
-  color:var(--text);
-  background:rgba(18,25,52,.88);
-  border:1px solid rgba(255,66,210,.22);
-}
-.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
-.step-hidden{display:none}
-.confirm-row{
-  display:flex;
-  align-items:flex-start;
-  gap:12px;
-  margin-top:16px;
-  color:var(--muted);
-  line-height:1.5;
-  font-size:14px;
-}
-.confirm-row input{
-  width:auto;
-  min-width:18px;
-  height:18px;
-  margin-top:2px;
-  accent-color:var(--pink);
-}
-.confirm-row span{display:block}
-.progress-panel{
-  display:none;
-  margin-top:16px;
-  padding:14px;
-  border:1px solid rgba(84,241,255,.16);
-  border-radius:18px;
-  background:rgba(5,8,21,.62);
-}
-.progress-panel.active{display:block}
-.progress-meta{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  color:var(--muted);
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.08em;
-  text-transform:uppercase;
-  margin-bottom:10px;
-}
-.progress-track{
-  height:14px;
-  overflow:hidden;
-  border:1px solid rgba(84,241,255,.18);
-  border-radius:999px;
-  background:rgba(8,13,28,.92);
-}
-.progress-fill{
-  width:0%;
-  height:100%;
-  border-radius:999px;
-  background:linear-gradient(90deg,var(--pink),var(--cyan),var(--lime));
-  box-shadow:0 0 22px rgba(84,241,255,.28);
-  transition:width .18s ease;
-}
-.progress-detail{
-  color:var(--muted);
-  font-size:13px;
-  line-height:1.5;
-  margin-top:10px;
-}
-.modal{
-  position:fixed;
-  inset:0;
-  z-index:10;
-  display:none;
-  align-items:center;
-  justify-content:center;
-  padding:18px;
-}
-.modal.open{display:flex}
-.modal-backdrop{
-  position:absolute;
-  inset:0;
-  background:rgba(1,3,12,.72);
-  backdrop-filter:blur(8px);
-}
-.modal-panel{
-  position:relative;
-  width:min(560px,100%);
-  border:1px solid rgba(255,75,110,.35);
-  border-radius:22px;
-  padding:22px;
-  background:linear-gradient(180deg,rgba(24,14,32,.98),rgba(8,13,28,.98));
-  box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(255,75,110,.14);
-}
-.modal-panel h2{color:var(--red)}
-#success-modal .modal-panel{
-  border-color:rgba(184,255,55,.35);
-  box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(184,255,55,.12);
-}
-#success-modal .modal-panel h2{color:var(--lime)}
-.modal-guide{
-  margin-top:16px;
-  padding:14px 16px;
-  border:1px solid rgba(84,241,255,.18);
-  border-radius:16px;
-  background:rgba(5,8,21,.62);
-  color:var(--muted);
-  line-height:1.55;
-  font-size:14px;
-}
-.modal-guide strong{display:block;color:var(--cyan);margin-bottom:8px}
-.modal-guide ol{padding-left:20px}
-.modal-guide li+li{margin-top:6px}
-.status{
-  display:grid;
-  gap:10px;
-  color:var(--muted);
-  font-size:14px;
-}
-.ok{color:var(--lime)}
-.warn{color:var(--amber)}
-.bad{color:var(--red)}
-table{
-  width:100%;
-  border-collapse:collapse;
-  overflow:hidden;
-  border-radius:16px;
-  margin-top:12px;
-}
-th,td{
-  text-align:left;
-  padding:10px 12px;
-  border-bottom:1px solid rgba(84,241,255,.1);
-  font-size:13px;
-  vertical-align:top;
-}
-th{color:var(--cyan);font-size:11px;text-transform:uppercase;letter-spacing:.12em}
-td{color:var(--muted);word-break:break-word}
-pre{
-  min-height:220px;
-  max-height:360px;
-  overflow:auto;
-  white-space:pre-wrap;
-  color:#8feaff;
-  background:rgba(5,8,21,.84);
-  border:1px solid rgba(84,241,255,.14);
-  border-radius:18px;
-  padding:16px;
-  font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-}
-footer{
-  position:relative;
-  z-index:1;
-  color:var(--muted);
-  text-align:center;
-  font-size:12px;
-  line-height:1.7;
-  padding:0 0 28px;
-}
-a{color:var(--cyan);text-decoration:none}
-a:hover{text-decoration:underline}
-@media(max-width:760px){
-  main{width:min(100vw - 20px,980px);padding-top:18px}
-  .hero,.grid{grid-template-columns:1fr}
-  .card{padding:18px;border-radius:18px}
-  button{width:100%}
-}
-</style>
+<link rel="stylesheet" href="kiri.css">
 </head>
 <body>
+<nav class="site-nav" aria-label="Main navigation">
+  <div class="site-nav-inner">
+    <a class="wordmark" href="index.html" aria-label="Kiri Bridge home">
+      <span class="wordmark-main">kiri</span>
+      <span class="wordmark-sub">bridge</span>
+    </a>
+    <div class="site-links">
+      <a href="index.html">Overview</a>
+      <a href="ble_provisioning.html">WiFi Setup</a>
+      <a href="flash.html">Firmware Recovery</a>
+      <a href="https://github.com/DickyT/kiri-homekit">GitHub</a>
+      <a class="nav-cta" href="ble_provisioning.html">Start Setup</a>
+    </div>
+  </div>
+</nav>
 <main>
   <section class="hero">
-    <div class="card">
-      <h1>Kiri Bridge<br>Firmware Installer</h1>
-      <p class="subtitle">A guided USB installer for Kiri Bridge. First we verify the ESP32, then you choose a Kiri firmware or OTA file, and finally the browser writes it directly to the device.</p>
+    <div>
+      <div class="tool-kicker">USB recovery</div>
+      <h1>Bring it back.</h1>
+      <p class="lede">Use this page when a Kiri Bridge needs a clean installer or firmware restore. The browser verifies the board, checks the package, then writes over USB.</p>
       <div class="actions">
-        <span class="pill"><strong>Browser</strong> Chrome or Edge</span>
-        <span class="pill"><strong>Connection</strong> USB serial</span>
-        <span class="pill"><strong>Firmware / OTA</strong> .kiri file</span>
+        <span class="pill"><strong>Use</strong> Chrome or Edge</span>
+        <span class="pill"><strong>Speed</strong> 115200 baud</span>
+        <span class="pill"><strong>File</strong> .kiri</span>
       </div>
     </div>
-    <div class="card status" id="summary">
-      <h2>Installer Status</h2>
+    <aside class="status" id="summary">
+      <h2>Now</h2>
       <div id="serial-state">Device: waiting for USB verification</div>
-      <div id="package-state">Firmware / OTA: not selected</div>
+      <div id="package-state">Package: not selected</div>
       <div id="chip-state">Hardware: not verified</div>
-    </div>
+    </aside>
   </section>
 
   <section class="card" id="step-serial">
-    <h2>Step 1 · Verify Hardware</h2>
-    <p class="subtitle">Plug in the Kiri Bridge over USB and let the browser check the ESP32 bootloader at 115200 baud. This lightweight verification reads the chip type and MAC only. The port stays reserved afterward so the next steps cannot accidentally switch devices.</p>
+    <h2>1. Pick the board</h2>
+    <p class="subtitle">Connect Kiri Bridge over USB. Verification reads the ESP32 chip and MAC address, then keeps that serial port reserved for the rest of the flow.</p>
     <div class="actions">
-      <button id="serial-btn" class="primary">Verify USB Device</button>
-      <button id="continue-package-btn" class="primary step-hidden">Continue to Firmware / OTA</button>
+      <button id="serial-btn" class="primary">Select and verify</button>
+      <button id="continue-package-btn" class="primary step-hidden">Choose firmware</button>
     </div>
     <div id="device-details"></div>
   </section>
 
   <section class="card step-hidden" id="step-package">
-    <h2>Step 2 · Choose Firmware / OTA</h2>
-    <p class="subtitle">Select the Kiri firmware or OTA file you want to install. The browser checks the manifest, file list, sizes, and checksums before continuing.</p>
+    <h2>2. Choose the package</h2>
+    <p class="subtitle">Select a published Kiri package. The browser checks its manifest, image list, sizes, and checksums before writing anything.</p>
     <label class="field">
-      <span>Firmware / OTA file</span>
+      <span>Kiri package</span>
       <input id="package-file" type="file" accept=".kiri">
     </label>
     <div id="package-details"></div>
     <div class="actions">
-      <button id="back-serial-btn" class="secondary">Release Device and Start Over</button>
+      <button id="back-serial-btn" class="secondary">Release board</button>
     </div>
   </section>
 
   <section class="card step-hidden" id="step-flash">
-    <h2>Step 3 · Confirm and Install</h2>
-    <p class="subtitle">Review the verified hardware and selected firmware or OTA bundle. Installation writes the bootloader, partition table, OTA metadata, and app image to this ESP32.</p>
+    <h2>3. Write firmware</h2>
+    <p class="subtitle">Confirm the board and package. When writing finishes, unplug/restart the device manually so Chrome does not have to handle a USB reset.</p>
     <div id="flash-summary"></div>
     <div id="flash-progress" class="progress-panel" aria-live="polite">
       <div class="progress-meta">
@@ -380,17 +84,17 @@ a:hover{text-decoration:underline}
     </div>
     <label class="confirm-row">
       <input id="confirm-hardware" type="checkbox">
-      <span>I confirm this is my Kiri Bridge hardware and I want to install the selected firmware / OTA bundle on this ESP32.</span>
+      <span>I confirm this is Kiri Bridge hardware and I want to write this package.</span>
     </label>
     <div class="actions">
-      <button id="flash-btn" class="primary" disabled>Install Firmware / OTA</button>
-      <button id="back-package-btn" class="secondary">Choose Another Firmware / OTA</button>
-      <button id="clear-log-btn" class="secondary">Clear Log</button>
+      <button id="flash-btn" class="primary" disabled>Write package</button>
+      <button id="back-package-btn" class="secondary">Choose another</button>
+      <button id="clear-log-btn" class="secondary">Clear log</button>
     </div>
   </section>
 
   <section class="card">
-    <h2>Installer Log</h2>
+    <h2>Log</h2>
     <pre id="log"></pre>
   </section>
 </main>
@@ -407,18 +111,18 @@ a:hover{text-decoration:underline}
 <div id="success-modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
-    <h2 id="success-title">Firmware Installed</h2>
-    <p id="success-body" class="subtitle">The firmware was written successfully and the USB port has been released. This page will not reboot the device automatically.</p>
+    <h2 id="success-title">Write complete</h2>
+    <p id="success-body" class="subtitle">USB has been released. Restart Kiri Bridge manually before using it.</p>
     <div id="success-provision-guide" class="modal-guide step-hidden">
       <strong>Next: WiFi provisioning</strong>
       <ol>
         <li>Manually restart the Kiri Bridge by holding the side reset button, power cycling it, or plugging it into the heat pump.</li>
-        <li>When the LED rapidly flashes blue, open BLE WiFi Provisioning.</li>
+        <li>When the LED blinks blue, open WiFi setup.</li>
         <li>If the LED does not flash blue, restart the device once more and wait a few seconds.</li>
       </ol>
     </div>
     <div class="actions">
-      <button id="success-provision-btn" class="primary step-hidden">Open BLE WiFi Provisioning</button>
+      <button id="success-provision-btn" class="primary step-hidden">Open WiFi setup</button>
       <button id="success-close-btn" class="primary">OK</button>
     </div>
   </div>
@@ -449,7 +153,7 @@ function log(line=''){
 
 function setPackageState(text,kind=''){
   $('package-state').className=kind;
-  $('package-state').textContent='Firmware / OTA: '+text;
+  $('package-state').textContent='Package: '+text;
 }
 
 function setSerialState(){
@@ -495,8 +199,8 @@ function closeErrorModal(){
 }
 
 function openSuccessModal(title,message,showProvisioning=false){
-  $('success-title').textContent=title||'Firmware Installed';
-  $('success-body').textContent=message||'The firmware was written successfully. The USB port has been released. Restart the device manually before using it.';
+  $('success-title').textContent=title||'Write complete';
+  $('success-body').textContent=message||'USB has been released. Restart Kiri Bridge manually before using it.';
   $('success-provision-btn').classList.toggle('step-hidden',!showProvisioning);
   $('success-provision-guide').classList.toggle('step-hidden',!showProvisioning);
   $('success-modal').classList.add('open');
@@ -589,7 +293,7 @@ function renderFlashSummary(){
       <tbody>
         <tr><th>Device Chip</th><td>${selectedDeviceInfo.chipName}</td></tr>
         <tr><th>Device MAC</th><td>${selectedDeviceInfo.mac||'--'}</td></tr>
-        <tr><th>Selected Firmware / OTA</th><td>${manifest.product||'Kiri Bridge'} ${manifest.version||'--'} (${manifest.variant||'--'})</td></tr>
+        <tr><th>Selected package</th><td>${manifest.product||'Kiri Bridge'} ${manifest.version||'--'} (${manifest.variant||'--'})</td></tr>
         <tr><th>Images to Write</th><td>${selectedPackage.parts.length}</td></tr>
       </tbody>
     </table>
@@ -848,12 +552,12 @@ async function handlePackageSelection(){
     renderPackageDetails(selectedPackage);
     setPackageState(`${file.name} ready`,'ok');
     $('confirm-hardware').checked=false;
-    log(`Firmware / OTA selected: ${file.name}`);
+    log(`Package selected: ${file.name}`);
     showStep(3);
   }catch(e){
     selectedPackage=null;
     setPackageState(e.message,'bad');
-    log('Firmware / OTA selection failed: '+e.message);
+    log('Package selection failed: '+e.message);
     showStep(2);
   }
 }
@@ -943,10 +647,10 @@ async function flashSelectedPackage(){
     showStep(1);
     const isInstaller=installingVariant==='installer';
     openSuccessModal(
-      isInstaller?'Installer Firmware Installed':'Firmware Installed',
+      isInstaller?'Installer written':'Firmware written',
       isInstaller
-        ? 'Installer firmware was written successfully. Restart the device by holding the side reset button, power cycling it, or plugging it into the heat pump. When the LED rapidly flashes blue, open BLE WiFi Provisioning.'
-        : 'The firmware was written successfully. Restart the device manually by holding the side reset button, power cycling it, or plugging it into the heat pump.',
+        ? 'Restart Kiri Bridge manually. When the LED blinks blue, open WiFi setup.'
+        : 'Restart Kiri Bridge manually by holding reset, power cycling it, or plugging it into the heat pump.',
       isInstaller
     );
   }catch(e){
@@ -969,7 +673,7 @@ $('clear-log-btn').addEventListener('click',()=>{$('log').textContent='';});
 $('error-close-btn').addEventListener('click',closeErrorModal);
 $('success-close-btn').addEventListener('click',closeSuccessModal);
 $('success-provision-btn').addEventListener('click',()=>{window.location.href='ble_provisioning.html';});
-log('Kiri Bridge Firmware Installer ready.');
+log('Kiri Bridge recovery ready.');
 </script>
 </body>
 </html>

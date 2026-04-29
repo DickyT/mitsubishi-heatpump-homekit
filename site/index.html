@@ -3,33 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Kiri Bridge | CN105 HomeKit Controller for Mitsubishi Heat Pumps</title>
-<meta name="description" content="Kiri Bridge is a tiny ESP32 CN105 controller that brings local Apple HomeKit control to Mitsubishi heat pumps. Buy the hardware kit, provision WiFi in your browser, and recover firmware with Web Serial.">
+<title>Kiri Bridge | Mitsubishi CN105 HomeKit Controller</title>
+<meta name="description" content="Kiri Bridge adds local Apple HomeKit control to Mitsubishi heat pumps through the CN105 port. Browser setup, open firmware, hardware kit coming soon.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://kiri.dkt.moe/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Kiri Bridge">
-<meta property="og:title" content="Kiri Bridge | CN105 HomeKit Controller">
-<meta property="og:description" content="A local-first CN105 HomeKit controller for Mitsubishi heat pumps, packaged as an open source firmware project and hardware kit.">
+<meta property="og:title" content="Kiri Bridge | Mitsubishi CN105 HomeKit Controller">
+<meta property="og:description" content="A small local bridge for Mitsubishi CN105 heat pumps and Apple HomeKit.">
 <meta property="og:url" content="https://kiri.dkt.moe/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Kiri Bridge | CN105 HomeKit Controller">
-<meta name="twitter:description" content="A tiny ESP32 bridge for Mitsubishi CN105 heat pumps and Apple HomeKit.">
+<meta name="twitter:title" content="Kiri Bridge">
+<meta name="twitter:description" content="Mitsubishi CN105 heat pumps, meet Apple HomeKit.">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "Kiri Bridge",
-  "description": "CN105 HomeKit controller hardware kit for Mitsubishi heat pumps.",
+  "description": "A Mitsubishi CN105 HomeKit controller hardware kit.",
   "brand": {"@type": "Brand", "name": "Kiri Bridge"},
   "category": "Smart home controller",
   "url": "https://kiri.dkt.moe/",
-  "isRelatedTo": {
-    "@type": "SoftwareApplication",
-    "name": "Kiri Bridge Firmware",
-    "applicationCategory": "SmartHomeApplication",
-    "operatingSystem": "ESP32"
-  },
   "offers": {
     "@type": "Offer",
     "availability": "https://schema.org/PreOrder",
@@ -38,486 +32,122 @@
   }
 }
 </script>
-<style>
-:root{
-  color-scheme:dark;
-  --bg:#050713;
-  --bg2:#0b1023;
-  --panel:rgba(12,17,37,.9);
-  --panel2:rgba(18,25,52,.92);
-  --edge:rgba(84,241,255,.22);
-  --text:#e8fbff;
-  --muted:#8aa4c1;
-  --cyan:#54f1ff;
-  --pink:#ff42d2;
-  --lime:#b8ff37;
-  --amber:#ffba3a;
-  --radius:24px;
-  --font:"Avenir Next","Segoe UI","Helvetica Neue",sans-serif;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{
-  min-height:100dvh;
-  font-family:var(--font);
-  color:var(--text);
-  background:
-    radial-gradient(circle at 6% 0%,rgba(84,241,255,.22),transparent 24%),
-    radial-gradient(circle at 90% 8%,rgba(255,66,210,.17),transparent 24%),
-    radial-gradient(circle at 55% 60%,rgba(184,255,55,.08),transparent 28%),
-    linear-gradient(180deg,var(--bg),var(--bg2));
-  overflow-x:hidden;
-}
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  pointer-events:none;
-  background:
-    repeating-linear-gradient(90deg,rgba(84,241,255,.035) 0,rgba(84,241,255,.035) 1px,transparent 1px,transparent 46px),
-    repeating-linear-gradient(180deg,rgba(255,255,255,.018) 0,rgba(255,255,255,.018) 1px,transparent 1px,transparent 3px);
-  opacity:.42;
-}
-a{color:var(--cyan);text-decoration:none}
-a:hover{text-decoration:underline}
-.shell{
-  position:relative;
-  z-index:1;
-  width:min(1120px,calc(100vw - 28px));
-  margin:0 auto;
-  padding:24px 0 40px;
-}
-.nav{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:16px;
-  margin-bottom:28px;
-}
-.brand{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  font-weight:900;
-  letter-spacing:-.04em;
-}
-.mark{
-  width:38px;
-  height:38px;
-  border-radius:13px;
-  background:linear-gradient(135deg,var(--pink),var(--cyan));
-  box-shadow:0 0 30px rgba(84,241,255,.26);
-  position:relative;
-}
-.mark::after{
-  content:"";
-  position:absolute;
-  inset:9px;
-  border-radius:999px;
-  background:var(--lime);
-  box-shadow:0 0 22px rgba(184,255,55,.62);
-}
-.nav-links{
-  display:flex;
-  align-items:center;
-  gap:14px;
-  color:var(--muted);
-  font-size:14px;
-  font-weight:800;
-}
-.hero{
-  display:grid;
-  grid-template-columns:1.12fr .88fr;
-  gap:18px;
-  align-items:stretch;
-  margin-bottom:18px;
-}
-.card{
-  position:relative;
-  overflow:hidden;
-  background:
-    linear-gradient(180deg,rgba(12,18,38,.94),rgba(8,13,28,.98)),
-    linear-gradient(90deg,rgba(84,241,255,.07),rgba(255,31,168,.06));
-  border:1px solid rgba(84,241,255,.16);
-  border-radius:var(--radius);
-  padding:24px;
-  box-shadow:0 0 0 1px rgba(84,241,255,.08),0 24px 60px rgba(0,0,0,.46);
-}
-.card::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:linear-gradient(135deg,rgba(84,241,255,.08),transparent 30%,rgba(255,66,210,.07));
-  opacity:.72;
-}
-.card>*{position:relative;z-index:1}
-.eyebrow{
-  color:var(--cyan);
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.22em;
-  text-transform:uppercase;
-  margin-bottom:16px;
-}
-h1{
-  font-size:clamp(42px,8vw,86px);
-  line-height:.88;
-  letter-spacing:-.075em;
-  font-weight:900;
-  text-shadow:0 0 24px rgba(84,241,255,.2),0 0 36px rgba(255,66,210,.13);
-}
-.subtitle{
-  color:var(--muted);
-  font-size:17px;
-  line-height:1.65;
-  margin-top:18px;
-  max-width:720px;
-}
-.hero-copy{padding:34px}
-.hero-actions,.actions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  margin-top:22px;
-}
-.button{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  border-radius:999px;
-  padding:14px 18px;
-  font:inherit;
-  font-weight:900;
-  border:0;
-  cursor:pointer;
-  transition:transform .15s ease,filter .15s ease,opacity .15s ease;
-}
-.button:hover{transform:translateY(-1px);filter:brightness(1.08);text-decoration:none}
-.primary{
-  color:#06111d;
-  background:linear-gradient(135deg,var(--pink),var(--cyan));
-  box-shadow:0 14px 34px rgba(255,66,210,.18);
-}
-.secondary{
-  color:var(--text);
-  background:rgba(18,25,52,.88);
-  border:1px solid rgba(255,66,210,.22);
-}
-.ghost{
-  color:var(--cyan);
-  background:rgba(84,241,255,.08);
-  border:1px solid rgba(84,241,255,.18);
-}
-.device-card{
-  min-height:100%;
-  display:flex;
-  flex-direction:column;
-  justify-content:space-between;
-  gap:18px;
-}
-.device-art{
-  display:grid;
-  place-items:center;
-  min-height:250px;
-  border-radius:22px;
-  background:
-    radial-gradient(circle at 50% 25%,rgba(84,241,255,.20),transparent 25%),
-    linear-gradient(160deg,rgba(255,66,210,.1),rgba(84,241,255,.06));
-  border:1px solid rgba(84,241,255,.14);
-}
-.atom{
-  width:150px;
-  height:150px;
-  border-radius:42px;
-  background:linear-gradient(145deg,#11182f,#050713);
-  border:1px solid rgba(84,241,255,.28);
-  box-shadow:0 24px 70px rgba(0,0,0,.62),0 0 50px rgba(84,241,255,.16);
-  position:relative;
-}
-.atom::before{
-  content:"";
-  position:absolute;
-  inset:42px;
-  border-radius:999px;
-  background:var(--lime);
-  box-shadow:0 0 42px rgba(184,255,55,.82),0 0 100px rgba(84,241,255,.22);
-}
-.atom::after{
-  content:"CN105";
-  position:absolute;
-  left:50%;
-  bottom:-34px;
-  transform:translateX(-50%);
-  color:var(--muted);
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.18em;
-}
-.specs{
-  display:grid;
-  gap:10px;
-}
-.spec{
-  display:flex;
-  justify-content:space-between;
-  gap:16px;
-  color:var(--muted);
-  border-bottom:1px solid rgba(84,241,255,.1);
-  padding-bottom:10px;
-}
-.spec strong{color:var(--text)}
-.grid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:14px;
-  margin:18px 0;
-}
-.two{
-  grid-template-columns:repeat(2,minmax(0,1fr));
-}
-.feature h3,.step h3{
-  font-size:19px;
-  letter-spacing:-.03em;
-  margin-bottom:8px;
-}
-.feature p,.step p,.kit-list li{
-  color:var(--muted);
-  line-height:1.55;
-  font-size:14px;
-}
-.step{
-  counter-increment:setup;
-}
-.step::before{
-  content:counter(setup);
-  display:inline-grid;
-  place-items:center;
-  width:34px;
-  height:34px;
-  border-radius:999px;
-  color:#06111d;
-  background:linear-gradient(135deg,var(--cyan),var(--lime));
-  font-weight:900;
-  margin-bottom:12px;
-}
-.setup-grid{counter-reset:setup}
-.kit-list{
-  display:grid;
-  gap:10px;
-  list-style:none;
-}
-.kit-list li{
-  padding-left:24px;
-  position:relative;
-}
-.kit-list li::before{
-  content:"";
-  position:absolute;
-  left:0;
-  top:.55em;
-  width:10px;
-  height:10px;
-  border-radius:999px;
-  background:var(--lime);
-  box-shadow:0 0 18px rgba(184,255,55,.55);
-}
-.notice{
-  color:var(--muted);
-  padding:14px 16px;
-  border:1px solid rgba(255,186,58,.22);
-  border-radius:18px;
-  background:rgba(255,186,58,.06);
-  line-height:1.55;
-}
-footer{
-  position:relative;
-  z-index:1;
-  color:var(--muted);
-  width:min(1120px,calc(100vw - 28px));
-  margin:0 auto;
-  padding:8px 0 34px;
-  text-align:center;
-  font-size:13px;
-  line-height:1.7;
-}
-.modal{
-  display:none;
-  position:fixed;
-  inset:0;
-  z-index:10;
-}
-.modal.open{display:block}
-.modal-backdrop{
-  position:absolute;
-  inset:0;
-  background:rgba(2,4,12,.78);
-  backdrop-filter:blur(12px);
-}
-.modal-panel{
-  position:relative;
-  width:min(520px,calc(100vw - 28px));
-  margin:12vh auto 0;
-  background:linear-gradient(180deg,rgba(12,18,38,.98),rgba(8,13,28,.98));
-  border:1px solid rgba(84,241,255,.2);
-  border-radius:24px;
-  padding:24px;
-  box-shadow:0 24px 70px rgba(0,0,0,.62);
-}
-.modal-panel h2{
-  color:var(--cyan);
-  font-size:13px;
-  font-weight:900;
-  letter-spacing:.2em;
-  text-transform:uppercase;
-}
-@media (max-width:860px){
-  .hero,.grid,.two{grid-template-columns:1fr}
-  .nav{align-items:flex-start}
-  .nav-links{display:none}
-  .hero-copy{padding:26px}
-}
-</style>
+<link rel="stylesheet" href="kiri.css">
 </head>
 <body>
-<div class="shell">
-  <nav class="nav" aria-label="Main navigation">
-    <a class="brand" href="index.html" aria-label="Kiri Bridge home">
-      <span class="mark" aria-hidden="true"></span>
-      <span>Kiri Bridge</span>
+<nav class="site-nav" aria-label="Main navigation">
+  <div class="site-nav-inner">
+    <a class="wordmark" href="index.html" aria-label="Kiri Bridge home">
+      <span class="wordmark-main">kiri</span>
+      <span class="wordmark-sub">bridge</span>
     </a>
-    <div class="nav-links">
-      <a href="#how">How it works</a>
+    <div class="site-links">
+      <a href="#what">What it is</a>
       <a href="#setup">Setup</a>
       <a href="#kit">Kit</a>
       <a href="https://github.com/DickyT/kiri-homekit">GitHub</a>
+      <a class="nav-cta" href="ble_provisioning.html">Start setup</a>
     </div>
-  </nav>
+  </div>
+</nav>
 
-  <section class="hero">
-    <div class="card hero-copy">
-      <div class="eyebrow">CN105 HomeKit controller</div>
-      <h1>Local control for Mitsubishi heat pumps.</h1>
-      <p class="subtitle">Kiri Bridge plugs into the CN105 port on supported Mitsubishi indoor units and brings power, mode, temperature, and fan control into Apple HomeKit without a cloud service.</p>
+<main>
+  <section class="hero home-hero">
+    <div>
+      <div class="eyebrow">CN105 to HomeKit</div>
+      <h1>Make your Mitsubishi heat pump feel native.</h1>
+      <p class="lede">Kiri Bridge is a small ESP32 controller for Mitsubishi CN105 indoor units. Plug it in, join WiFi, pair with Apple Home, and keep control local.</p>
       <div class="hero-actions">
-        <a class="button primary" href="ble_provisioning.html">Start WiFi Setup</a>
-        <a class="button secondary" href="flash.html">Recover Firmware</a>
-        <button class="button ghost" id="order-btn" type="button">Order Now · Coming Soon</button>
+        <a class="button primary" href="ble_provisioning.html">Set up WiFi</a>
+        <a class="button secondary" href="flash.html">Recover firmware</a>
+        <button class="button ghost" id="order-btn" type="button">Order kit</button>
+      </div>
+      <div class="stat-line" aria-label="Kiri Bridge highlights">
+        <div><strong>CN105</strong><span>Mitsubishi indoor unit port</span></div>
+        <div><strong>HomeKit</strong><span>Apple Home control</span></div>
+        <div><strong>Local</strong><span>No cloud service required</span></div>
       </div>
     </div>
-    <div class="card device-card" id="kit">
-      <div class="device-art" aria-label="Stylized Kiri Bridge hardware">
-        <div class="atom" aria-hidden="true"></div>
-      </div>
-      <div class="specs">
-        <div class="spec"><span>Hardware kit</span><strong>M5Stack ATOM Lite</strong></div>
-        <div class="spec"><span>Included cables</span><strong>Two CN105 options</strong></div>
-        <div class="spec"><span>Firmware</span><strong>Open source ESP32</strong></div>
-      </div>
+    <div class="device-silhouette" id="kit" aria-label="Kiri Bridge hardware kit">
+      <div class="device-box" aria-hidden="true"></div>
     </div>
   </section>
 
-  <section class="grid" id="how">
-    <article class="card feature">
-      <div class="eyebrow">What it does</div>
-      <h3>Turns CN105 into HomeKit</h3>
-      <p>Control supported Mitsubishi heat pumps from Apple Home with local ESP32 firmware and a built-in web remote.</p>
-    </article>
-    <article class="card feature">
-      <div class="eyebrow">No cloud required</div>
-      <h3>Local-first by design</h3>
-      <p>Kiri Bridge talks to your indoor unit locally and exposes a WebUI at <strong>http://&lt;device-ip&gt;:8080/</strong>.</p>
-    </article>
-    <article class="card feature">
-      <div class="eyebrow">Recovery friendly</div>
-      <h3>Browser flashing</h3>
-      <p>If firmware recovery is needed, the web flasher writes Kiri packages over Web Serial from Chrome after metadata and checksum checks.</p>
-    </article>
-  </section>
-
-  <section class="card" id="setup">
-    <div class="eyebrow">Setup flow</div>
-    <div class="grid setup-grid">
-      <article class="step">
-        <h3>Power on</h3>
-        <p>Plug in the Kiri Bridge. A rapid blue LED blink means it is ready for BLE WiFi provisioning.</p>
+  <section class="quiet-section" id="what">
+    <div class="grid">
+      <article class="feature">
+        <div class="eyebrow">Control</div>
+        <h3>Heat pump commands in Apple Home.</h3>
+        <p>Power, mode, target temperature, and fan control map from Mitsubishi CN105 into HomeKit and the local WebUI.</p>
       </article>
-      <article class="step">
-        <h3>Provision WiFi</h3>
-        <p>Open <a href="ble_provisioning.html">BLE WiFi Provisioning</a>, select the device, and send your 2.4 GHz WiFi credentials.</p>
+      <article class="feature">
+        <div class="eyebrow">Setup</div>
+        <h3>No app store detour.</h3>
+        <p>Use the browser to provision WiFi over Bluetooth. The device portal runs locally at port 8080.</p>
       </article>
-      <article class="step">
-        <h3>Open the portal</h3>
-        <p>After provisioning, open the shown device portal at port 8080 and follow the HomeKit pairing instructions.</p>
-      </article>
-      <article class="step">
-        <h3>Connect CN105</h3>
-        <p>Attach the included CN105 cable to the indoor unit and verify control from the WebUI and Apple Home.</p>
-      </article>
-      <article class="step">
-        <h3>Update when needed</h3>
-        <p>Use the installer WebUI for normal package updates, or use the web flasher for a clean recovery installer.</p>
-      </article>
-      <article class="step">
-        <h3>Stay local</h3>
-        <p>Once installed, Kiri Bridge keeps control on your LAN with HomeKit and the device WebUI.</p>
+      <article class="feature">
+        <div class="eyebrow">Recovery</div>
+        <h3>Firmware you can bring back.</h3>
+        <p>If something goes sideways, the browser flasher restores Kiri packages over USB serial.</p>
       </article>
     </div>
   </section>
 
-  <section class="grid two">
-    <article class="card">
-      <div class="eyebrow">Hardware kit</div>
-      <h3>For people who want it to just arrive ready.</h3>
-      <ul class="kit-list">
-        <li>M5Stack ATOM Lite controller included.</li>
-        <li>Two CN105 cable options included in the kit.</li>
-        <li>Pre-flashed Kiri firmware and browser-based setup flow.</li>
-        <li>Designed for supported Mitsubishi heat pumps with CN105 ports.</li>
-      </ul>
+  <section class="quiet-section" id="setup">
+    <div class="two grid">
+      <div>
+        <div class="eyebrow">Getting started</div>
+        <h3>For most buyers, setup is one page.</h3>
+        <p class="subtitle">Power the device, wait for the blue blink, open WiFi setup, then pair it with Apple Home from the device portal.</p>
+        <div class="actions">
+          <a class="button primary" href="ble_provisioning.html">Open WiFi setup</a>
+          <a class="button secondary" href="https://github.com/DickyT/kiri-homekit/blob/main/INSTALL.md">Read install guide</a>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow">Hardware kit</div>
+        <ul class="kit-list">
+          <li>M5Stack ATOM Lite controller.</li>
+          <li>Two CN105 cable options.</li>
+          <li>Pre-flashed Kiri installer or firmware.</li>
+          <li>Open source firmware with release packages.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="quiet-section">
+    <div class="two grid">
+      <div>
+        <div class="eyebrow">Open source</div>
+        <h3>Buy the hardware. Keep the firmware open.</h3>
+        <p class="subtitle">The firmware is public, inspectable, and recoverable. Hardware kit sales fund continued development and support.</p>
+      </div>
       <div class="actions">
-        <button class="button primary" id="order-btn-2" type="button">Order Now · Coming Soon</button>
+        <a class="button secondary" href="https://github.com/DickyT/kiri-homekit">GitHub</a>
+        <a class="button secondary" href="https://github.com/DickyT/kiri-homekit/releases">Releases</a>
+        <button class="button primary" id="order-btn-2" type="button">Order kit</button>
       </div>
-    </article>
-    <article class="card">
-      <div class="eyebrow">Open source</div>
-      <h3>Firmware you can inspect, fork, and repair.</h3>
-      <p class="subtitle">Kiri Bridge follows an open firmware plus hardware kit model. The source code is public, releases provide ready-to-flash Kiri packages, and the hardware kit funds continued work.</p>
-      <div class="actions">
-        <a class="button secondary" href="https://github.com/DickyT/kiri-homekit">View GitHub</a>
-        <a class="button ghost" href="https://github.com/DickyT/kiri-homekit/releases">Firmware Releases</a>
-      </div>
-    </article>
-  </section>
-
-  <section class="card">
-    <div class="eyebrow">Installer and recovery</div>
-    <p class="subtitle">Most buyers only need BLE provisioning. If you want to update after setup, use the installer portal. If the device is unreachable, use the browser flasher with the latest installer package from GitHub Releases.</p>
-    <div class="actions">
-      <a class="button primary" href="ble_provisioning.html">Open BLE WiFi Provisioning</a>
-      <a class="button secondary" href="flash.html">Open Firmware Recovery</a>
     </div>
-    <p class="notice" style="margin-top:18px">Tip: the web flasher does not automatically reboot the device after writing firmware. Restart it manually when the success dialog appears.</p>
   </section>
-</div>
+</main>
 
 <div id="order-modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
-    <h2>Orders are coming soon</h2>
-    <p class="subtitle">Kiri Bridge hardware kits are not publicly listed yet. If you want to reserve one, test an early unit, or ask compatibility questions, send an email and mention your Mitsubishi indoor unit model if you know it.</p>
+    <h2>Hardware kits are coming soon</h2>
+    <p class="subtitle">Want one early? Email the address below with your Mitsubishi indoor unit model if you know it.</p>
     <div class="actions">
-      <a class="button primary" href="mailto:hello@kiri.dkt.moe?subject=Kiri%20Bridge%20hardware%20kit">Email hello@kiri.dkt.moe</a>
+      <a class="button primary" href="mailto:hello@kiri.dkt.moe?subject=Kiri%20Bridge%20hardware%20kit">hello@kiri.dkt.moe</a>
       <button class="button secondary" id="order-close-btn" type="button">Close</button>
     </div>
   </div>
 </div>
 
 <footer>
-  Kiri Bridge · CN105 HomeKit controller for Mitsubishi heat pumps ·
-  <a href="https://kiri.dkt.moe">kiri.dkt.moe</a> ·
-  <a href="https://github.com/DickyT/kiri-homekit">GitHub</a><br>
-  Copyright © 2026. Firmware source licensed under GPL-3.0.
+  Kiri Bridge · Mitsubishi CN105 HomeKit controller ·
+  <a href="https://github.com/DickyT/kiri-homekit">GitHub</a> ·
+  <a href="flash.html">Firmware recovery</a>
 </footer>
 
 <script>
