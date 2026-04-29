@@ -32,6 +32,16 @@ mkdirSync(distDir, { recursive: true });
 
 const gzSize = (path) => gzipSync(readFileSync(path), { level: 9 }).byteLength;
 
+// Terser settings tuned for *gzipped* size, not raw byte count. Some
+// "unsafe" optimizations and aggressive mangling actually inflate the gz
+// output by making patterns less compressible. Settings here were picked
+// after measuring real numbers; revisit before adding "advanced" flags.
+const TERSER_OPTS = {
+  compress: { passes: 2, pure_getters: true, unsafe: true, unsafe_arrows: true },
+  mangle: true,
+  format: { comments: false },
+};
+
 const SIZE_LIMITS = {
   main: { jsGz: 30 * 1024, cssGz: 8 * 1024 },
   installer: { htmlGz: 18 * 1024 },
@@ -71,12 +81,7 @@ async function buildMain() {
   });
 
   // Extra terser pass on the JS bundle.
-  const minified = await minify(readFileSync(outJs, "utf8"), {
-    module: true,
-    compress: { passes: 2, pure_getters: true, unsafe: true, unsafe_arrows: true },
-    mangle: true,
-    format: { comments: false },
-  });
+  const minified = await minify(readFileSync(outJs, "utf8"), { ...TERSER_OPTS, module: true });
   if (minified.code) writeFileSync(outJs, minified.code);
 
   const jsBytes = readFileSync(outJs).byteLength;
@@ -117,11 +122,7 @@ async function buildInstaller() {
     drop: ["console", "debugger"],
   });
 
-  const minified = await minify(readFileSync(outJs, "utf8"), {
-    compress: { passes: 2, pure_getters: true, unsafe: true, unsafe_arrows: true },
-    mangle: true,
-    format: { comments: false },
-  });
+  const minified = await minify(readFileSync(outJs, "utf8"), TERSER_OPTS);
   if (minified.code) writeFileSync(outJs, minified.code);
 
   const css = existsSync(outCss) ? readFileSync(outCss, "utf8") : "";
