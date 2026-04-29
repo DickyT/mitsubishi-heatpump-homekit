@@ -67,13 +67,13 @@ function cn105FormatSummary(){
 }
 
 function updateCn105AdvancedSummary(){
-  $('cn105-advanced-btn').textContent=(cn105AdvancedDirty?'* ':'')+cn105FormatSummary();
+  $('cn105-advanced-btn').textContent=cn105FormatSummary();
 }
 
 function setSettingsDirty(dirty){
   settingsDirty=dirty;
   $('cfg-save-btn').disabled=!dirty;
-  $('cfg-save-btn').textContent=dirty?'* Save and Reboot':'Save and Reboot';
+  $('cfg-save-btn').textContent=dirty?'Save and Reboot *':'Save and Reboot';
 }
 
 function setCn105AdvancedDirty(dirty){
@@ -228,7 +228,7 @@ function syncUptime(status){
 }
 
 function openNoticeModal(title,message){
-  $('notice-title').textContent=title||'Action Failed';
+  $('notice-title').textContent=title||'Action failed';
   $('notice-body').textContent=message||'Please try again later.';
   $('notice-close').disabled=false;
   $('notice-close').style.display='';
@@ -238,7 +238,7 @@ function openNoticeModal(title,message){
 
 function openRestartModal(title,message){
   $('notice-title').textContent=title||'Rebooting';
-  $('notice-body').textContent=message||'The device is rebooting. This page will refresh automatically in 5 seconds.';
+  $('notice-body').textContent=message||'Device is rebooting. This page will refresh in 5 seconds.';
   $('notice-close').disabled=true;
   $('notice-close').style.display='none';
   $('notice-modal').classList.add('open');
@@ -367,7 +367,7 @@ async function saveConfig(){
 
 function setOtaMessage(text,isError=false){
   const el=$('ota-msg');
-  el.style.color=isError?'var(--red)':'var(--orange)';
+  el.style.color=isError?'var(--bad)':'var(--accent)';
   el.textContent=text;
 }
 
@@ -393,12 +393,12 @@ function openOtaModal(result){
   $('ota-modal-current').textContent=result.current_version||'--';
   $('ota-modal-new').textContent=result.uploaded_version||'--';
   $('ota-modal-partition').textContent=result.partition||'--';
-  $('ota-modal-status').textContent='Firmware upload is complete. Confirm to reboot and switch to the new OTA partition.';
+  $('ota-modal-status').textContent='Upload complete. Confirm to reboot into the new partition.';
   $('ota-modal').querySelectorAll('button').forEach(button=>button.disabled=false);
   const warning=$('ota-modal-warning');
   if(result.same_or_older||result.rollback){
     warning.style.display='block';
-    warning.textContent='Warning: the new version is less than or equal to the current version. Rollback or reinstall is allowed, but make sure this is the firmware you want.';
+    warning.textContent='Warning: the new version is not newer than the current one. Rollback or reinstall is allowed; make sure this is what you want.';
   }else{
     warning.style.display='none';
     warning.textContent='';

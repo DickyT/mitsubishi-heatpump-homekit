@@ -1,35 +1,31 @@
 <!--
-  Kiri Bridge
-  CN105 HomeKit controller for Mitsubishi heat pumps
-  https://kiri.dkt.moe
-  https://github.com/DickyT/kiri-homekit
-
-  Copyright (c) 2026
-  All Rights Reserved.
-  Licensed under terms of the GPL-3.0 License.
+  Kiri Bridge — Logs page body fragment.
 -->
 <main>
 <h1>Logs</h1>
-<div class="subtitle">A new SPIFFS log file is created on every boot. When storage is low, old logs are removed first; if needed, the current log is cleared and logging continues.</div>
+<div class="subtitle">A new SPIFFS log file is created on every boot. When storage fills, old logs are removed first; if needed, the current log clears and writing continues.</div>
+
 <div class="card">
-<div class="card-title-row"><h3>Current Log</h3><button class="btn-danger btn-compact" onclick="deleteAllLogs()">Delete All Logs</button></div>
+<div class="card-title-row"><h3>Current</h3><button class="btn-danger btn-compact" onclick="deleteAllLogs()">Delete All</button></div>
 <div class="kvrow"><span class="kk">Status</span><span class="vv" id="log-active">--</span></div>
 <div class="kvrow"><span class="kk">File</span><span class="vv" id="log-current">--</span></div>
 <div class="kvrow"><span class="kk">Size</span><span class="vv" id="log-size">--</span></div>
-<div class="kvrow"><span class="kk">Log Level</span><span class="vv" id="log-level">--</span></div>
-<div class="btns"><button class="btn-primary" onclick="openLive()">Live Current Log</button><button class="btn-secondary" onclick="loadLogs()">Refresh</button></div>
+<div class="kvrow"><span class="kk">Level</span><span class="vv" id="log-level">--</span></div>
+<div class="btns"><button class="btn-primary" onclick="openLive()">Live tail</button><button class="btn-secondary" onclick="loadLogs()">Refresh</button></div>
 </div>
+
 <div class="card">
-<h3>Log Files</h3>
-<div id="log-list">Loading...</div>
+<h3>Files</h3>
+<div id="log-list">Loading…</div>
 </div>
+
 <div class="card">
 <h3>Preview</h3>
-<pre id="log-body">Select a log file to view.</pre>
+<pre id="log-body">Select a file above.</pre>
 </div>
+
 <div class="card" id="live-card" style="display:none">
-<h3>Live Current Log</h3>
-<div class="btns"><button class="btn-secondary" onclick="closeLive()">Stop</button></div>
-<pre id="live-body">Waiting for log output...</pre>
+<div class="card-title-row"><h3>Live tail</h3><button class="btn-secondary btn-compact" onclick="closeLive()">Stop</button></div>
+<pre id="live-body">Waiting for log output…</pre>
 </div>
 </main>

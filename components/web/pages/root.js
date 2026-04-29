@@ -84,17 +84,17 @@ function fill(s){
   $('s-temp').textContent=m.target_temperature_f+'\u00b0F';
   $('s-room').textContent=m.room_temperature_f+'\u00b0F';
   $('s-fan').textContent=m.fan;
-  $('s-wifi').textContent=s.wifi.connected?s.wifi.ip+' ('+s.wifi.rssi+'dBm)':'Disconnected';
+  $('s-wifi').textContent=s.wifi.connected?s.wifi.ip+' \u00b7 '+s.wifi.rssi+' dBm':'Disconnected';
   const t=s.cn105.transport_status;
-  $('s-transport').textContent=s.cn105.transport==='real'?(t.connected?'Connected':'Connecting...'):'Mock';
-  $('s-hk').textContent=s.homekit.started?(s.homekit.paired_controllers+' controller(s)'):'Not started';
+  $('s-transport').textContent=s.cn105.transport==='real'?(t.connected?'Connected':'Connecting\u2026'):'Mock';
+  $('s-hk').textContent=s.homekit.started?(s.homekit.paired_controllers+' paired'):'Not started';
 }
 async function refresh(force=false){
   if(sending){
     return;
   }
   try{
-    $('out').textContent=force?'Querying CN105 info 0x02/0x03/0x06...':'Loading...';
+    $('out').textContent=force?'Querying CN105…':'Loading…';
     const r=await fetch(force?'/api/cn105/refresh':'/api/status',{method:force?'POST':'GET'});
     const j=await r.json();
     if(!j.ok&&j.error){
@@ -102,7 +102,7 @@ async function refresh(force=false){
       return;
     }
     fill(j);
-    $('out').textContent=draftLocked?'Local draft not sent':'Ready';
+    $('out').textContent=draftLocked?'Local draft (not sent yet)':'Ready';
   }
   catch(e){$('out').textContent='Status fetch failed: '+e;}
 }
@@ -120,7 +120,7 @@ async function send(){
   const previous=currentFormState();
   try{
     setBusy(true);
-    $('out').textContent='Sending command and confirming CN105 state...';
+    $('out').textContent='Sending…';
     const r=await fetch('/api/cn105/mock/build-set?'+params(),{method:'POST'});
     const j=await r.json();
     if(j.ok){
@@ -128,7 +128,7 @@ async function send(){
       if(j.mock_state){
         setFormState(remoteFormState(j.mock_state));
       }
-      $('out').textContent='Sent and confirmed';
+      $('out').textContent='Sent';
       setTimeout(refresh,300);
       return;
     }

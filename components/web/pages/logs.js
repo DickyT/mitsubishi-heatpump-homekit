@@ -29,13 +29,13 @@ async function loadLogs(){
     j.logs.forEach(log=>{
       const row=document.createElement('div');row.className='listrow';
       const meta=document.createElement('div');meta.className='listmeta';
-      meta.textContent=(log.current?'[Current] ':'')+log.name;
+      meta.textContent=log.name+(log.current?' (current)':'');
       const small=document.createElement('small');small.textContent=log.size+' bytes';meta.appendChild(small);
       const actions=document.createElement('div');actions.className='actions';
-      const view=document.createElement('button');view.className='btn-secondary';view.textContent='View';view.onclick=()=>loadLog(log.name);
-      const down=document.createElement('a');down.className='linkbtn';down.href='/api/log/file?file='+encodeURIComponent(log.name);down.textContent='Download';
+      const view=document.createElement('button');view.className='btn-secondary btn-compact';view.textContent='View';view.onclick=()=>loadLog(log.name);
+      const down=document.createElement('a');down.className='linkbtn btn-compact';down.href='/api/log/file?file='+encodeURIComponent(log.name);down.textContent='Download';
       const del=document.createElement('button');
-      del.className='btn-danger';
+      del.className='btn-danger btn-compact';
       del.textContent=log.current?'Clear':'Delete';
       del.onclick=()=>log.current?clearCurrentLog():deleteLog(log.name);
       actions.appendChild(view);actions.appendChild(down);actions.appendChild(del);row.appendChild(meta);row.appendChild(actions);list.appendChild(row);

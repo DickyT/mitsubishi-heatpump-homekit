@@ -1,39 +1,41 @@
 <!--
-  Kiri Bridge
-  CN105 HomeKit controller for Mitsubishi heat pumps
-  https://kiri.dkt.moe
-  https://github.com/DickyT/kiri-homekit
-
-  Copyright (c) 2026
-  All Rights Reserved.
-  Licensed under terms of the GPL-3.0 License.
+  Kiri Bridge — Control page body fragment.
+  Loader inserts this between renderChrome() and renderFooter().
 -->
 <main>
-<h1 id="page-title">Kiri Bridge</h1>
-<div class="subtitle">Remote control panel</div>
-<div class="stats" style="margin-bottom:14px">
+<h1 id="page-title">Control</h1>
+<div class="subtitle">Live state from the indoor unit. Set values and press Send to push them over CN105.</div>
+
+<div class="card">
+<h3>Status</h3>
+<div class="stats">
 <div class="stat"><div class="k">Power</div><div class="v" id="s-power">--</div></div>
 <div class="stat"><div class="k">Mode</div><div class="v" id="s-mode">--</div></div>
 <div class="stat"><div class="k">Set Temp</div><div class="v" id="s-temp">--</div></div>
 <div class="stat"><div class="k">Room Temp</div><div class="v" id="s-room">--</div></div>
 <div class="stat"><div class="k">Fan</div><div class="v" id="s-fan">--</div></div>
 <div class="stat"><div class="k">WiFi</div><div class="v" id="s-wifi">--</div></div>
-<div class="stat"><div class="k">CN105 Transport</div><div class="v" id="s-transport">--</div></div>
+<div class="stat"><div class="k">CN105</div><div class="v" id="s-transport">--</div></div>
 <div class="stat"><div class="k">HomeKit</div><div class="v" id="s-hk">--</div></div>
 </div>
+</div>
+
 <div class="card">
-<h3>Remote</h3>
+<h3>Set</h3>
 <div class="row">
-<div><label>Power</label><select id="power"><option>OFF</option><option>ON</option></select></div>
-<div><label>Mode</label><select id="mode"><option>COOL</option><option>HEAT</option><option>DRY</option><option>FAN</option><option>AUTO</option></select></div>
+<label class="field"><span>Power</span><select id="power"><option>OFF</option><option>ON</option></select></label>
+<label class="field"><span>Mode</span><select id="mode"><option>COOL</option><option>HEAT</option><option>DRY</option><option>FAN</option><option>AUTO</option></select></label>
 </div>
 <div class="row3">
-<div><label>Temperature °F</label><input id="temp" type="number" min="50" max="88" step="1" value="77"></div>
-<div><label>Fan Speed</label><select id="fan"><option>AUTO</option><option>QUIET</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
-<div><label>Vertical Vane</label><select id="vane"><option>AUTO</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>SWING</option></select></div>
+<label class="field"><span>Temperature °F</span><input id="temp" type="number" min="50" max="88" step="1" value="77"></label>
+<label class="field"><span>Fan Speed</span><select id="fan"><option>AUTO</option><option>QUIET</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+<label class="field"><span>Vertical Vane</span><select id="vane"><option>AUTO</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>SWING</option></select></label>
 </div>
-<div><label>Horizontal Vane</label><select id="wide"><option value="|">Center</option><option value="&lt;&lt;">Far Left</option><option value="&lt;">Left</option><option value="&gt;">Right</option><option value="&gt;&gt;">Far Right</option><option value="&lt;&gt;">Wide</option><option>SWING</option></select></div>
-<div class="btns"><button class="btn-send" onclick="send()">Send</button><button class="btn-secondary" onclick="refresh(true)">Refresh</button></div>
+<label class="field"><span>Horizontal Vane</span><select id="wide"><option value="|">Center</option><option value="&lt;&lt;">Far Left</option><option value="&lt;">Left</option><option value="&gt;">Right</option><option value="&gt;&gt;">Far Right</option><option value="&lt;&gt;">Wide</option><option>SWING</option></select></label>
+<div class="btns">
+<button class="btn-primary" onclick="send()">Send</button>
+<button class="btn-secondary" onclick="refresh(true)">Refresh</button>
 </div>
 <pre id="out">Loading...</pre>
+</div>
 </main>
