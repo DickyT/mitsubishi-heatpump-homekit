@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Kiri Bridge | Mitsubishi CN105 HomeKit Controller</title>
-<meta name="description" content="Kiri Bridge adds local Apple HomeKit control to Mitsubishi heat pumps through the CN105 port. Browser setup, open firmware, hardware kit coming soon.">
+<title>Kiri Bridge — Mitsubishi heat pumps, straight into HomeKit</title>
+<meta name="description" content="An ESP32 in the CN105 port that talks HomeKit on its own. No Home Assistant, no ESPHome, no bridge server.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://kiri.dkt.moe/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Kiri Bridge">
-<meta property="og:title" content="Kiri Bridge | Mitsubishi CN105 HomeKit Controller">
-<meta property="og:description" content="A small local bridge for Mitsubishi CN105 heat pumps and Apple HomeKit.">
+<meta property="og:title" content="Kiri Bridge — Mitsubishi heat pumps, straight into HomeKit">
+<meta property="og:description" content="An ESP32 in the CN105 port that talks HomeKit on its own. No Home Assistant, no ESPHome, no bridge server.">
 <meta property="og:url" content="https://kiri.dkt.moe/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Kiri Bridge">
-<meta name="twitter:description" content="Mitsubishi CN105 heat pumps, meet Apple HomeKit.">
+<meta name="twitter:description" content="Mitsubishi heat pumps, straight into HomeKit. No Home Assistant required.">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "Kiri Bridge",
-  "description": "A Mitsubishi CN105 HomeKit controller hardware kit.",
+  "description": "A Mitsubishi CN105 HomeKit controller. Native HomeKit, no Home Assistant required.",
   "brand": {"@type": "Brand", "name": "Kiri Bridge"},
   "category": "Smart home controller",
   "url": "https://kiri.dkt.moe/",
@@ -35,130 +35,167 @@
 <link rel="stylesheet" href="kiri.css">
 </head>
 <body>
-<nav class="site-nav" aria-label="Main navigation">
-  <div class="site-nav-inner">
-    <a class="wordmark" href="index.html" aria-label="Kiri Bridge home">
-      <span class="wordmark-main">kiri</span>
-      <span class="wordmark-sub">bridge</span>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Kiri Bridge
     </a>
-    <div class="site-links">
-      <a href="#what">What it is</a>
-      <a href="#setup">Setup</a>
-      <a href="#kit">Kit</a>
-      <a href="https://github.com/DickyT/kiri-homekit">GitHub</a>
-      <a class="nav-cta" href="ble_provisioning.html">Start setup</a>
+    <div class="nav-links">
+      <a href="ble_provisioning.html">setup</a>
+      <a href="flash.html">recovery</a>
+      <a href="https://github.com/DickyT/kiri-homekit">github</a>
     </div>
   </div>
 </nav>
 
 <main>
-  <section class="hero home-hero">
-    <div>
-      <div class="eyebrow">CN105 to HomeKit</div>
-      <h1>Make your Mitsubishi heat pump feel native.</h1>
-      <p class="lede">Kiri Bridge is a small ESP32 controller for Mitsubishi CN105 indoor units. Plug it in, join WiFi, pair with Apple Home, and keep control local.</p>
+
+  <section class="hero">
+    <div class="shell">
+      <h1>Mitsubishi heat pumps,<br>straight into <span class="accent">HomeKit</span>.</h1>
+      <p class="lede">An ESP32 in the CN105 port, talking HomeKit on its own. <strong>No Home Assistant. No ESPHome. No bridge server.</strong></p>
       <div class="hero-actions">
-        <a class="button primary" href="ble_provisioning.html">Set up WiFi</a>
-        <a class="button secondary" href="flash.html">Recover firmware</a>
-        <button class="button ghost" id="order-btn" type="button">Order kit</button>
+        <a class="btn btn-primary" href="#kit">Order now →</a>
+        <a class="btn btn-text" href="https://github.com/DickyT/kiri-homekit">Source on GitHub <span class="arrow">↗</span></a>
       </div>
-      <div class="stat-line" aria-label="Kiri Bridge highlights">
-        <div><strong>CN105</strong><span>Mitsubishi indoor unit port</span></div>
-        <div><strong>HomeKit</strong><span>Apple Home control</span></div>
-        <div><strong>Local</strong><span>No cloud service required</span></div>
-      </div>
-    </div>
-    <div class="device-silhouette" id="kit" aria-label="Kiri Bridge hardware kit">
-      <div class="device-box" aria-hidden="true"></div>
+      <p class="hero-aside">No app, no subscription, no account. Ever.</p>
     </div>
   </section>
 
-  <section class="quiet-section" id="what">
-    <div class="grid">
-      <article class="feature">
-        <div class="eyebrow">Control</div>
-        <h3>Heat pump commands in Apple Home.</h3>
-        <p>Power, mode, target temperature, and fan control map from Mitsubishi CN105 into HomeKit and the local WebUI.</p>
-      </article>
-      <article class="feature">
-        <div class="eyebrow">Setup</div>
-        <h3>No app store detour.</h3>
-        <p>Use the browser to provision WiFi over Bluetooth. The device portal runs locally at port 8080.</p>
-      </article>
-      <article class="feature">
-        <div class="eyebrow">Recovery</div>
-        <h3>Firmware you can bring back.</h3>
-        <p>If something goes sideways, the browser flasher restores Kiri packages over USB serial.</p>
-      </article>
-    </div>
-  </section>
-
-  <section class="quiet-section" id="setup">
-    <div class="two grid">
-      <div>
-        <div class="eyebrow">Getting started</div>
-        <h3>For most buyers, setup is one page.</h3>
-        <p class="subtitle">Power the device, wait for the blue blink, open WiFi setup, then pair it with Apple Home from the device portal.</p>
-        <div class="actions">
-          <a class="button primary" href="ble_provisioning.html">Open WiFi setup</a>
-          <a class="button secondary" href="https://github.com/DickyT/kiri-homekit/blob/main/INSTALL.md">Read install guide</a>
+  <section class="section">
+    <div class="shell">
+      <h2>How it compares</h2>
+      <div class="compare">
+        <div class="compare-col them">
+          <div class="compare-head">The DIY route</div>
+          <div class="compare-row"><span class="mark">×</span>Always-on hub or server in the loop</div>
+          <div class="compare-row"><span class="mark">×</span>Flash it yourself, write a config file</div>
+          <div class="compare-row"><span class="mark">×</span>Reaches HomeKit through a third-party bridge</div>
+          <div class="compare-row"><span class="mark">×</span>Two systems to keep updated</div>
+          <div class="compare-row"><span class="mark">×</span>Goes dark when the hub reboots</div>
+        </div>
+        <div class="compare-col us">
+          <div class="compare-head">Kiri Bridge</div>
+          <div class="compare-row"><span class="mark">+</span>Nothing else to run</div>
+          <div class="compare-row"><span class="mark">+</span>Pre-flashed, configured in a browser</div>
+          <div class="compare-row"><span class="mark">+</span>Speaks HomeKit directly</div>
+          <div class="compare-row"><span class="mark">+</span>One firmware, OTA from the device</div>
+          <div class="compare-row"><span class="mark">+</span>Online as long as the heat pump has power</div>
         </div>
       </div>
-      <div>
-        <div class="eyebrow">Hardware kit</div>
-        <ul class="kit-list">
-          <li>M5Stack ATOM Lite controller.</li>
-          <li>Two CN105 cable options.</li>
-          <li>Pre-flashed Kiri installer or firmware.</li>
-          <li>Open source firmware with release packages.</li>
-        </ul>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="shell">
+      <h2>From box to Home app</h2>
+      <div class="steps">
+        <div class="step-row">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <h3>Plug into the CN105 port.</h3>
+            <p>Powered by the indoor unit. No adapter, no soldering, no extra cable.</p>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <h3>Send WiFi over Bluetooth.</h3>
+            <p>Open the setup page in Chrome and push your <span class="mono">2.4&nbsp;GHz</span> credentials to the device.</p>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <h3>Download the latest firmware from GitHub.</h3>
+            <p>The <span class="mono">.kiri</span> release is open source — read the code before you flash if you want.</p>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <h3>Upload it through the web UI.</h3>
+            <p>Done from the device's local page. Takes a minute.</p>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <h3>Add to the Home app.</h3>
+            <p>Scan the HomeKit code. The unit shows up as a thermostat — power, mode, target temp, fan.</p>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="quiet-section">
-    <div class="two grid">
-      <div>
-        <div class="eyebrow">Open source</div>
-        <h3>Buy the hardware. Keep the firmware open.</h3>
-        <p class="subtitle">The firmware is public, inspectable, and recoverable. Hardware kit sales fund continued development and support.</p>
+  <section class="section" id="kit">
+    <div class="shell">
+      <h2>The kit</h2>
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-key">ESP32</div>
+          <div class="spec-val">M5Stack ATOM Lite, pre-flashed</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-key">Cables</div>
+          <div class="spec-val">Two CN105 variants for different indoor units</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-key">Firmware</div>
+          <div class="spec-val"><a href="https://github.com/DickyT/kiri-homekit" class="mono">github.com/DickyT/kiri-homekit</a></div>
+        </div>
       </div>
-      <div class="actions">
-        <a class="button secondary" href="https://github.com/DickyT/kiri-homekit">GitHub</a>
-        <a class="button secondary" href="https://github.com/DickyT/kiri-homekit/releases">Releases</a>
-        <button class="button primary" id="order-btn-2" type="button">Order kit</button>
+
+      <div class="price-block">
+        <div class="price-line">
+          <span class="price">$59</span>
+          <span class="price-meta">USD · free shipping in the US · Canada only a few dollars more · worldwide with surcharge</span>
+        </div>
+        <button class="btn btn-primary" id="order-btn" type="button">Order now →</button>
       </div>
     </div>
   </section>
+
 </main>
 
 <div id="order-modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
-    <h2>Hardware kits are coming soon</h2>
-    <p class="subtitle">Want one early? Email the address below with your Mitsubishi indoor unit model if you know it.</p>
-    <div class="actions">
-      <a class="button primary" href="mailto:hello@kiri.dkt.moe?subject=Kiri%20Bridge%20hardware%20kit">hello@kiri.dkt.moe</a>
-      <button class="button secondary" id="order-close-btn" type="button">Close</button>
+    <h2>Thanks for the interest — really.</h2>
+    <p>I haven't set up a proper webstore yet. Kits are assembled by hand in small batches, so for now ordering means sending me an email. Drop your <strong>shipping country</strong> and your <strong>Mitsubishi indoor unit model</strong> if you know it, and I'll get back to you in a day or two with the total and how to pay.</p>
+    <div class="modal-actions">
+      <a class="btn btn-primary" href="mailto:kiri-kit@dkt.moe?subject=Kiri%20Bridge%20kit&body=Country%3A%20%0AIndoor%20unit%20model%20(if%20known)%3A%20%0AQuantity%3A%201%0A">Email kiri-kit@dkt.moe</a>
+      <button class="btn" id="order-close-btn" type="button">Close</button>
     </div>
   </div>
 </div>
 
-<footer>
-  Kiri Bridge · Mitsubishi CN105 HomeKit controller ·
-  <a href="https://github.com/DickyT/kiri-homekit">GitHub</a> ·
-  <a href="flash.html">Firmware recovery</a>
+<footer class="footer">
+  <div class="shell footer-row">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span><strong>Kiri Bridge</strong> — an open-source HomeKit controller for Mitsubishi heat pumps and mini splits · GPL-3.0</span>
+    </div>
+    <a class="footer-github" href="https://github.com/DickyT/kiri-homekit" aria-label="Source on GitHub">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1-.02-1.96-3.2.69-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.49 3.18-1.18 3.18-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.77 1.05.77 2.13 0 1.54-.01 2.78-.01 3.16 0 .31.21.67.8.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/>
+      </svg>
+    </a>
+  </div>
 </footer>
 
 <script>
-const modal=document.getElementById('order-modal');
-const openModal=()=>{modal.classList.add('open');modal.setAttribute('aria-hidden','false');};
-const closeModal=()=>{modal.classList.remove('open');modal.setAttribute('aria-hidden','true');};
-document.getElementById('order-btn').addEventListener('click',openModal);
-document.getElementById('order-btn-2').addEventListener('click',openModal);
-document.getElementById('order-close-btn').addEventListener('click',closeModal);
-modal.querySelector('.modal-backdrop').addEventListener('click',closeModal);
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closeModal();});
+const orderModal=document.getElementById('order-modal');
+const openOrderModal=()=>{orderModal.classList.add('open');orderModal.setAttribute('aria-hidden','false');};
+const closeOrderModal=()=>{orderModal.classList.remove('open');orderModal.setAttribute('aria-hidden','true');};
+document.getElementById('order-btn').addEventListener('click',openOrderModal);
+document.getElementById('order-close-btn').addEventListener('click',closeOrderModal);
+orderModal.querySelector('.modal-backdrop').addEventListener('click',closeOrderModal);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOrderModal();});
 </script>
+
 </body>
 </html>

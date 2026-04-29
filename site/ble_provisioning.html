@@ -5,436 +5,452 @@
   esp-ble-prov is MIT licensed.
 -->
 <html lang="en">
-
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>WiFi Setup | Kiri Bridge</title>
-  <meta name="description" content="Provision Kiri Bridge WiFi from a browser over Bluetooth before pairing your Mitsubishi CN105 HomeKit controller.">
-  <link rel="stylesheet" href="kiri.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>WiFi Setup — Kiri Bridge</title>
+<meta name="description" content="Provision Kiri Bridge WiFi from a browser over Bluetooth before pairing your Mitsubishi CN105 HomeKit controller.">
+<link rel="stylesheet" href="kiri.css">
 </head>
-
 <body>
-  <nav class="site-nav" aria-label="Main navigation">
-    <div class="site-nav-inner">
-      <a class="wordmark" href="index.html" aria-label="Kiri Bridge home">
-        <span class="wordmark-main">kiri</span>
-        <span class="wordmark-sub">bridge</span>
-      </a>
-      <div class="site-links">
-        <a href="index.html">Overview</a>
-        <a href="ble_provisioning.html">WiFi Setup</a>
-        <a href="flash.html">Firmware Recovery</a>
-        <a href="https://github.com/DickyT/kiri-homekit">GitHub</a>
-        <a class="nav-cta" href="flash.html">Recover</a>
-      </div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Kiri Bridge<span class="brand-page">setup</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">home</a>
+      <a href="flash.html">recovery</a>
+      <a href="https://github.com/DickyT/kiri-homekit">github</a>
     </div>
-  </nav>
-  <main>
-    <section class="hero">
+  </div>
+</nav>
+
+<main>
+
+  <section class="tool-head">
+    <div class="shell">
+      <h1>WiFi <span class="accent">setup</span>.</h1>
+      <p>Send your WiFi credentials to a Kiri Bridge over Bluetooth. The device joins the network and the rest of setup happens on its local web UI. Chrome or Edge required, 2.4 GHz only.</p>
+    </div>
+  </section>
+
+  <div class="shell tool-status">
+    <span class="stat"><span class="label">Bluetooth</span>&nbsp;<span id="ble-state">checking</span></span>
+    <span class="stat"><span class="label">Device</span>&nbsp;<span id="device-state">not selected</span></span>
+    <span class="stat"><span class="label">WiFi</span>&nbsp;<span id="wifi-state">not configured</span></span>
+  </div>
+
+  <div class="shell">
+
+    <section class="tool-step" id="step-blue">
+      <div class="tool-step-num">01</div>
       <div>
-        <div class="tool-kicker">WiFi setup</div>
-        <h1>Join the network.</h1>
-        <p class="lede">Use Bluetooth once to put WiFi credentials on Kiri Bridge. When the LED is blinking blue, this page can find it.</p>
-        <div class="actions">
-          <span class="pill"><strong>Use</strong> Chrome or Edge</span>
-          <span class="pill"><strong>Signal</strong> Blue blink</span>
-          <span class="pill"><strong>WiFi</strong> 2.4 GHz</span>
+        <h2>Look for blue.</h2>
+        <p class="hint">A fast blue blink means the Kiri Bridge is advertising over BLE and ready to be configured. If you don't see it, power-cycle the device and wait a few seconds.</p>
+        <div class="tool-actions">
+          <button id="confirm-blue-btn" class="btn btn-primary">LED is blinking blue →</button>
         </div>
       </div>
-      <aside class="status" id="summary">
-        <h2>Now</h2>
-        <div id="ble-state">Bluetooth: checking...</div>
-        <div id="device-state">Device: not selected</div>
-        <div id="wifi-state">WiFi: not configured</div>
-      </aside>
     </section>
 
-    <section class="card" id="step-blue">
-      <h2>1. Look for blue</h2>
-      <p class="subtitle">A fast blue blink means Kiri Bridge is advertising over BLE and ready for WiFi setup. If you do not see it, restart the device.</p>
-      <div class="actions">
-        <button id="confirm-blue-btn" class="primary">The LED is blinking blue</button>
-      </div>
-    </section>
-
-    <section class="card step-hidden" id="step-device">
-      <h2>2. Select Kiri Bridge</h2>
-      <p class="subtitle">Choose the BLE device named <code>PROV_KIRI_...</code>. Keep this tab open until WiFi setup finishes.</p>
-      <label class="field">
-        <span>Device prefix</span>
-        <input id="device-prefix" type="text" value="PROV_KIRI_" autocomplete="off" spellcheck="false">
-      </label>
-      <div class="actions">
-        <button id="select-device-btn" class="primary">Select device</button>
-        <button id="continue-wifi-btn" class="primary step-hidden">Enter WiFi</button>
-        <button id="disconnect-btn" class="secondary step-hidden">Disconnect</button>
-      </div>
-      <div id="device-details"></div>
-    </section>
-
-    <section class="card step-hidden" id="step-wifi">
-      <h2>3. Send WiFi</h2>
-      <p class="subtitle">Enter the WiFi network Kiri Bridge should join. The password stays visible so you can catch typos before sending.</p>
-      <div class="grid">
+    <section class="tool-step step-hidden" id="step-device">
+      <div class="tool-step-num">02</div>
+      <div>
+        <h2>Pick the device.</h2>
+        <p class="hint">Choose the BLE device named <span class="mono">PROV_KIRI_…</span>. Keep this tab open until WiFi setup finishes.</p>
         <label class="field">
-          <span>Network name</span>
-          <input id="wifi-ssid" type="text" autocomplete="off" spellcheck="false" placeholder="Your WiFi name">
+          <span class="field-label">Device prefix</span>
+          <input id="device-prefix" type="text" value="PROV_KIRI_" autocomplete="off" spellcheck="false">
         </label>
-        <label class="field">
-          <span>Password</span>
-          <input id="wifi-password" type="text" autocomplete="off" spellcheck="false" placeholder="Your WiFi password">
-        </label>
-      </div>
-      <div class="actions">
-        <button id="scan-wifi-btn" class="secondary">Scan</button>
-        <button id="send-wifi-btn" class="primary">Send credentials</button>
-        <button id="back-device-btn" class="secondary">Choose another</button>
-      </div>
-      <div id="wifi-list"></div>
-    </section>
-
-    <section class="card step-hidden" id="step-result">
-      <h2>4. Open the portal</h2>
-      <p class="subtitle">After WiFi connects, use the shown portal address to finish setup and pair with Apple Home.</p>
-      <div id="result-details"></div>
-      <div class="actions">
-        <button id="clear-log-btn" class="secondary">Clear log</button>
+        <div id="device-details"></div>
+        <div class="tool-actions">
+          <button id="select-device-btn" class="btn btn-primary">Open BLE picker</button>
+          <button id="continue-wifi-btn" class="btn step-hidden">Enter WiFi →</button>
+          <button id="disconnect-btn" class="btn step-hidden">Disconnect</button>
+        </div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>Log</h2>
+    <section class="tool-step step-hidden" id="step-wifi">
+      <div class="tool-step-num">03</div>
+      <div>
+        <h2>Send WiFi.</h2>
+        <p class="hint">The password stays visible — easier to catch typos before you send. <span class="mono">2.4&nbsp;GHz</span> networks only.</p>
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Network name (SSID)</span>
+            <input id="wifi-ssid" type="text" autocomplete="off" spellcheck="false" placeholder="Your WiFi name">
+          </label>
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input id="wifi-password" type="text" autocomplete="off" spellcheck="false" placeholder="Your WiFi password">
+          </label>
+        </div>
+        <div id="wifi-list"></div>
+        <div class="tool-actions">
+          <button id="send-wifi-btn" class="btn btn-primary">Send credentials →</button>
+          <button id="scan-wifi-btn" class="btn">Scan networks</button>
+          <button id="back-device-btn" class="btn">← Choose another</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tool-step step-hidden" id="step-result">
+      <div class="tool-step-num">04</div>
+      <div>
+        <h2>Open the portal.</h2>
+        <p class="hint">When WiFi connects, the device's local web UI is reachable on your network. That's where you upload the firmware and pair with HomeKit.</p>
+        <div id="result-details"></div>
+      </div>
+    </section>
+
+    <details class="log" open>
+      <summary>Log</summary>
       <pre id="log"></pre>
-    </section>
-  </main>
-
-  <div id="error-modal" class="modal" aria-hidden="true">
-    <div class="modal-backdrop"></div>
-    <div class="modal-panel">
-      <h2 id="error-title">Setup failed</h2>
-      <p id="error-body" class="subtitle">Unknown error.</p>
-      <div class="actions">
-        <button id="error-close-btn" class="secondary">OK</button>
+      <div class="tool-actions">
+        <button id="clear-log-btn" class="btn">Clear log</button>
       </div>
+    </details>
+
+  </div>
+</main>
+
+<div id="error-modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <h2 id="error-title">Setup failed</h2>
+    <p id="error-body">Unknown error.</p>
+    <div class="modal-actions">
+      <button id="error-close-btn" class="btn">OK</button>
     </div>
   </div>
+</div>
 
-  <div id="success-modal" class="modal" aria-hidden="true">
-    <div class="modal-backdrop"></div>
-    <div class="modal-panel">
-      <h2 id="success-title">WiFi saved</h2>
-      <p id="success-body" class="subtitle">Kiri Bridge accepted the network credentials.</p>
-      <div class="actions">
-        <button id="success-close-btn" class="primary">OK</button>
-      </div>
+<div id="success-modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <h2 id="success-title">WiFi saved</h2>
+    <p id="success-body">Kiri Bridge accepted the network credentials.</p>
+    <div class="modal-actions">
+      <button id="success-close-btn" class="btn btn-primary">OK</button>
     </div>
   </div>
+</div>
 
-  <footer>
-    Kiri Bridge · CN105 HomeKit controller for Mitsubishi heat pumps ·
-    <a href="https://kiri.dkt.moe">kiri.dkt.moe</a><br>
-    Uses <a href="https://github.com/nikas-belogolov/esp-ble-prov">esp-ble-prov</a> 2.0.1, MIT License.
-  </footer>
+<footer class="footer">
+  <div class="shell footer-row">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span><strong>Kiri Bridge</strong> — an open-source HomeKit controller for Mitsubishi heat pumps and mini splits · GPL-3.0</span>
+    </div>
+    <a class="footer-github" href="https://github.com/DickyT/kiri-homekit" aria-label="Source on GitHub">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1-.02-1.96-3.2.69-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.49 3.18-1.18 3.18-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.77 1.05.77 2.13 0 1.54-.01 2.78-.01 3.16 0 .31.21.67.8.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/>
+      </svg>
+    </a>
+  </div>
+</footer>
 
-  <script type="module">
-    import {
-      ESPProvisioner,
-      Security1,
-      WifiStationState,
-    } from 'https://cdn.jsdelivr.net/npm/esp-ble-prov@2.0.1/dist/index.esm.min.js';
+<script type="module">
+  import {
+    ESPProvisioner,
+    Security1,
+    WifiStationState,
+  } from 'https://cdn.jsdelivr.net/npm/esp-ble-prov@2.0.1/dist/index.esm.min.js';
 
-    const $ = id => document.getElementById(id);
-    const serviceUuid = '021a9004-0382-4aea-bff4-6b3f1c5adfb4';
-    const provisioningPop = 'abcd1234';
-    const decoder = new TextDecoder();
-    const encoder = new TextEncoder();
-    let device = null;
-    let selectedBleName = '';
-    let currentStep = 1;
-    let provisioningBusy = false;
+  const $ = id => document.getElementById(id);
+  const serviceUuid = '021a9004-0382-4aea-bff4-6b3f1c5adfb4';
+  const provisioningPop = 'abcd1234';
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let device = null;
+  let selectedBleName = '';
+  let currentStep = 1;
+  let provisioningBusy = false;
 
-    function log(line = '') {
-      const box = $('log');
-      box.textContent += line + '\n';
-      box.scrollTop = box.scrollHeight;
+  function log(line = '') {
+    const box = $('log');
+    box.textContent += line + '\n';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function esc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+  }
+
+  function stateName(value) {
+    if (value === WifiStationState.Connected) return 'connected';
+    if (value === WifiStationState.Connecting) return 'connecting';
+    if (value === WifiStationState.Disconnected) return 'disconnected';
+    if (value === WifiStationState.ConnectionFailed) return 'failed';
+    return String(value);
+  }
+
+  function connectedIp(status) {
+    return status && status.connected && status.connected.ip4Addr ? status.connected.ip4Addr : '';
+  }
+
+  function showStep(step) {
+    currentStep = step;
+    $('step-blue').classList.toggle('step-hidden', step !== 1);
+    $('step-device').classList.toggle('step-hidden', step !== 2);
+    $('step-wifi').classList.toggle('step-hidden', step !== 3);
+    $('step-result').classList.toggle('step-hidden', step !== 4);
+  }
+
+  function setBleState(text, kind = '') {
+    $('ble-state').className = kind;
+    $('ble-state').textContent = text;
+  }
+
+  function setDeviceState(text, kind = '') {
+    $('device-state').className = kind;
+    $('device-state').textContent = text;
+  }
+
+  function setWifiState(text, kind = '') {
+    $('wifi-state').className = kind;
+    $('wifi-state').textContent = text;
+  }
+
+  function openErrorModal(title, message) {
+    $('error-title').textContent = title || 'Setup failed';
+    $('error-body').textContent = message || 'Unknown error.';
+    $('error-modal').classList.add('open');
+    $('error-modal').setAttribute('aria-hidden', 'false');
+  }
+
+  function closeErrorModal() {
+    $('error-modal').classList.remove('open');
+    $('error-modal').setAttribute('aria-hidden', 'true');
+  }
+
+  function openSuccessModal(title, message) {
+    $('success-title').textContent = title || 'WiFi saved';
+    $('success-body').textContent = message || 'Kiri Bridge accepted the network credentials.';
+    $('success-modal').classList.add('open');
+    $('success-modal').setAttribute('aria-hidden', 'false');
+  }
+
+  function closeSuccessModal() {
+    $('success-modal').classList.remove('open');
+    $('success-modal').setAttribute('aria-hidden', 'true');
+  }
+
+  function updateBluetoothAvailability() {
+    if (!('bluetooth' in navigator)) {
+      setBleState('unavailable — use Chrome or Edge over HTTPS', 'bad');
+      $('select-device-btn').disabled = true;
+      return;
     }
+    navigator.bluetooth.getAvailability().then(available => {
+      setBleState(available ? 'available' : 'unavailable on this device', available ? 'ok' : 'bad');
+      $('select-device-btn').disabled = !available;
+    }).catch(error => {
+      setBleState('availability check failed', 'bad');
+      $('select-device-btn').disabled = true;
+      log('Bluetooth availability error: ' + (error && error.message ? error.message : error));
+    });
+  }
 
-    function esc(value) {
-      return String(value ?? '').replace(/[&<>"']/g, char => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;',
-      }[char]));
+  function renderDeviceDetails() {
+    $('device-details').innerHTML = `
+  <table class="data-table">
+    <tbody>
+      <tr><th>BLE name</th><td>${esc(selectedBleName || '--')}</td></tr>
+      <tr><th>Service UUID</th><td>${serviceUuid}</td></tr>
+      <tr><th>Security</th><td>Security1</td></tr>
+      <tr><th>PoP</th><td>${esc(provisioningPop)}</td></tr>
+    </tbody>
+  </table>`;
+  }
+
+  function decodeSsid(value) {
+    if (value instanceof Uint8Array) return decoder.decode(value);
+    if (Array.isArray(value)) return decoder.decode(new Uint8Array(value));
+    return String(value || '');
+  }
+
+  function renderWifiList(networks) {
+    if (!Array.isArray(networks) || networks.length === 0) {
+      $('wifi-list').innerHTML = '<p class="hint" style="margin-top:18px">No WiFi networks reported.</p>';
+      return;
     }
-
-    function stateName(value) {
-      if (value === WifiStationState.Connected) return 'connected';
-      if (value === WifiStationState.Connecting) return 'connecting';
-      if (value === WifiStationState.Disconnected) return 'disconnected';
-      if (value === WifiStationState.ConnectionFailed) return 'failed';
-      return String(value);
-    }
-
-    function connectedIp(status) {
-      return status && status.connected && status.connected.ip4Addr ? status.connected.ip4Addr : '';
-    }
-
-    function showStep(step) {
-      currentStep = step;
-      $('step-blue').classList.toggle('step-hidden', step !== 1);
-      $('step-device').classList.toggle('step-hidden', step !== 2);
-      $('step-wifi').classList.toggle('step-hidden', step !== 3);
-      $('step-result').classList.toggle('step-hidden', step !== 4);
-    }
-
-    function setBleState(text, kind = '') {
-      $('ble-state').className = kind;
-      $('ble-state').textContent = 'Bluetooth: ' + text;
-    }
-
-    function setDeviceState(text, kind = '') {
-      $('device-state').className = kind;
-      $('device-state').textContent = 'Device: ' + text;
-    }
-
-    function setWifiState(text, kind = '') {
-      $('wifi-state').className = kind;
-      $('wifi-state').textContent = 'WiFi: ' + text;
-    }
-
-    function openErrorModal(title, message) {
-      $('error-title').textContent = title || 'Setup failed';
-      $('error-body').textContent = message || 'Unknown error.';
-      $('error-modal').classList.add('open');
-      $('error-modal').setAttribute('aria-hidden', 'false');
-    }
-
-    function closeErrorModal() {
-      $('error-modal').classList.remove('open');
-      $('error-modal').setAttribute('aria-hidden', 'true');
-    }
-
-    function openSuccessModal(title, message) {
-      $('success-title').textContent = title || 'WiFi saved';
-      $('success-body').textContent = message || 'Kiri Bridge accepted the network credentials.';
-      $('success-modal').classList.add('open');
-      $('success-modal').setAttribute('aria-hidden', 'false');
-    }
-
-    function closeSuccessModal() {
-      $('success-modal').classList.remove('open');
-      $('success-modal').setAttribute('aria-hidden', 'true');
-    }
-
-    function updateBluetoothAvailability() {
-      if (!('bluetooth' in navigator)) {
-        setBleState('unavailable. Use Chrome or Edge over HTTPS.', 'bad');
-        $('select-device-btn').disabled = true;
-        return;
-      }
-      navigator.bluetooth.getAvailability().then(available => {
-        setBleState(available ? 'available' : 'unavailable on this device', available ? 'ok' : 'bad');
-        $('select-device-btn').disabled = !available;
-      }).catch(error => {
-        setBleState('availability check failed', 'bad');
-        $('select-device-btn').disabled = true;
-        log('Bluetooth availability error: ' + (error && error.message ? error.message : error));
+    const rows = networks.map(network => {
+      const ssid = decodeSsid(network.ssid);
+      return `
+  <tr>
+    <td>${esc(ssid || '--')}</td>
+    <td>${network.rssi ?? '--'} dBm</td>
+    <td>${network.channel ?? '--'}</td>
+    <td><button class="btn" data-ssid="${encodeURIComponent(ssid || '')}">Use</button></td>
+  </tr>`;
+    }).join('');
+    $('wifi-list').innerHTML = `
+  <table class="data-table">
+    <thead><tr><th>SSID</th><th>Signal</th><th>Channel</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+    $('wifi-list').querySelectorAll('button[data-ssid]').forEach(button => {
+      button.addEventListener('click', () => {
+        $('wifi-ssid').value = decodeURIComponent(button.dataset.ssid || '');
+        log('Selected WiFi SSID: ' + $('wifi-ssid').value);
       });
-    }
+    });
+  }
 
-    function renderDeviceDetails() {
-      $('device-details').innerHTML = `
-    <table>
-      <tbody>
-        <tr><th>BLE Name</th><td>${esc(selectedBleName || '--')}</td></tr>
-        <tr><th>Service UUID</th><td>${serviceUuid}</td></tr>
-        <tr><th>Security</th><td>Security1</td></tr>
-        <tr><th>PoP</th><td>${esc(provisioningPop)}</td></tr>
-      </tbody>
-    </table>`;
-    }
-
-    function decodeSsid(value) {
-      if (value instanceof Uint8Array) return decoder.decode(value);
-      if (Array.isArray(value)) return decoder.decode(new Uint8Array(value));
-      return String(value || '');
-    }
-
-    function renderWifiList(networks) {
-      if (!Array.isArray(networks) || networks.length === 0) {
-        $('wifi-list').innerHTML = '<p class="subtitle">No WiFi networks reported.</p>';
-        return;
-      }
-      const rows = networks.map(network => {
-        const ssid = decodeSsid(network.ssid);
-        return `
-    <tr>
-      <td>${esc(ssid || '--')}</td>
-      <td>${network.rssi ?? '--'} dBm</td>
-      <td>${network.channel ?? '--'}</td>
-      <td><button class="secondary" data-ssid="${encodeURIComponent(ssid || '')}">Use</button></td>
-    </tr>`;
-      }).join('');
-      $('wifi-list').innerHTML = `
-    <table>
-      <thead><tr><th>SSID</th><th>Signal</th><th>Channel</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-      $('wifi-list').querySelectorAll('button[data-ssid]').forEach(button => {
-        button.addEventListener('click', () => {
-          $('wifi-ssid').value = decodeURIComponent(button.dataset.ssid || '');
-          log('Selected WiFi SSID: ' + $('wifi-ssid').value);
-        });
+  async function selectDevice() {
+    const prefix = $('device-prefix').value.trim() || 'PROV_KIRI_';
+    try {
+      $('select-device-btn').disabled = true;
+      setDeviceState('selecting...', 'warn');
+      log(`Opening Bluetooth picker for ${prefix}*`);
+      device = new ESPProvisioner({
+        deviceNamePrefix: prefix,
+        serviceUUID: serviceUuid,
+        security: new Security1({ pop: provisioningPop }),
       });
-    }
+      await device.connect({ filters: [{ namePrefix: prefix }] });
+      selectedBleName = device.device?.name || 'Unnamed ESP32';
+      setDeviceState(selectedBleName, 'ok');
+      log('Selected BLE device: ' + selectedBleName);
 
-    async function selectDevice() {
-      const prefix = $('device-prefix').value.trim() || 'PROV_KIRI_';
-      try {
-        $('select-device-btn').disabled = true;
-        setDeviceState('selecting...', 'warn');
-        log(`Opening Bluetooth picker for ${prefix}*`);
-        device = new ESPProvisioner({
-          deviceNamePrefix: prefix,
-          serviceUUID: serviceUuid,
-          security: new Security1({ pop: provisioningPop }),
-        });
-        await device.connect({ filters: [{ namePrefix: prefix }] });
-        selectedBleName = device.device?.name || 'Unnamed ESP32';
-        setDeviceState(selectedBleName, 'ok');
-        log('Selected BLE device: ' + selectedBleName);
-
-        log('Establishing ESP-IDF Security1 session...');
-        await device.establishSession();
-        log('BLE provisioning session established.');
-        renderDeviceDetails();
-        $('continue-wifi-btn').classList.remove('step-hidden');
-        $('disconnect-btn').classList.remove('step-hidden');
-        showStep(2);
-      } catch (error) {
-        if (device) {
-          try { device.disconnect(); } catch (disconnectError) { log('Disconnect after failed BLE connect warning: ' + (disconnectError && disconnectError.message ? disconnectError.message : disconnectError)); }
-        }
-        device = null;
-        selectedBleName = '';
-        setDeviceState('selection failed', 'bad');
-        log('BLE selection/connect failed: ' + (error && error.message ? error.message : error));
-        openErrorModal('BLE Connection Failed', error && error.message ? error.message : String(error));
-      } finally {
-        $('select-device-btn').disabled = false;
-      }
-    }
-
-    function disconnectDevice() {
+      log('Establishing ESP-IDF Security1 session...');
+      await device.establishSession();
+      log('BLE provisioning session established.');
+      renderDeviceDetails();
+      $('continue-wifi-btn').classList.remove('step-hidden');
+      $('disconnect-btn').classList.remove('step-hidden');
+      showStep(2);
+    } catch (error) {
       if (device) {
-        try { device.disconnect(); } catch (error) { log('Disconnect warning: ' + (error && error.message ? error.message : error)); }
+        try { device.disconnect(); } catch (disconnectError) { log('Disconnect after failed BLE connect warning: ' + (disconnectError && disconnectError.message ? disconnectError.message : disconnectError)); }
       }
       device = null;
       selectedBleName = '';
-      $('device-details').innerHTML = '';
-      $('wifi-list').innerHTML = '';
-      $('continue-wifi-btn').classList.add('step-hidden');
-      $('disconnect-btn').classList.add('step-hidden');
-      setDeviceState('not selected');
-      setWifiState('not configured');
-      log('BLE device disconnected.');
-      showStep(2);
+      setDeviceState('selection failed', 'bad');
+      log('BLE selection/connect failed: ' + (error && error.message ? error.message : error));
+      openErrorModal('BLE connection failed', error && error.message ? error.message : String(error));
+    } finally {
+      $('select-device-btn').disabled = false;
     }
+  }
 
-    async function scanWifi() {
-      if (!device) {
-        openErrorModal('No Device Selected', 'Select and connect a Kiri BLE provisioning device first.');
-        return;
-      }
-      try {
-        $('scan-wifi-btn').disabled = true;
-        setWifiState('scanning...', 'warn');
-        log('Scanning WiFi networks via BLE...');
-        const networks = await device.scan();
-        renderWifiList(networks);
-        setWifiState(`scan complete (${networks.length})`, 'ok');
-        log(`WiFi scan returned ${networks.length} network(s).`);
-      } catch (error) {
-        setWifiState('scan failed', 'bad');
-        log('WiFi scan failed: ' + (error && error.message ? error.message : error));
-        openErrorModal('WiFi Scan Failed', error && error.message ? error.message : String(error));
-      } finally {
-        $('scan-wifi-btn').disabled = false;
-      }
+  function disconnectDevice() {
+    if (device) {
+      try { device.disconnect(); } catch (error) { log('Disconnect warning: ' + (error && error.message ? error.message : error)); }
     }
+    device = null;
+    selectedBleName = '';
+    $('device-details').innerHTML = '';
+    $('wifi-list').innerHTML = '';
+    $('continue-wifi-btn').classList.add('step-hidden');
+    $('disconnect-btn').classList.add('step-hidden');
+    setDeviceState('not selected');
+    setWifiState('not configured');
+    log('BLE device disconnected.');
+    showStep(2);
+  }
 
-    async function provisionWifi() {
-      if (!device) {
-        openErrorModal('No Device Selected', 'Select and connect a Kiri BLE provisioning device first.');
-        return;
-      }
-      const ssid = $('wifi-ssid').value.trim();
-      const password = $('wifi-password').value;
-      if (!ssid) {
-        openErrorModal('WiFi SSID Required', 'Enter the WiFi network name before sending credentials.');
-        return;
-      }
-      if (provisioningBusy) return;
-      provisioningBusy = true;
-      $('send-wifi-btn').disabled = true;
+  async function scanWifi() {
+    if (!device) {
+      openErrorModal('No device selected', 'Select and connect a Kiri BLE provisioning device first.');
+      return;
+    }
+    try {
       $('scan-wifi-btn').disabled = true;
-      showStep(4);
-      try {
-        setWifiState('sending credentials...', 'warn');
-        $('result-details').innerHTML = '<p class="subtitle">Sending WiFi credentials over BLE...</p>';
-        log('Sending WiFi credentials over BLE...');
-        await device.sendCredentials({
-          ssid: encoder.encode(ssid),
-          passphrase: encoder.encode(password),
-        }, 60000);
-        const status = await device.getWiFiStatus();
-        const name = stateName(status.staState);
-        const ip = connectedIp(status);
-        const portalUrl = ip ? `http://${ip}:8080/` : '';
-        setWifiState(name, status.staState === WifiStationState.Connected ? 'ok' : status.staState === WifiStationState.ConnectionFailed ? 'bad' : 'warn');
-        log(`WiFi final status: ${name}`);
-        if (ip) log(`WiFi IP address: ${ip}`);
-        $('result-details').innerHTML = `
-        <table>
-          <tbody>
-            <tr><th>State</th><td>${name}</td></tr>
-            <tr><th>SSID</th><td>${esc(ssid)}</td></tr>
-            <tr><th>IP Address</th><td>${esc(ip || '--')}</td></tr>
-            <tr><th>Access Portal</th><td>${portalUrl ? `<a href="${esc(portalUrl)}" target="_blank" rel="noopener">${esc(portalUrl)}</a>` : '--'}</td></tr>
-          </tbody>
-        </table>`;
-        log('WiFi provisioning successful.');
-        openSuccessModal('WiFi saved', ip ? `Kiri Bridge is online at ${ip}.` : 'Kiri Bridge connected to WiFi.');
-      } catch (error) {
-        setWifiState('provisioning failed', 'bad');
-        log('Setup failed: ' + (error && error.message ? error.message : error));
-        openErrorModal('Setup failed', error && error.message ? error.message : String(error));
-      } finally {
-        provisioningBusy = false;
-        $('send-wifi-btn').disabled = false;
-        $('scan-wifi-btn').disabled = false;
-      }
+      setWifiState('scanning...', 'warn');
+      log('Scanning WiFi networks via BLE...');
+      const networks = await device.scan();
+      renderWifiList(networks);
+      setWifiState(`scan complete (${networks.length})`, 'ok');
+      log(`WiFi scan returned ${networks.length} network(s).`);
+    } catch (error) {
+      setWifiState('scan failed', 'bad');
+      log('WiFi scan failed: ' + (error && error.message ? error.message : error));
+      openErrorModal('WiFi scan failed', error && error.message ? error.message : String(error));
+    } finally {
+      $('scan-wifi-btn').disabled = false;
     }
+  }
 
-    updateBluetoothAvailability();
-    $('confirm-blue-btn').addEventListener('click', () => {
-      log('Blue flashing LED confirmed. Ready to select BLE device.');
-      showStep(2);
-    });
-    $('select-device-btn').addEventListener('click', selectDevice);
-    $('continue-wifi-btn').addEventListener('click', () => showStep(3));
-    $('disconnect-btn').addEventListener('click', disconnectDevice);
-    $('back-device-btn').addEventListener('click', disconnectDevice);
-    $('scan-wifi-btn').addEventListener('click', scanWifi);
-    $('send-wifi-btn').addEventListener('click', provisionWifi);
-    $('clear-log-btn').addEventListener('click', () => { $('log').textContent = ''; });
-    $('error-close-btn').addEventListener('click', closeErrorModal);
-    $('success-close-btn').addEventListener('click', closeSuccessModal);
-    log('Kiri Bridge WiFi setup ready.');
-  </script>
+  async function provisionWifi() {
+    if (!device) {
+      openErrorModal('No device selected', 'Select and connect a Kiri BLE provisioning device first.');
+      return;
+    }
+    const ssid = $('wifi-ssid').value.trim();
+    const password = $('wifi-password').value;
+    if (!ssid) {
+      openErrorModal('SSID required', 'Enter the WiFi network name before sending credentials.');
+      return;
+    }
+    if (provisioningBusy) return;
+    provisioningBusy = true;
+    $('send-wifi-btn').disabled = true;
+    $('scan-wifi-btn').disabled = true;
+    showStep(4);
+    try {
+      setWifiState('sending...', 'warn');
+      $('result-details').innerHTML = '<p class="hint" style="margin-top:18px">Sending WiFi credentials over BLE...</p>';
+      log('Sending WiFi credentials over BLE...');
+      await device.sendCredentials({
+        ssid: encoder.encode(ssid),
+        passphrase: encoder.encode(password),
+      }, 60000);
+      const status = await device.getWiFiStatus();
+      const name = stateName(status.staState);
+      const ip = connectedIp(status);
+      const portalUrl = ip ? `http://${ip}:8080/` : '';
+      setWifiState(name, status.staState === WifiStationState.Connected ? 'ok' : status.staState === WifiStationState.ConnectionFailed ? 'bad' : 'warn');
+      log(`WiFi final status: ${name}`);
+      if (ip) log(`WiFi IP address: ${ip}`);
+      $('result-details').innerHTML = `
+      <table class="data-table">
+        <tbody>
+          <tr><th>State</th><td>${name}</td></tr>
+          <tr><th>SSID</th><td>${esc(ssid)}</td></tr>
+          <tr><th>IP address</th><td>${esc(ip || '--')}</td></tr>
+          <tr><th>Local portal</th><td>${portalUrl ? `<a href="${esc(portalUrl)}" target="_blank" rel="noopener">${esc(portalUrl)}</a>` : '--'}</td></tr>
+        </tbody>
+      </table>`;
+      log('WiFi provisioning successful.');
+      openSuccessModal('WiFi saved', ip ? `Kiri Bridge is online at ${ip}.` : 'Kiri Bridge connected to WiFi.');
+    } catch (error) {
+      setWifiState('failed', 'bad');
+      log('Setup failed: ' + (error && error.message ? error.message : error));
+      openErrorModal('Setup failed', error && error.message ? error.message : String(error));
+    } finally {
+      provisioningBusy = false;
+      $('send-wifi-btn').disabled = false;
+      $('scan-wifi-btn').disabled = false;
+    }
+  }
+
+  updateBluetoothAvailability();
+  $('confirm-blue-btn').addEventListener('click', () => {
+    log('Blue flashing LED confirmed. Ready to select BLE device.');
+    showStep(2);
+  });
+  $('select-device-btn').addEventListener('click', selectDevice);
+  $('continue-wifi-btn').addEventListener('click', () => showStep(3));
+  $('disconnect-btn').addEventListener('click', disconnectDevice);
+  $('back-device-btn').addEventListener('click', disconnectDevice);
+  $('scan-wifi-btn').addEventListener('click', scanWifi);
+  $('send-wifi-btn').addEventListener('click', provisionWifi);
+  $('clear-log-btn').addEventListener('click', () => { $('log').textContent = ''; });
+  $('error-close-btn').addEventListener('click', closeErrorModal);
+  $('success-close-btn').addEventListener('click', closeSuccessModal);
+  log('Kiri Bridge WiFi setup ready.');
+</script>
 </body>
-
 </html>

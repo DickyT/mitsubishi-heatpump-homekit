@@ -3,133 +3,155 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Firmware Recovery | Kiri Bridge</title>
+<title>Firmware Recovery — Kiri Bridge</title>
 <meta name="description" content="Recover or install Kiri Bridge firmware from a browser over USB serial using a verified .kiri firmware package.">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 <link rel="stylesheet" href="kiri.css">
 </head>
 <body>
-<nav class="site-nav" aria-label="Main navigation">
-  <div class="site-nav-inner">
-    <a class="wordmark" href="index.html" aria-label="Kiri Bridge home">
-      <span class="wordmark-main">kiri</span>
-      <span class="wordmark-sub">bridge</span>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Kiri Bridge<span class="brand-page">recovery</span>
     </a>
-    <div class="site-links">
-      <a href="index.html">Overview</a>
-      <a href="ble_provisioning.html">WiFi Setup</a>
-      <a href="flash.html">Firmware Recovery</a>
-      <a href="https://github.com/DickyT/kiri-homekit">GitHub</a>
-      <a class="nav-cta" href="ble_provisioning.html">Start Setup</a>
+    <div class="nav-links">
+      <a href="index.html">home</a>
+      <a href="ble_provisioning.html">setup</a>
+      <a href="https://github.com/DickyT/kiri-homekit">github</a>
     </div>
   </div>
 </nav>
+
 <main>
-  <section class="hero">
-    <div>
-      <div class="tool-kicker">USB recovery</div>
-      <h1>Bring it back.</h1>
-      <p class="lede">Use this page when a Kiri Bridge needs a clean installer or firmware restore. The browser verifies the board, checks the package, then writes over USB.</p>
-      <div class="actions">
-        <span class="pill"><strong>Use</strong> Chrome or Edge</span>
-        <span class="pill"><strong>Speed</strong> 115200 baud</span>
-        <span class="pill"><strong>File</strong> .kiri</span>
+
+  <section class="tool-head">
+    <div class="shell">
+      <h1>Firmware <span class="accent">recovery</span>.</h1>
+      <p>Re-flash a Kiri Bridge over USB. Use this if you bricked the device, want to roll back, or are loading the production firmware for the first time. Chrome or Edge required.</p>
+    </div>
+  </section>
+
+  <div class="shell tool-status">
+    <span class="stat"><span class="label">USB</span>&nbsp;<span id="serial-state">waiting</span></span>
+    <span class="stat"><span class="label">Hardware</span>&nbsp;<span id="chip-state">not verified</span></span>
+    <span class="stat"><span class="label">Package</span>&nbsp;<span id="package-state">not selected</span></span>
+  </div>
+
+  <div class="shell">
+
+    <section class="tool-step" id="step-serial">
+      <div class="tool-step-num">01</div>
+      <div>
+        <h2>Pick the board.</h2>
+        <p class="hint">Plug in the Kiri Bridge over USB. The browser reads the chip and MAC, then keeps the port reserved for the rest of the flow.</p>
+        <div class="tool-actions">
+          <button id="serial-btn" class="btn btn-primary">Select &amp; verify</button>
+          <button id="continue-package-btn" class="btn step-hidden">Choose firmware →</button>
+        </div>
+        <div id="device-details"></div>
       </div>
-    </div>
-    <aside class="status" id="summary">
-      <h2>Now</h2>
-      <div id="serial-state">Device: waiting for USB verification</div>
-      <div id="package-state">Package: not selected</div>
-      <div id="chip-state">Hardware: not verified</div>
-    </aside>
-  </section>
+    </section>
 
-  <section class="card" id="step-serial">
-    <h2>1. Pick the board</h2>
-    <p class="subtitle">Connect Kiri Bridge over USB. Verification reads the ESP32 chip and MAC address, then keeps that serial port reserved for the rest of the flow.</p>
-    <div class="actions">
-      <button id="serial-btn" class="primary">Select and verify</button>
-      <button id="continue-package-btn" class="primary step-hidden">Choose firmware</button>
-    </div>
-    <div id="device-details"></div>
-  </section>
-
-  <section class="card step-hidden" id="step-package">
-    <h2>2. Choose the package</h2>
-    <p class="subtitle">Select a published Kiri package. The browser checks its manifest, image list, sizes, and checksums before writing anything.</p>
-    <label class="field">
-      <span>Kiri package</span>
-      <input id="package-file" type="file" accept=".kiri">
-    </label>
-    <div id="package-details"></div>
-    <div class="actions">
-      <button id="back-serial-btn" class="secondary">Release board</button>
-    </div>
-  </section>
-
-  <section class="card step-hidden" id="step-flash">
-    <h2>3. Write firmware</h2>
-    <p class="subtitle">Confirm the board and package. When writing finishes, unplug/restart the device manually so Chrome does not have to handle a USB reset.</p>
-    <div id="flash-summary"></div>
-    <div id="flash-progress" class="progress-panel" aria-live="polite">
-      <div class="progress-meta">
-        <span id="flash-progress-label">Ready to install</span>
-        <span id="flash-progress-percent">0%</span>
+    <section class="tool-step step-hidden" id="step-package">
+      <div class="tool-step-num">02</div>
+      <div>
+        <h2>Pick a package.</h2>
+        <p class="hint">A <span class="mono">.kiri</span> file from <a href="https://github.com/DickyT/kiri-homekit/releases">GitHub Releases</a>. The browser checks the manifest, sizes, and checksums before writing anything.</p>
+        <label class="field">
+          <span class="field-label">Kiri package</span>
+          <input id="package-file" type="file" accept=".kiri">
+        </label>
+        <div id="package-details"></div>
+        <div class="tool-actions">
+          <button id="back-serial-btn" class="btn">← Release board</button>
+        </div>
       </div>
-      <div class="progress-track">
-        <div id="flash-progress-fill" class="progress-fill"></div>
-      </div>
-      <div id="flash-progress-detail" class="progress-detail">Waiting for confirmation.</div>
-    </div>
-    <label class="confirm-row">
-      <input id="confirm-hardware" type="checkbox">
-      <span>I confirm this is Kiri Bridge hardware and I want to write this package.</span>
-    </label>
-    <div class="actions">
-      <button id="flash-btn" class="primary" disabled>Write package</button>
-      <button id="back-package-btn" class="secondary">Choose another</button>
-      <button id="clear-log-btn" class="secondary">Clear log</button>
-    </div>
-  </section>
+    </section>
 
-  <section class="card">
-    <h2>Log</h2>
-    <pre id="log"></pre>
-  </section>
+    <section class="tool-step step-hidden" id="step-flash">
+      <div class="tool-step-num">03</div>
+      <div>
+        <h2>Write.</h2>
+        <p class="hint">Confirm the board and package. When writing finishes, unplug the device manually — Chrome's USB stack does not recover well from a programmatic reset.</p>
+        <div id="flash-summary"></div>
+        <div id="flash-progress" class="progress" aria-live="polite">
+          <div class="progress-meta">
+            <span id="flash-progress-label">Ready to install</span>
+            <span id="flash-progress-percent">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="flash-progress-fill" class="progress-fill"></div>
+          </div>
+          <div id="flash-progress-detail" class="progress-detail">Waiting for confirmation.</div>
+        </div>
+        <label class="confirm-row">
+          <input id="confirm-hardware" type="checkbox">
+          <span>I confirm this is Kiri Bridge hardware and I want to write this package.</span>
+        </label>
+        <div class="tool-actions">
+          <button id="flash-btn" class="btn btn-primary" disabled>Write package →</button>
+          <button id="back-package-btn" class="btn">← Choose another</button>
+        </div>
+      </div>
+    </section>
+
+    <details class="log" open>
+      <summary>Log</summary>
+      <pre id="log"></pre>
+      <div class="tool-actions">
+        <button id="clear-log-btn" class="btn">Clear log</button>
+      </div>
+    </details>
+
+  </div>
 </main>
+
 <div id="error-modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
-    <h2 id="error-title">Hardware Verification Failed</h2>
-    <p id="error-body" class="subtitle">Unknown error.</p>
-    <div class="actions">
-      <button id="error-close-btn" class="secondary">OK</button>
+    <h2 id="error-title">Hardware verification failed</h2>
+    <p id="error-body">Unknown error.</p>
+    <div class="modal-actions">
+      <button id="error-close-btn" class="btn">OK</button>
     </div>
   </div>
 </div>
+
 <div id="success-modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
     <h2 id="success-title">Write complete</h2>
-    <p id="success-body" class="subtitle">USB has been released. Restart Kiri Bridge manually before using it.</p>
+    <p id="success-body">USB has been released. Restart Kiri Bridge manually before using it.</p>
     <div id="success-provision-guide" class="modal-guide step-hidden">
-      <strong>Next: WiFi provisioning</strong>
+      <strong>Next: WiFi setup</strong>
       <ol>
-        <li>Manually restart the Kiri Bridge by holding the side reset button, power cycling it, or plugging it into the heat pump.</li>
+        <li>Restart the Kiri Bridge by holding the side reset button, power cycling it, or plugging it into the heat pump.</li>
         <li>When the LED blinks blue, open WiFi setup.</li>
         <li>If the LED does not flash blue, restart the device once more and wait a few seconds.</li>
       </ol>
     </div>
-    <div class="actions">
-      <button id="success-provision-btn" class="primary step-hidden">Open WiFi setup</button>
-      <button id="success-close-btn" class="primary">OK</button>
+    <div class="modal-actions">
+      <button id="success-provision-btn" class="btn btn-primary step-hidden">Open WiFi setup →</button>
+      <button id="success-close-btn" class="btn btn-primary">OK</button>
     </div>
   </div>
 </div>
-<footer>
-  Kiri Bridge · CN105 HomeKit controller for Mitsubishi heat pumps ·
-  <a href="https://kiri.dkt.moe">kiri.dkt.moe</a>
+
+<footer class="footer">
+  <div class="shell footer-row">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span><strong>Kiri Bridge</strong> — an open-source HomeKit controller for Mitsubishi heat pumps and mini splits · GPL-3.0</span>
+    </div>
+    <a class="footer-github" href="https://github.com/DickyT/kiri-homekit" aria-label="Source on GitHub">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1-.02-1.96-3.2.69-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.49 3.18-1.18 3.18-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.77 1.05.77 2.13 0 1.54-.01 2.78-.01 3.16 0 .31.21.67.8.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/>
+      </svg>
+    </a>
+  </div>
 </footer>
 
 <script type="module">
@@ -153,13 +175,13 @@ function log(line=''){
 
 function setPackageState(text,kind=''){
   $('package-state').className=kind;
-  $('package-state').textContent='Package: '+text;
+  $('package-state').textContent=text;
 }
 
 function setSerialState(){
   const ok='serial' in navigator;
   $('serial-state').className=ok?'ok':'bad';
-  $('serial-state').textContent=ok?'Device: ready for USB verification':'Device: Web Serial is unavailable. Use Chrome or Edge over HTTPS.';
+  $('serial-state').textContent=ok?'ready':'unavailable — use Chrome or Edge';
   $('serial-btn').disabled=!ok;
 }
 
@@ -187,7 +209,7 @@ async function closeReservedPort(){
 }
 
 function openErrorModal(title,message){
-  $('error-title').textContent=title||'Hardware Verification Failed';
+  $('error-title').textContent=title||'Hardware verification failed';
   $('error-body').textContent=message||'Unknown error.';
   $('error-modal').classList.add('open');
   $('error-modal').setAttribute('aria-hidden','false');
@@ -265,7 +287,7 @@ function normalizeMac(mac){
 
 function renderDeviceDetails(info){
   $('device-details').innerHTML=`
-    <table>
+    <table class="data-table">
       <tbody>
         <tr><th>USB VID/PID</th><td>${info.usbVendorId||'--'} / ${info.usbProductId||'--'}</td></tr>
         <tr><th>Chip</th><td>${info.chipName}</td></tr>
@@ -289,15 +311,15 @@ function renderFlashSummary(){
       <td>${part.path}</td>
     </tr>`).join('');
   $('flash-summary').innerHTML=`
-    <table>
+    <table class="data-table">
       <tbody>
-        <tr><th>Device Chip</th><td>${selectedDeviceInfo.chipName}</td></tr>
+        <tr><th>Device chip</th><td>${selectedDeviceInfo.chipName}</td></tr>
         <tr><th>Device MAC</th><td>${selectedDeviceInfo.mac||'--'}</td></tr>
         <tr><th>Selected package</th><td>${manifest.product||'Kiri Bridge'} ${manifest.version||'--'} (${manifest.variant||'--'})</td></tr>
-        <tr><th>Images to Write</th><td>${selectedPackage.parts.length}</td></tr>
+        <tr><th>Images to write</th><td>${selectedPackage.parts.length}</td></tr>
       </tbody>
     </table>
-    <table>
+    <table class="data-table">
       <thead><tr><th>Image</th><th>Offset</th><th>Size</th><th>File</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -362,8 +384,8 @@ function resetInstallerState(){
   setPackageState('not selected');
   setSerialState();
   $('chip-state').className='';
-  $('chip-state').textContent='Hardware: not verified';
-  $('serial-btn').textContent='Verify USB Device';
+  $('chip-state').textContent='not verified';
+  $('serial-btn').textContent='Select & verify';
   $('serial-btn').disabled=!("serial" in navigator);
 }
 
@@ -394,18 +416,18 @@ async function selectSerialPort(){
     $('serial-btn').disabled=true;
     $('continue-package-btn').classList.add('step-hidden');
     $('serial-state').className='warn';
-    $('serial-state').textContent='Device: verifying ESP32 bootloader...';
+    $('serial-state').textContent='verifying...';
     const deviceInfo=await verifyDevice(port,usbInfo);
     await port.open({baudRate:flashBaudRate});
     selectedPort=port;
     selectedDeviceInfo=deviceInfo;
     $('serial-state').className='ok';
-    $('serial-state').textContent=`Device: verified and reserved at ${flashBaudRate} baud`;
+    $('serial-state').textContent=`reserved @ ${flashBaudRate} baud`;
     $('chip-state').className='ok';
-    $('chip-state').textContent=`Hardware: ${deviceInfo.chipName} ${deviceInfo.mac ? '('+deviceInfo.mac+')' : ''}`;
+    $('chip-state').textContent=`${deviceInfo.chipName}${deviceInfo.mac ? ' · '+deviceInfo.mac : ''}`;
     renderDeviceDetails(deviceInfo);
     log(`Verified ${deviceInfo.chipName}${deviceInfo.mac?' MAC '+deviceInfo.mac:''}. USB connection reserved at ${flashBaudRate} baud.`);
-    $('serial-btn').textContent='Hardware Verified';
+    $('serial-btn').textContent='Verified';
     $('serial-btn').disabled=true;
     $('continue-package-btn').classList.remove('step-hidden');
     showStep(1);
@@ -420,9 +442,9 @@ async function selectSerialPort(){
     await closeReservedPort();
     selectedPort=null;
     $('serial-state').className='bad';
-    $('serial-state').textContent='Device: verification failed';
+    $('serial-state').textContent='verification failed';
     log('Hardware verification failed: '+(e&&e.message?e.message:e));
-    openErrorModal('Hardware Verification Failed',e&&e.message?e.message:String(e));
+    openErrorModal('Hardware verification failed',e&&e.message?e.message:String(e));
     showStep(1);
   }finally{
     if(!selectedPort)$('serial-btn').disabled=!('serial' in navigator);
@@ -522,15 +544,15 @@ function renderPackageDetails(pkg){
     ? 'Installer selected. Use this for first-time setup, recovery, WiFi provisioning, and CN105 probing.'
     : 'Main app selected. Use this when you want to install the production HomeKit firmware directly over USB.';
   $('package-details').innerHTML=`
-    <table>
+    <table class="data-table">
       <tbody>
         <tr><th>Product</th><td>${manifest.product||'Kiri Bridge'}</td></tr>
         <tr><th>Version</th><td>${manifest.version||'--'}</td></tr>
-        <tr><th>Firmware Role</th><td class="${variantClass}">${manifest.variant||'--'} · ${variantText}</td></tr>
-        <tr><th>Hardware Target</th><td>${manifest.target||'esp32'} · flash ${manifest.flashSize||'keep'}</td></tr>
+        <tr><th>Firmware role</th><td class="${variantClass}">${manifest.variant||'--'} · ${variantText}</td></tr>
+        <tr><th>Hardware target</th><td>${manifest.target||'esp32'} · flash ${manifest.flashSize||'keep'}</td></tr>
       </tbody>
     </table>
-    <table>
+    <table class="data-table">
       <thead><tr><th>Image</th><th>Offset</th><th>Size</th><th>File</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
