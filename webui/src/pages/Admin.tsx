@@ -8,8 +8,7 @@ import { Section, Field, Btn, Modal } from "../components";
 import { api } from "../api";
 import { status, fetchStatusOnce } from "../store";
 import type { Status, DeviceConfig, TransportStatus } from "../types";
-// @ts-expect-error — site/lib/kiri.js ships its types via kiri.d.ts beside it.
-import { parseKiri } from "../../../site/lib/kiri.js";
+import { validateAndUpload } from "../lib/ota";
 
 // ----- formatters -----
 
@@ -143,6 +142,15 @@ function renderTransport(t: TransportStatus | undefined): string {
 }
 
 // ----- main page component -----
+
+type OtaModalState = {
+  currentVersion: string;
+  newVersion: string;
+  partition: string;
+  warning: boolean;
+  status?: string;
+};
+type NoticeState = { title: string; body: string; restart: boolean };
 
 export function AdminPage(): JSX.Element {
   const s = status.value;
@@ -290,7 +298,10 @@ export function AdminPage(): JSX.Element {
     setOtaMsgError(false);
 
     try {
-      const result = await validateAndUpload(file, (pct) => setOtaProgress(pct));
+      const result = await validateAndUpload(file, {
+        acceptVariants: ["app"],
+        onProgress: (pct) => setOtaProgress(pct),
+      });
       setOtaUploading(false);
       setOtaShowProgress(false);
       setOtaMsg("");
@@ -620,82 +631,4 @@ export function AdminPage(): JSX.Element {
       </Modal>
     </main>
   );
-}
-
-// ----- ota helpers -----
-
-const KIRI_PACKAGE_FORMAT = "kiri-firmware-package-v1";
-const KIRI_PROJECT_ID = "kiri-bridge";
-const LEGACY_PROJECTS = new Set(["mitsubishi_heatpump_homekit"]);
-
-type OtaModalState = {
-  currentVersion: string;
-  newVersion: string;
-  partition: string;
-  warning: boolean;
-  status?: string;
-};
-type NoticeState = { title: string; body: string; restart: boolean };
-
-function partitionMatches(pkg: any, dev: any): boolean {
-  if (!pkg || !dev) return false;
-  return Number(pkg.offset) === Number(dev.address) && Number(pkg.size) === Number(dev.size);
-}
-
-async function validateAndUpload(file: File, onProgress: (pct: number) => void): Promise<any> {
-  const lower = file.name.toLowerCase();
-  if (!lower.endsWith(".kiri")) throw new Error("Only .kiri firmware packages are allowed.");
-
-  const { manifest, parts } = await parseKiri(file);
-  if (manifest.format !== KIRI_PACKAGE_FORMAT) throw new Error("Not a supported Kiri firmware package.");
-  if (manifest.project !== KIRI_PROJECT_ID) throw new Error(`Wrong project package: ${manifest.project ?? "unknown"}.`);
-  if (manifest.variant !== "app") throw new Error("Upload the Kiri Bridge app package, not the installer.");
-  if (!manifest.app || manifest.app.path !== "app.bin") throw new Error("Manifest does not describe app.bin.");
-
-  const appBytes = parts.get(manifest.app.path);
-  if (!appBytes) throw new Error("Package is missing app.bin.");
-  if (Number(manifest.app.size) !== appBytes.byteLength) throw new Error("App size does not match manifest.");
-  // Don't compute SHA in the browser: ESP32 verifies the upload against the
-  // X-Kiri-Sha256 header (mbedtls), which works in any context including the
-  // insecure http://device-ip:8080 admin URL where crypto.subtle isn't
-  // available.
-  const expectedSha = String(manifest.app.sha256 ?? "").toLowerCase();
-  if (expectedSha.length !== 64) throw new Error("Manifest app.sha256 is missing or malformed.");
-
-  const otaInfo = await api.otaInfo();
-  if (!otaInfo.ok) throw new Error(otaInfo.error ?? "OTA info request failed");
-  const projectName = manifest.project_name;
-  if (projectName && otaInfo.project_name &&
-      projectName !== otaInfo.project_name &&
-      !(projectName === "kiri_bridge" && LEGACY_PROJECTS.has(otaInfo.project_name))) {
-    throw new Error(`Project mismatch: package=${projectName} device=${otaInfo.project_name}.`);
-  }
-  if (!otaInfo.next_partition || appBytes.byteLength > Number(otaInfo.next_partition.size ?? 0)) {
-    throw new Error("App is larger than the next OTA partition.");
-  }
-  const m0 = manifest.partitions?.ota_0;
-  const m1 = manifest.partitions?.ota_1;
-  if (!partitionMatches(m0, otaInfo.partitions?.ota_0) || !partitionMatches(m1, otaInfo.partitions?.ota_1)) {
-    throw new Error("Package partition table does not match this device.");
-  }
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/ota/upload");
-    xhr.setRequestHeader("Content-Type", "application/octet-stream");
-    xhr.setRequestHeader("X-Kiri-Sha256", expectedSha);
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
-    xhr.onload = () => {
-      let result: any = null;
-      try { result = JSON.parse(xhr.responseText || "{}"); } catch {}
-      if (xhr.status >= 200 && xhr.status < 300 && result?.ok) {
-        onProgress(100);
-        resolve(result);
-      } else {
-        reject(new Error(result?.error ?? xhr.responseText ?? `HTTP ${xhr.status}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error("network error"));
-    xhr.send(new Blob([appBytes], { type: "application/octet-stream" }));
-  });
 }

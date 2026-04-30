@@ -25,7 +25,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "homekit_bridge.h"
-#include "mbedtls/sha256.h"
+#include "ota_handler.h"
 #include "platform_fs.h"
 #include "platform_log.h"
 #include "platform_maintenance.h"
@@ -46,129 +46,11 @@
 
 namespace {
 
-const esp_partition_t* pending_ota_partition = nullptr;
 
 uint64_t uptimeMs() {
     return static_cast<uint64_t>(esp_timer_get_time() / 1000);
 }
 
-int monthNumber(const char* month) {
-    if (month == nullptr) {
-        return 0;
-    }
-    if (std::strcmp(month, "Jan") == 0) return 1;
-    if (std::strcmp(month, "Feb") == 0) return 2;
-    if (std::strcmp(month, "Mar") == 0) return 3;
-    if (std::strcmp(month, "Apr") == 0) return 4;
-    if (std::strcmp(month, "May") == 0) return 5;
-    if (std::strcmp(month, "Jun") == 0) return 6;
-    if (std::strcmp(month, "Jul") == 0) return 7;
-    if (std::strcmp(month, "Aug") == 0) return 8;
-    if (std::strcmp(month, "Sep") == 0) return 9;
-    if (std::strcmp(month, "Oct") == 0) return 10;
-    if (std::strcmp(month, "Nov") == 0) return 11;
-    if (std::strcmp(month, "Dec") == 0) return 12;
-    return 0;
-}
-
-uint64_t compileStamp(const char* date, const char* time) {
-    char month[4] = {};
-    int day = 0;
-    int year = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    if (std::sscanf(date == nullptr ? "" : date, "%3s %d %d", month, &day, &year) != 3 ||
-        std::sscanf(time == nullptr ? "" : time, "%d:%d:%d", &hour, &minute, &second) != 3) {
-        return 0;
-    }
-    const int month_num = monthNumber(month);
-    if (month_num <= 0) {
-        return 0;
-    }
-    return static_cast<uint64_t>(year) * 10000000000ULL +
-           static_cast<uint64_t>(month_num) * 100000000ULL +
-           static_cast<uint64_t>(day) * 1000000ULL +
-           static_cast<uint64_t>(hour) * 10000ULL +
-           static_cast<uint64_t>(minute) * 100ULL +
-           static_cast<uint64_t>(second);
-}
-
-uint64_t versionStamp(const char* version) {
-    int year = 0;
-    int month = 0;
-    int day = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    if (std::sscanf(version == nullptr ? "" : version,
-                    "%4d.%2d%2d.%2d%2d%2d",
-                    &year,
-                    &month,
-                    &day,
-                    &hour,
-                    &minute,
-                    &second) != 6) {
-        return 0;
-    }
-    if (year < 2024 || month < 1 || month > 12 || day < 1 || day > 31 ||
-        hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
-        return 0;
-    }
-    return static_cast<uint64_t>(year) * 10000000000ULL +
-           static_cast<uint64_t>(month) * 100000000ULL +
-           static_cast<uint64_t>(day) * 1000000ULL +
-           static_cast<uint64_t>(hour) * 10000ULL +
-           static_cast<uint64_t>(minute) * 100ULL +
-           static_cast<uint64_t>(second);
-}
-
-uint64_t appDescStamp(const esp_app_desc_t& desc) {
-    const uint64_t stamp_from_version = versionStamp(desc.version);
-    return stamp_from_version > 0 ? stamp_from_version : compileStamp(desc.date, desc.time);
-}
-
-bool isCompatibleOtaProjectName(const char* uploaded_project, const char* current_project) {
-    if (uploaded_project == nullptr || current_project == nullptr) {
-        return false;
-    }
-    if (std::strcmp(uploaded_project, current_project) == 0) {
-        return true;
-    }
-    return std::strcmp(uploaded_project, "kiri_bridge") == 0 &&
-           std::strcmp(current_project, "mitsubishi_heatpump_homekit") == 0;
-}
-
-void versionFromAppDesc(const esp_app_desc_t& desc, char* out, size_t out_len) {
-    if (desc.version[0] != '\0') {
-        std::snprintf(out, out_len, "%s", desc.version);
-        return;
-    }
-
-    char month[4] = {};
-    int day = 0;
-    int year = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    if (std::sscanf(desc.date, "%3s %d %d", month, &day, &year) == 3 &&
-        std::sscanf(desc.time, "%d:%d:%d", &hour, &minute, &second) == 3) {
-        const int month_num = monthNumber(month);
-        if (month_num > 0) {
-            std::snprintf(out,
-                          out_len,
-                          "%04d.%02d%02d.%02d%02d%02d",
-                          year,
-                          month_num,
-                          day,
-                          hour,
-                          minute,
-                          second);
-            return;
-        }
-    }
-    std::snprintf(out, out_len, "%s", desc.version);
-}
 
 uint64_t currentUnixMs(bool* valid) {
     timeval tv {};
@@ -1266,251 +1148,6 @@ esp_err_t clearAllNvsHandler(httpd_req_t* req) {
     return sendMaintenanceResult(req, platform_maintenance::clearAllNvs());
 }
 
-void writePartitionJson(const esp_partition_t* partition, char* out, size_t out_size) {
-    if (out == nullptr || out_size == 0) {
-        return;
-    }
-    if (partition == nullptr) {
-        std::snprintf(out, out_size, "null");
-        return;
-    }
-    char esc_label[32] = {};
-    web_http::jsonEscape(partition->label, esc_label, sizeof(esc_label));
-    std::snprintf(out,
-                  out_size,
-                  "{\"label\":\"%s\",\"address\":%u,\"size\":%u}",
-                  esc_label,
-                  static_cast<unsigned>(partition->address),
-                  static_cast<unsigned>(partition->size));
-}
-
-esp_err_t otaInfoHandler(httpd_req_t* req) {
-    const esp_partition_t* running_partition = esp_ota_get_running_partition();
-    const esp_partition_t* boot_partition = esp_ota_get_boot_partition();
-    const esp_partition_t* next_partition = esp_ota_get_next_update_partition(nullptr);
-    const esp_partition_t* ota0 = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-                                                           ESP_PARTITION_SUBTYPE_APP_OTA_0,
-                                                           nullptr);
-    const esp_partition_t* ota1 = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-                                                           ESP_PARTITION_SUBTYPE_APP_OTA_1,
-                                                           nullptr);
-    const esp_app_desc_t* app_desc = esp_app_get_description();
-
-    char running_json[96] = {};
-    char boot_json[96] = {};
-    char next_json[96] = {};
-    char ota0_json[96] = {};
-    char ota1_json[96] = {};
-    writePartitionJson(running_partition, running_json, sizeof(running_json));
-    writePartitionJson(boot_partition, boot_json, sizeof(boot_json));
-    writePartitionJson(next_partition, next_json, sizeof(next_json));
-    writePartitionJson(ota0, ota0_json, sizeof(ota0_json));
-    writePartitionJson(ota1, ota1_json, sizeof(ota1_json));
-
-    char project_name[64] = {};
-    char version[64] = {};
-    web_http::jsonEscape(app_desc == nullptr ? "" : app_desc->project_name, project_name, sizeof(project_name));
-    web_http::jsonEscape(build_info::firmwareVersion(), version, sizeof(version));
-
-    char body[768] = {};
-    std::snprintf(body,
-                  sizeof(body),
-                  "{\"ok\":true,"
-                  "\"project_name\":\"%s\","
-                  "\"version\":\"%s\","
-                  "\"running_partition\":%s,"
-                  "\"boot_partition\":%s,"
-                  "\"next_partition\":%s,"
-                  "\"partitions\":{\"ota_0\":%s,\"ota_1\":%s}}",
-                  project_name,
-                  version,
-                  running_json,
-                  boot_json,
-                  next_json,
-                  ota0_json,
-                  ota1_json);
-    return web_http::sendText(req, "application/json", body);
-}
-
-esp_err_t otaUploadHandler(httpd_req_t* req) {
-    if (req->content_len <= 0) {
-        return web_http::sendJsonError(req, "empty OTA upload");
-    }
-
-    // Optional X-Kiri-Sha256 header carries the SHA-256 hex of the app.bin
-    // body so the firmware can reject an interrupted or tampered upload
-    // without trusting esp_ota_write's image checks alone. The client gets
-    // it from manifest.app.sha256 inside the .kiri package.
-    char expected_sha_hex[65] = {};
-    bool have_expected_sha = false;
-    if (httpd_req_get_hdr_value_str(req, "X-Kiri-Sha256", expected_sha_hex, sizeof(expected_sha_hex)) == ESP_OK) {
-        have_expected_sha = true;
-        for (size_t i = 0; expected_sha_hex[i] != '\0'; ++i) {
-            const char c = expected_sha_hex[i];
-            const bool is_hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-            if (!is_hex) {
-                return web_http::sendJsonError(req, "X-Kiri-Sha256 header is not lowercase hex");
-            }
-            if (c >= 'A' && c <= 'F') expected_sha_hex[i] = static_cast<char>(c - 'A' + 'a');
-        }
-        if (std::strlen(expected_sha_hex) != 64) {
-            return web_http::sendJsonError(req, "X-Kiri-Sha256 header must be 64 hex chars");
-        }
-    }
-
-    const esp_partition_t* running_partition = esp_ota_get_running_partition();
-    const esp_partition_t* update_partition = esp_ota_get_next_update_partition(nullptr);
-    if (update_partition == nullptr) {
-        return web_http::sendJsonError(req, "no OTA update partition available");
-    }
-    if (running_partition != nullptr && update_partition->address == running_partition->address) {
-        return web_http::sendJsonError(req, "OTA update partition matches running partition");
-    }
-    if (static_cast<size_t>(req->content_len) > update_partition->size) {
-        return web_http::sendJsonError(req, "uploaded app is larger than OTA partition");
-    }
-
-    esp_ota_handle_t ota_handle = 0;
-    esp_err_t err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &ota_handle);
-    if (err != ESP_OK) {
-        char message[128] = {};
-        std::snprintf(message, sizeof(message), "esp_ota_begin failed: %s", esp_err_to_name(err));
-        return web_http::sendJsonError(req, message);
-    }
-
-    mbedtls_sha256_context sha_ctx;
-    mbedtls_sha256_init(&sha_ctx);
-    mbedtls_sha256_starts(&sha_ctx, 0);
-
-    uint8_t buffer[app_config::kPersistentLogReadChunkBytes] = {};
-    int remaining = req->content_len;
-    size_t written_total = 0;
-    while (remaining > 0) {
-        const int recv = httpd_req_recv(req, reinterpret_cast<char*>(buffer), std::min<int>(remaining, sizeof(buffer)));
-        if (recv <= 0) {
-            esp_ota_abort(ota_handle);
-            mbedtls_sha256_free(&sha_ctx);
-            return web_http::sendJsonError(req, "OTA upload receive failed");
-        }
-
-        mbedtls_sha256_update(&sha_ctx, buffer, static_cast<size_t>(recv));
-        err = esp_ota_write(ota_handle, buffer, static_cast<size_t>(recv));
-        if (err != ESP_OK) {
-            esp_ota_abort(ota_handle);
-            mbedtls_sha256_free(&sha_ctx);
-            char message[128] = {};
-            std::snprintf(message, sizeof(message), "esp_ota_write failed: %s", esp_err_to_name(err));
-            return web_http::sendJsonError(req, message);
-        }
-
-        written_total += static_cast<size_t>(recv);
-        remaining -= recv;
-    }
-
-    uint8_t computed_sha[32] = {};
-    mbedtls_sha256_finish(&sha_ctx, computed_sha);
-    mbedtls_sha256_free(&sha_ctx);
-
-    if (have_expected_sha) {
-        char computed_hex[65] = {};
-        for (size_t i = 0; i < sizeof(computed_sha); ++i) {
-            std::snprintf(computed_hex + i * 2, 3, "%02x", computed_sha[i]);
-        }
-        if (std::strcmp(computed_hex, expected_sha_hex) != 0) {
-            esp_ota_abort(ota_handle);
-            char message[192] = {};
-            std::snprintf(message,
-                          sizeof(message),
-                          "SHA-256 mismatch: computed=%s expected=%s",
-                          computed_hex,
-                          expected_sha_hex);
-            return web_http::sendJsonError(req, message);
-        }
-    }
-
-    err = esp_ota_end(ota_handle);
-    if (err != ESP_OK) {
-        char message[128] = {};
-        std::snprintf(message, sizeof(message), "esp_ota_end failed: %s", esp_err_to_name(err));
-        return web_http::sendJsonError(req, message);
-    }
-
-    esp_app_desc_t uploaded_desc = {};
-    err = esp_ota_get_partition_description(update_partition, &uploaded_desc);
-    if (err != ESP_OK) {
-        char message[128] = {};
-        std::snprintf(message, sizeof(message), "app description read failed: %s", esp_err_to_name(err));
-        return web_http::sendJsonError(req, message);
-    }
-
-    const esp_app_desc_t* current_desc = esp_app_get_description();
-    if (current_desc != nullptr &&
-        !isCompatibleOtaProjectName(uploaded_desc.project_name, current_desc->project_name)) {
-        char message[192] = {};
-        std::snprintf(message,
-                      sizeof(message),
-                      "project mismatch: uploaded=%s current=%s",
-                      uploaded_desc.project_name,
-                      current_desc->project_name);
-        return web_http::sendJsonError(req, message);
-    }
-
-    char uploaded_version[32] = {};
-    char current_version[32] = {};
-    versionFromAppDesc(uploaded_desc, uploaded_version, sizeof(uploaded_version));
-    std::snprintf(current_version, sizeof(current_version), "%s", build_info::firmwareVersion());
-
-    const uint64_t uploaded_stamp = appDescStamp(uploaded_desc);
-    uint64_t current_stamp = versionStamp(current_version);
-    if (current_stamp == 0 && current_desc != nullptr) {
-        current_stamp = appDescStamp(*current_desc);
-    }
-    const bool rollback = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp < current_stamp;
-    const bool same_or_older = uploaded_stamp > 0 && current_stamp > 0 && uploaded_stamp <= current_stamp;
-    pending_ota_partition = update_partition;
-
-    char body[768] = {};
-    std::snprintf(body,
-                  sizeof(body),
-                  "{\"ok\":true,"
-                  "\"message\":\"OTA image written. Reboot to boot the uploaded firmware.\","
-                  "\"bytes\":%u,"
-                  "\"partition\":\"%s\","
-                  "\"current_version\":\"%s\","
-                  "\"uploaded_version\":\"%s\","
-                  "\"rollback\":%s,"
-                  "\"same_or_older\":%s,"
-                  "\"warning\":\"%s\"}",
-                  static_cast<unsigned>(written_total),
-                  update_partition->label,
-                  current_version,
-                  uploaded_version,
-                  rollback ? "true" : "false",
-                  same_or_older ? "true" : "false",
-                  same_or_older ? "Uploaded firmware is not newer than the running firmware. Reboot is still allowed." : "");
-    return web_http::sendText(req, "application/json", body);
-}
-
-esp_err_t otaApplyHandler(httpd_req_t* req) {
-    if (pending_ota_partition == nullptr) {
-        return web_http::sendJsonError(req, "no pending OTA upload");
-    }
-
-    const esp_partition_t* partition = pending_ota_partition;
-    pending_ota_partition = nullptr;
-
-    const esp_err_t err = esp_ota_set_boot_partition(partition);
-    if (err != ESP_OK) {
-        char message[128] = {};
-        std::snprintf(message, sizeof(message), "set boot partition failed: %s", esp_err_to_name(err));
-        return web_http::sendJsonError(req, message);
-    }
-
-    web_http::sendText(req, "application/json", "{\"ok\":true,\"message\":\"rebooting into uploaded OTA firmware\"}");
-    vTaskDelay(pdMS_TO_TICKS(500));
-    esp_restart();
-    return ESP_OK;
-}
 
 const web_http::Route ROUTES[] = {
     { "/", HTTP_GET, rootHandler },
@@ -1527,9 +1164,6 @@ const web_http::Route ROUTES[] = {
     { "/api/maintenance/clear-logs", HTTP_POST, clearLogsHandler },
     { "/api/maintenance/clear-spiffs", HTTP_POST, clearSpiffsHandler },
     { "/api/maintenance/clear-all-nvs", HTTP_POST, clearAllNvsHandler },
-    { "/api/ota/info", HTTP_GET, otaInfoHandler },
-    { "/api/ota/upload", HTTP_POST, otaUploadHandler },
-    { "/api/ota/apply", HTTP_POST, otaApplyHandler },
     { "/api/logs", HTTP_GET, logsListHandler },
     { "/api/log/file", HTTP_GET, logFileHandler },
     { "/api/log/live", HTTP_GET, liveLogHandler },
@@ -1546,7 +1180,12 @@ const web_http::Route ROUTES[] = {
 namespace web_routes {
 
 esp_err_t registerRoutes(httpd_handle_t server) {
-    return web_http::registerRoutes(server, ROUTES, sizeof(ROUTES) / sizeof(ROUTES[0]));
+    const esp_err_t err = web_http::registerRoutes(server, ROUTES, sizeof(ROUTES) / sizeof(ROUTES[0]));
+    if (err != ESP_OK) return err;
+    static constexpr const char* kAcceptedVariants[] = {"app"};
+    return ota_handler::registerHandlers(server,
+                                          {kAcceptedVariants,
+                                           sizeof(kAcceptedVariants) / sizeof(kAcceptedVariants[0])});
 }
 
 }  // namespace web_routes
