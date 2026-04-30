@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Firmware Recovery — Kiri Bridge</title>
 <meta name="description" content="Recover or install Kiri Bridge firmware from a browser over USB serial using a verified .kiri firmware package.">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 <link rel="stylesheet" href="kiri.css">
 </head>
 <body>
@@ -153,6 +151,7 @@
 </footer>
 
 <script type="module">
+import { parseKiri, sha256Hex } from './lib/kiri.js';
 const kiriPackageFormat='kiri-firmware-package-v1';
 const kiriProjectId='kiri-bridge';
 const $=id=>document.getElementById(id);
@@ -461,14 +460,6 @@ function uint8ToBinaryString(bytes){
   return result;
 }
 
-function sha256Hex(bytes){
-  const words=[];
-  for(let i=0;i<bytes.length;i+=1){
-    words[i>>>2]|=bytes[i]<<(24-(i%4)*8);
-  }
-  return CryptoJS.SHA256(CryptoJS.lib.WordArray.create(words,bytes.length)).toString(CryptoJS.enc.Hex);
-}
-
 function formatBytes(value){
   if(value>1024*1024)return (value/1024/1024).toFixed(2)+' MB';
   if(value>1024)return (value/1024).toFixed(1)+' KB';
@@ -506,29 +497,23 @@ function updateFlashProgress(fileIndex,written,total){
   );
 }
 
-async function readEntry(zip,path,type='uint8array'){
-  const entry=zip.file(path);
-  if(!entry)throw new Error(`Firmware file is missing ${path}`);
-  return entry.async(type);
-}
-
 async function parseKiriPackage(file){
   if(!file.name.toLowerCase().endsWith('.kiri'))throw new Error('Choose a .kiri firmware / OTA file.');
-  const zip=await JSZip.loadAsync(file);
-  const manifest=JSON.parse(await readEntry(zip,'manifest.json','string'));
+  const {manifest,parts}=await parseKiri(file);
   if(manifest.format!==kiriPackageFormat)throw new Error('Unsupported Kiri firmware / OTA format.');
   if(manifest.project!==kiriProjectId)throw new Error(`Wrong project: ${manifest.project||'unknown'}.`);
   if(!Array.isArray(manifest.parts)||manifest.parts.length===0)throw new Error('This firmware / OTA file does not contain flashable images.');
 
-  const parts=[];
+  const partsList=[];
   for(const part of manifest.parts){
-    const bytes=await readEntry(zip,part.path,'uint8array');
+    const bytes=parts.get(part.path);
+    if(!bytes)throw new Error(`Firmware file is missing ${part.path}`);
     if(Number(part.size)!==bytes.byteLength)throw new Error(`${part.path} size does not match manifest.`);
-    const hash=sha256Hex(bytes);
+    const hash=await sha256Hex(bytes);
     if(String(part.sha256||'').toLowerCase()!==hash)throw new Error(`${part.path} checksum does not match manifest.`);
-    parts.push({...part,bytes});
+    partsList.push({...part,bytes});
   }
-  return {manifest,parts};
+  return {manifest,parts:partsList};
 }
 
 function renderPackageDetails(pkg){
