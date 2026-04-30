@@ -406,7 +406,7 @@ def create_kiri_package(
     }
 
     package_path = version_dir / f"{project_name}_{version}.kiri"
-    with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as package:
+    with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_STORED) as package:
         package.writestr("manifest.json", json.dumps(manifest, indent=2) + "\n")
         for package_name, source in package_sources.items():
             package.write(source, package_name)
