@@ -80,13 +80,27 @@ status singleton (`store.ts`).
 esbuild bundles in one step. Terser then runs as a second pass for an extra
 ~3% gz win. Build is sub-second on cold cache.
 
-### Brotli over gzip for the chunked SPA
+### Brotli over gzip — tried and reverted
 
-Switched in commit `5935819`. On this codebase brotli quality 11 saved 15%
-of rodata vs gzip level 9 (38.6 KB → 32.8 KB). Browser support is universal
-in any 2020+ engine; the installer page does **not** use brotli because
-captive-portal probes from iOS/Android may not negotiate `Accept-Encoding`
-the way a real browser would.
+Tried in commit `5935819` (~15% rodata saving on paper, 38.6 KB → 32.8 KB
+across the chunked SPA), reverted in commit `fec53f7`. Theory said any
+2020+ browser handles `Content-Encoding: br` natively. Reality on this
+specific stack did not:
+
+- `esp_http_server` does not natively negotiate `Accept-Encoding`. We
+  send `Content-Encoding: br` unconditionally and assume the client copes.
+- We chunk-and-stitch (86 small brotli streams concatenated client-side
+  via the loader). Some clients refuse to decompress when the streams are
+  smaller than the brotli window, others stall on the in-flight assembly.
+- Captive-portal connectivity probes (iOS, Android, ChromeOS) sometimes
+  call into the `/` shell endpoint with no `Accept-Encoding` header and
+  treat the brotli body as broken HTML.
+
+The decoder version stamp now folds the encoding name in
+(`digest.update(b"content-encoding:gzip")`) so a future swap will bust
+caches automatically. If we revisit, do it as `Accept-Encoding`-aware
+content negotiation in `sendAsset` (ship both `_gz` and `_br` symbols,
+pick at request time) — not as a unilateral switch.
 
 ### Bundle size guards
 
@@ -99,7 +113,8 @@ silently bloat the firmware:
 | main CSS  | 8 KB gz    | 3.4 KB   |
 | installer | 18 KB gz   | 13.2 KB  |
 
-Builds fail loudly when the limit is crossed.
+Builds fail loudly when the limit is crossed. Embedded chunked rodata
+sits around 38–39 KB total (gzip).
 
 ### What we tried and reverted
 
