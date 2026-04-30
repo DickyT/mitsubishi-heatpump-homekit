@@ -3,10 +3,13 @@
 
 import { useEffect, useState, useRef, useCallback } from "preact/hooks";
 import type { JSX } from "preact";
+import { generate } from "lean-qr";
 import { Section, Field, Btn, Modal } from "../components";
 import { api } from "../api";
 import { status, fetchStatusOnce } from "../store";
 import type { Status, DeviceConfig, TransportStatus } from "../types";
+// @ts-expect-error — site/lib/kiri.js ships its types via kiri.d.ts beside it.
+import { parseKiri } from "../../../site/lib/kiri.js";
 
 // ----- formatters -----
 
@@ -137,22 +140,6 @@ function renderTransport(t: TransportStatus | undefined): string {
     "Sets Pending: " + t.sets_pending,
     t.last_error ? "Last Error: " + t.last_error : "",
   ].filter(Boolean).join("\n");
-}
-
-// ----- lazy loaders for QR code library -----
-
-let qrLibPromise: Promise<void> | undefined;
-function loadQrLib(): Promise<void> {
-  if ((window as any).QRCode) return Promise.resolve();
-  if (qrLibPromise) return qrLibPromise;
-  qrLibPromise = new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("QRCode library failed to load from cdnjs"));
-    document.head.appendChild(s);
-  });
-  return qrLibPromise;
 }
 
 // ----- main page component -----
@@ -394,19 +381,17 @@ export function AdminPage(): JSX.Element {
     if (!hkOpen || !s?.homekit.setup_payload) return;
     const target = qrTarget.current;
     if (!target) return;
-    target.textContent = "Loading QR code…";
-    loadQrLib().then(() => {
-      target.innerHTML = "";
-      const QRCode = (window as any).QRCode;
-      new QRCode(target, {
-        text: s.homekit.setup_payload,
-        width: 220,
-        height: 220,
-        colorDark: "#0a0a0a",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M,
-      });
-    }).catch(() => { target.textContent = "QR library failed to load. Use the pairing code instead."; });
+    target.innerHTML = "";
+    try {
+      // lean-qr is bundled into the firmware so the modal works on the
+      // insecure http://device-ip:8080 admin URL with no internet access.
+      const code = generate(s.homekit.setup_payload);
+      const canvas = document.createElement("canvas");
+      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 4, padY: 4, scale: 6 });
+      target.appendChild(canvas);
+    } catch (e) {
+      target.textContent = "QR rendering failed. Use the pairing code instead.";
+    }
   }, [hkOpen, s?.homekit.setup_payload]);
 
   if (!s) {
@@ -652,54 +637,6 @@ type OtaModalState = {
 };
 type NoticeState = { title: string; body: string; restart: boolean };
 
-let jsZipPromise: Promise<any> | undefined;
-function loadJSZip(): Promise<any> {
-  const w = window as any;
-  if (w.JSZip) return Promise.resolve(w.JSZip);
-  if (jsZipPromise) return jsZipPromise;
-  jsZipPromise = new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-    s.onload = () => w.JSZip ? resolve(w.JSZip) : reject(new Error("JSZip did not initialize"));
-    s.onerror = () => reject(new Error("Failed to load JSZip from cdnjs"));
-    document.head.appendChild(s);
-  });
-  return jsZipPromise;
-}
-let cryptoJsPromise: Promise<any> | undefined;
-function loadCryptoJS(): Promise<any> {
-  const w = window as any;
-  if (w.CryptoJS) return Promise.resolve(w.CryptoJS);
-  if (cryptoJsPromise) return cryptoJsPromise;
-  cryptoJsPromise = new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js";
-    s.onload = () => w.CryptoJS ? resolve(w.CryptoJS) : reject(new Error("CryptoJS did not initialize"));
-    s.onerror = () => reject(new Error("Failed to load CryptoJS from cdnjs"));
-    document.head.appendChild(s);
-  });
-  return cryptoJsPromise;
-}
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  if (window.crypto && crypto.subtle) {
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
-  const CryptoJS = await loadCryptoJS();
-  const words: number[] = [];
-  for (let i = 0; i < bytes.length; i++) words[i >>> 2] |= (bytes[i]! << (24 - (i % 4) * 8));
-  return CryptoJS.SHA256(CryptoJS.lib.WordArray.create(words, bytes.length)).toString(CryptoJS.enc.Hex);
-}
-async function readZipText(zip: any, path: string): Promise<string> {
-  const entry = zip.file(path);
-  if (!entry) throw new Error(`Package is missing ${path}`);
-  return entry.async("string");
-}
-async function readZipBytes(zip: any, path: string): Promise<Uint8Array> {
-  const entry = zip.file(path);
-  if (!entry) throw new Error(`Package is missing ${path}`);
-  return entry.async("uint8array");
-}
 function partitionMatches(pkg: any, dev: any): boolean {
   if (!pkg || !dev) return false;
   return Number(pkg.offset) === Number(dev.address) && Number(pkg.size) === Number(dev.size);
@@ -709,22 +646,25 @@ async function validateAndUpload(file: File, onProgress: (pct: number) => void):
   const lower = file.name.toLowerCase();
   if (!lower.endsWith(".kiri")) throw new Error("Only .kiri firmware packages are allowed.");
 
-  const JSZip = await loadJSZip();
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const manifest = JSON.parse(await readZipText(zip, "manifest.json"));
+  const { manifest, parts } = await parseKiri(file);
   if (manifest.format !== KIRI_PACKAGE_FORMAT) throw new Error("Not a supported Kiri firmware package.");
   if (manifest.project !== KIRI_PROJECT_ID) throw new Error(`Wrong project package: ${manifest.project ?? "unknown"}.`);
   if (manifest.variant !== "app") throw new Error("Upload the Kiri Bridge app package, not the installer.");
   if (!manifest.app || manifest.app.path !== "app.bin") throw new Error("Manifest does not describe app.bin.");
 
-  const appBytes = await readZipBytes(zip, manifest.app.path);
+  const appBytes = parts.get(manifest.app.path);
+  if (!appBytes) throw new Error("Package is missing app.bin.");
   if (Number(manifest.app.size) !== appBytes.byteLength) throw new Error("App size does not match manifest.");
-  const appHash = await sha256Hex(appBytes);
-  if (String(manifest.app.sha256 ?? "").toLowerCase() !== appHash) throw new Error("App checksum does not match manifest.");
+  // Don't compute SHA in the browser: ESP32 verifies the upload against the
+  // X-Kiri-Sha256 header (mbedtls), which works in any context including the
+  // insecure http://device-ip:8080 admin URL where crypto.subtle isn't
+  // available.
+  const expectedSha = String(manifest.app.sha256 ?? "").toLowerCase();
+  if (expectedSha.length !== 64) throw new Error("Manifest app.sha256 is missing or malformed.");
 
   const otaInfo = await api.otaInfo();
   if (!otaInfo.ok) throw new Error(otaInfo.error ?? "OTA info request failed");
-  const projectName = (manifest as any).project_name as string | undefined;
+  const projectName = manifest.project_name;
   if (projectName && otaInfo.project_name &&
       projectName !== otaInfo.project_name &&
       !(projectName === "kiri_bridge" && LEGACY_PROJECTS.has(otaInfo.project_name))) {
@@ -743,6 +683,7 @@ async function validateAndUpload(file: File, onProgress: (pct: number) => void):
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/ota/upload");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-Kiri-Sha256", expectedSha);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
     xhr.onload = () => {
       let result: any = null;

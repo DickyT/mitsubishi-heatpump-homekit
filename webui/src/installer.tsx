@@ -6,6 +6,8 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import "./styles.css";
+// @ts-expect-error — site/lib/kiri.js ships its types via kiri.d.ts beside it.
+import { parseKiri } from "../../site/lib/kiri.js";
 
 // ---------- types ----------
 
@@ -185,17 +187,41 @@ function InstallerApp(): JSX.Element {
     setTimeout(() => document.getElementById("step3")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
-  function uploadFirmware(file: File): void {
+  async function uploadFirmware(file: File): Promise<void> {
     const name = (file.name ?? "").toLowerCase();
     if (!name.endsWith(".kiri")) {
       setOtaOut("Only .kiri firmware packages are allowed.");
       return;
     }
     setOtaProgress(0);
-    setOtaOut("Uploading " + file.name + "…");
+    setOtaOut("Validating " + file.name + "…");
+
+    let appBytes: Uint8Array;
+    let expectedSha: string;
+    try {
+      const { manifest, parts } = await parseKiri(file);
+      if (manifest.format !== "kiri-firmware-package-v1") throw new Error("Not a supported Kiri firmware package.");
+      if (manifest.project !== "kiri-bridge") throw new Error("Wrong project package: " + (manifest.project ?? "unknown"));
+      if (manifest.variant !== "app") throw new Error("Upload the production app package, not the installer package.");
+      if (!manifest.app || manifest.app.path !== "app.bin") throw new Error("Manifest does not describe app.bin.");
+      const bytes = parts.get(manifest.app.path);
+      if (!bytes) throw new Error("Package is missing app.bin.");
+      if (Number(manifest.app.size) !== bytes.byteLength) throw new Error("App size does not match manifest.");
+      const sha = String(manifest.app.sha256 ?? "").toLowerCase();
+      if (sha.length !== 64) throw new Error("Manifest app.sha256 is missing or malformed.");
+      appBytes = bytes;
+      expectedSha = sha;
+    } catch (e: any) {
+      setOtaProgress(null);
+      setOtaOut("Validation failed: " + (e?.message ?? e));
+      return;
+    }
+
+    setOtaOut("Uploading app.bin (" + appBytes.byteLength + " bytes)…");
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/ota/upload");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-Kiri-Sha256", expectedSha);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) setOtaProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -215,7 +241,7 @@ function InstallerApp(): JSX.Element {
       setOtaProgress(null);
       setOtaOut("OTA upload failed: network error");
     };
-    xhr.send(file);
+    xhr.send(new Blob([appBytes], { type: "application/octet-stream" }));
   }
 
   function cancelOta(): void {

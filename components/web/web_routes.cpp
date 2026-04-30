@@ -25,6 +25,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "homekit_bridge.h"
+#include "mbedtls/sha256.h"
 #include "platform_fs.h"
 #include "platform_log.h"
 #include "platform_maintenance.h"
@@ -1336,6 +1337,27 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
         return web_http::sendJsonError(req, "empty OTA upload");
     }
 
+    // Optional X-Kiri-Sha256 header carries the SHA-256 hex of the app.bin
+    // body so the firmware can reject an interrupted or tampered upload
+    // without trusting esp_ota_write's image checks alone. The client gets
+    // it from manifest.app.sha256 inside the .kiri package.
+    char expected_sha_hex[65] = {};
+    bool have_expected_sha = false;
+    if (httpd_req_get_hdr_value_str(req, "X-Kiri-Sha256", expected_sha_hex, sizeof(expected_sha_hex)) == ESP_OK) {
+        have_expected_sha = true;
+        for (size_t i = 0; expected_sha_hex[i] != '\0'; ++i) {
+            const char c = expected_sha_hex[i];
+            const bool is_hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!is_hex) {
+                return web_http::sendJsonError(req, "X-Kiri-Sha256 header is not lowercase hex");
+            }
+            if (c >= 'A' && c <= 'F') expected_sha_hex[i] = static_cast<char>(c - 'A' + 'a');
+        }
+        if (std::strlen(expected_sha_hex) != 64) {
+            return web_http::sendJsonError(req, "X-Kiri-Sha256 header must be 64 hex chars");
+        }
+    }
+
     const esp_partition_t* running_partition = esp_ota_get_running_partition();
     const esp_partition_t* update_partition = esp_ota_get_next_update_partition(nullptr);
     if (update_partition == nullptr) {
@@ -1356,6 +1378,10 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
         return web_http::sendJsonError(req, message);
     }
 
+    mbedtls_sha256_context sha_ctx;
+    mbedtls_sha256_init(&sha_ctx);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+
     uint8_t buffer[app_config::kPersistentLogReadChunkBytes] = {};
     int remaining = req->content_len;
     size_t written_total = 0;
@@ -1363,12 +1389,15 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
         const int recv = httpd_req_recv(req, reinterpret_cast<char*>(buffer), std::min<int>(remaining, sizeof(buffer)));
         if (recv <= 0) {
             esp_ota_abort(ota_handle);
+            mbedtls_sha256_free(&sha_ctx);
             return web_http::sendJsonError(req, "OTA upload receive failed");
         }
 
+        mbedtls_sha256_update(&sha_ctx, buffer, static_cast<size_t>(recv));
         err = esp_ota_write(ota_handle, buffer, static_cast<size_t>(recv));
         if (err != ESP_OK) {
             esp_ota_abort(ota_handle);
+            mbedtls_sha256_free(&sha_ctx);
             char message[128] = {};
             std::snprintf(message, sizeof(message), "esp_ota_write failed: %s", esp_err_to_name(err));
             return web_http::sendJsonError(req, message);
@@ -1376,6 +1405,27 @@ esp_err_t otaUploadHandler(httpd_req_t* req) {
 
         written_total += static_cast<size_t>(recv);
         remaining -= recv;
+    }
+
+    uint8_t computed_sha[32] = {};
+    mbedtls_sha256_finish(&sha_ctx, computed_sha);
+    mbedtls_sha256_free(&sha_ctx);
+
+    if (have_expected_sha) {
+        char computed_hex[65] = {};
+        for (size_t i = 0; i < sizeof(computed_sha); ++i) {
+            std::snprintf(computed_hex + i * 2, 3, "%02x", computed_sha[i]);
+        }
+        if (std::strcmp(computed_hex, expected_sha_hex) != 0) {
+            esp_ota_abort(ota_handle);
+            char message[192] = {};
+            std::snprintf(message,
+                          sizeof(message),
+                          "SHA-256 mismatch: computed=%s expected=%s",
+                          computed_hex,
+                          expected_sha_hex);
+            return web_http::sendJsonError(req, message);
+        }
     }
 
     err = esp_ota_end(ota_handle);
