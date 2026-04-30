@@ -457,6 +457,13 @@ input[type=text]:focus,input[type=password]:focus,input[type=file]:focus{
   border-color:var(--accent);
 }
 input[type=file]{cursor:pointer;font-family:var(--mono);font-size:13px}
+.file-input-hidden{
+  position:absolute;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
+}
 .confirm-row{
   display:flex;
   align-items:flex-start;

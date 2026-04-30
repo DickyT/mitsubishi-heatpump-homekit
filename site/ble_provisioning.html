@@ -57,25 +57,25 @@
     </section>
 
     <section class="tool-step step-hidden" id="step-device">
-      <div class="tool-step-num">02</div>
+      <div id="device-step-num" class="tool-step-num">02</div>
       <div>
-        <h2>Pick the device.</h2>
-        <p class="hint">Choose the BLE device named <span class="mono">PROV_KIRI_…</span>. Keep this tab open until WiFi setup finishes.</p>
-        <label class="field">
+        <h2 id="device-step-title">Pick the device.</h2>
+        <p id="device-step-hint" class="hint">Choose the BLE device named <span class="mono">PROV_KIRI_…</span>. Keep this tab open until WiFi setup finishes.</p>
+        <label id="device-prefix-field" class="field">
           <span class="field-label">Device prefix</span>
           <input id="device-prefix" type="text" value="PROV_KIRI_" autocomplete="off" spellcheck="false">
         </label>
         <div id="device-details"></div>
         <div class="tool-actions">
+          <button id="continue-wifi-btn" class="btn btn-primary step-hidden">Enter WiFi →</button>
           <button id="select-device-btn" class="btn btn-primary">Open BLE picker</button>
-          <button id="continue-wifi-btn" class="btn step-hidden">Enter WiFi →</button>
           <button id="disconnect-btn" class="btn step-hidden">Disconnect</button>
         </div>
       </div>
     </section>
 
     <section class="tool-step step-hidden" id="step-wifi">
-      <div class="tool-step-num">03</div>
+      <div id="wifi-step-num" class="tool-step-num">03</div>
       <div>
         <h2>Send WiFi.</h2>
         <p class="hint">The password stays visible — easier to catch typos before you send. <span class="mono">2.4&nbsp;GHz</span> networks only.</p>
@@ -99,7 +99,7 @@
     </section>
 
     <section class="tool-step step-hidden" id="step-result">
-      <div class="tool-step-num">04</div>
+      <div id="result-step-num" class="tool-step-num">04</div>
       <div>
         <h2>Open the portal.</h2>
         <p class="hint">When WiFi connects, the device's local web UI is reachable on your network. That's where you upload the firmware and pair with HomeKit.</p>
@@ -274,6 +274,32 @@
   </table>`;
   }
 
+  function setDeviceStepConnected() {
+    $('device-step-num').textContent = '03';
+    $('wifi-step-num').textContent = '04';
+    $('result-step-num').textContent = '05';
+    $('device-step-title').textContent = 'Device connected. Enter WiFi.';
+    $('device-step-hint').textContent = 'BLE provisioning is connected and reserved. Continue to enter the 2.4 GHz WiFi credentials for this Kiri Bridge.';
+    $('device-prefix-field').classList.add('step-hidden');
+    $('continue-wifi-btn').classList.remove('step-hidden');
+    $('select-device-btn').classList.remove('btn-primary');
+    $('select-device-btn').textContent = 'Choose another device';
+    $('disconnect-btn').classList.remove('step-hidden');
+  }
+
+  function resetDeviceStepCopy() {
+    $('device-step-num').textContent = '02';
+    $('wifi-step-num').textContent = '03';
+    $('result-step-num').textContent = '04';
+    $('device-step-title').textContent = 'Pick the device.';
+    $('device-step-hint').innerHTML = 'Choose the BLE device named <span class="mono">PROV_KIRI_…</span>. Keep this tab open until WiFi setup finishes.';
+    $('device-prefix-field').classList.remove('step-hidden');
+    $('continue-wifi-btn').classList.add('step-hidden');
+    $('select-device-btn').classList.add('btn-primary');
+    $('select-device-btn').textContent = 'Open BLE picker';
+    $('disconnect-btn').classList.add('step-hidden');
+  }
+
   function decodeSsid(value) {
     if (value instanceof Uint8Array) return decoder.decode(value);
     if (Array.isArray(value)) return decoder.decode(new Uint8Array(value));
@@ -328,8 +354,7 @@
       await device.establishSession();
       log('BLE provisioning session established.');
       renderDeviceDetails();
-      $('continue-wifi-btn').classList.remove('step-hidden');
-      $('disconnect-btn').classList.remove('step-hidden');
+      setDeviceStepConnected();
       showStep(2);
     } catch (error) {
       if (device) {
@@ -345,7 +370,7 @@
     }
   }
 
-  function disconnectDevice() {
+  function disconnectDevice(nextStep = 2) {
     if (device) {
       try { device.disconnect(); } catch (error) { log('Disconnect warning: ' + (error && error.message ? error.message : error)); }
     }
@@ -353,12 +378,19 @@
     selectedBleName = '';
     $('device-details').innerHTML = '';
     $('wifi-list').innerHTML = '';
-    $('continue-wifi-btn').classList.add('step-hidden');
-    $('disconnect-btn').classList.add('step-hidden');
+    resetDeviceStepCopy();
     setDeviceState('not selected');
     setWifiState('not configured');
     log('BLE device disconnected.');
-    showStep(2);
+    showStep(nextStep);
+  }
+
+  function selectOrReleaseDevice() {
+    if (device) {
+      disconnectDevice(2);
+      return;
+    }
+    selectDevice();
   }
 
   async function scanWifi() {
@@ -441,10 +473,10 @@
     log('Blue flashing LED confirmed. Ready to select BLE device.');
     showStep(2);
   });
-  $('select-device-btn').addEventListener('click', selectDevice);
+  $('select-device-btn').addEventListener('click', selectOrReleaseDevice);
   $('continue-wifi-btn').addEventListener('click', () => showStep(3));
-  $('disconnect-btn').addEventListener('click', disconnectDevice);
-  $('back-device-btn').addEventListener('click', disconnectDevice);
+  $('disconnect-btn').addEventListener('click', () => disconnectDevice(1));
+  $('back-device-btn').addEventListener('click', () => disconnectDevice(2));
   $('scan-wifi-btn').addEventListener('click', scanWifi);
   $('send-wifi-btn').addEventListener('click', provisionWifi);
   $('clear-log-btn').addEventListener('click', () => { $('log').textContent = ''; });

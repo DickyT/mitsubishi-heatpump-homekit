@@ -29,7 +29,6 @@ const FIELD_KEYS = [
 ] as const;
 
 const CN105_KEYS = ["rx_pin", "tx_pin", "baud", "data_bits", "parity", "stop_bits", "rx_pull", "tx_od"] as const;
-
 const DEFAULTS: SettingsForm = {
   device_name: "Kiri Bridge",
   wifi_ssid: "YOUR_WIFI_SSID",
@@ -182,18 +181,14 @@ function InstallerApp(): JSX.Element {
 
   function continueToOta(): void {
     setStep(3);
-    setOtaOut("Select the production app firmware. Upload starts automatically.");
+    setOtaOut("Select the production .kiri firmware package. Upload starts automatically.");
     setTimeout(() => document.getElementById("step3")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
   function uploadFirmware(file: File): void {
     const name = (file.name ?? "").toLowerCase();
-    if (!name.endsWith(".bin")) {
-      setOtaOut("Only .bin firmware files are allowed.");
-      return;
-    }
-    if (!name.endsWith("_0x20000.bin")) {
-      setOtaOut("Pick the app firmware at address 0x20000.");
+    if (!name.endsWith(".kiri")) {
+      setOtaOut("Only .kiri firmware packages are allowed.");
       return;
     }
     setOtaProgress(0);
@@ -340,8 +335,8 @@ function InstallerApp(): JSX.Element {
           <pre>{probeOut}</pre>
         </Step>
 
-        <Step n={3} title="OTA upload" hint={<>Pick the production app firmware at address <code>0x20000</code> from <code>firmware_exports/&lt;version&gt;/</code>. Upload starts on selection.</>} locked={step !== 3} id="step3">
-          <input type="file" accept=".bin,application/octet-stream" onChange={(e) => {
+        <Step n={3} title="OTA upload" hint={<>Pick the production <code>.kiri</code> firmware package from <code>firmware_exports/&lt;version&gt;/</code>. Upload starts on selection.</>} locked={step !== 3} id="step3">
+          <input type="file" accept=".kiri" onChange={(e) => {
             const f = (e.target as HTMLInputElement).files?.[0];
             (e.target as HTMLInputElement).value = "";
             if (f) uploadFirmware(f);

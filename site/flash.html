@@ -58,15 +58,13 @@
     <section class="tool-step step-hidden" id="step-package">
       <div class="tool-step-num">02</div>
       <div>
-        <h2>Pick a package.</h2>
-        <p class="hint">A <span class="mono">.kiri</span> file from <a href="https://github.com/DickyT/kiri-homekit/releases">GitHub Releases</a>. The browser checks the manifest, sizes, and checksums before writing anything.</p>
-        <label class="field">
-          <span class="field-label">Kiri package</span>
-          <input id="package-file" type="file" accept=".kiri">
-        </label>
+        <h2>Board verified. Choose firmware.</h2>
+        <p class="hint">The Kiri Bridge is reserved over USB. Choose a <span class="mono">.kiri</span> firmware package from <a href="https://github.com/DickyT/kiri-homekit/releases">GitHub Releases</a>; the browser checks the manifest, sizes, and checksums before writing anything.</p>
+        <input id="package-file" class="file-input-hidden" type="file" accept=".kiri">
         <div id="package-details"></div>
         <div class="tool-actions">
-          <button id="back-serial-btn" class="btn">← Release board</button>
+          <button id="choose-package-btn" class="btn btn-primary">Choose firmware →</button>
+          <button id="back-serial-btn" class="btn">Choose another board</button>
         </div>
       </div>
     </section>
@@ -135,7 +133,7 @@
     </div>
     <div class="modal-actions">
       <button id="success-provision-btn" class="btn btn-primary step-hidden">Open WiFi setup →</button>
-      <button id="success-close-btn" class="btn btn-primary">OK</button>
+      <button id="success-close-btn" class="btn">OK</button>
     </div>
   </div>
 </div>
@@ -191,6 +189,7 @@ function showStep(step){
   $('step-package').classList.toggle('step-hidden',step!==2);
   $('step-flash').classList.toggle('step-hidden',step!==3);
   $('package-file').disabled=step!==2;
+  $('choose-package-btn').disabled=step!==2;
   if(step===3)renderFlashSummary();
   $('flash-btn').disabled=step!==3||!selectedPort||!selectedPackage||!$('confirm-hardware').checked;
 }
@@ -381,6 +380,7 @@ function resetInstallerState(){
   $('confirm-hardware').checked=false;
   resetFlashProgress();
   $('continue-package-btn').classList.add('step-hidden');
+  $('choose-package-btn').textContent='Choose firmware →';
   setPackageState('not selected');
   setSerialState();
   $('chip-state').className='';
@@ -396,6 +396,7 @@ function resetToPackageStep(){
   $('flash-summary').innerHTML='';
   $('confirm-hardware').checked=false;
   resetFlashProgress();
+  $('choose-package-btn').textContent='Choose firmware →';
   setPackageState('not selected');
   log('Back to firmware / OTA selection.');
   showStep(2);
@@ -430,7 +431,7 @@ async function selectSerialPort(){
     $('serial-btn').textContent='Verified';
     $('serial-btn').disabled=true;
     $('continue-package-btn').classList.remove('step-hidden');
-    showStep(1);
+    showStep(2);
   }catch(e){
     if(port){
       try{
@@ -562,6 +563,7 @@ async function handlePackageSelection(){
   const file=$('package-file').files&&$('package-file').files[0];
   selectedPackage=null;
   $('package-details').innerHTML='';
+  $('choose-package-btn').textContent='Choose firmware →';
   resetFlashProgress();
   if(!file){
     setPackageState('not selected');
@@ -573,6 +575,7 @@ async function handlePackageSelection(){
     selectedPackage=await parseKiriPackage(file);
     renderPackageDetails(selectedPackage);
     setPackageState(`${file.name} ready`,'ok');
+    $('choose-package-btn').textContent='Choose another firmware';
     $('confirm-hardware').checked=false;
     log(`Package selected: ${file.name}`);
     showStep(3);
@@ -688,6 +691,7 @@ $('serial-btn').addEventListener('click',selectSerialPort);
 $('continue-package-btn').addEventListener('click',()=>showStep(2));
 $('back-serial-btn').addEventListener('click',resetToSerialStep);
 $('back-package-btn').addEventListener('click',resetToPackageStep);
+$('choose-package-btn').addEventListener('click',()=>$('package-file').click());
 $('package-file').addEventListener('change',handlePackageSelection);
 $('flash-btn').addEventListener('click',flashSelectedPackage);
 $('confirm-hardware').addEventListener('change',()=>showStep(currentStep));
