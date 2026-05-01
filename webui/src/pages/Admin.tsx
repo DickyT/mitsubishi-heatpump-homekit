@@ -4,11 +4,12 @@
 import { useEffect, useState, useRef, useCallback } from "preact/hooks";
 import type { JSX } from "preact";
 import { generate } from "lean-qr";
-import { Section, Field, Btn, Modal } from "../components";
+import { Section, Field, Btn, Modal, OtaConfirmModal, RebootingModal } from "../components";
 import { api } from "../api";
 import { status, fetchStatusOnce } from "../store";
 import type { Status, DeviceConfig, TransportStatus } from "../types";
 import { validateAndUpload } from "../lib/ota";
+import type { OtaUploadResult } from "../lib/ota";
 
 // ----- formatters -----
 
@@ -61,7 +62,6 @@ function formatDuration(ms: number): string {
   const t = Math.max(0, Math.ceil((ms || 0) / 1000));
   return `${Math.floor(t / 60)}m ${String(t % 60).padStart(2, "0")}s`;
 }
-
 // ----- settings field config -----
 
 const CN105_ADVANCED_KEYS = [
@@ -143,14 +143,7 @@ function renderTransport(t: TransportStatus | undefined): string {
 
 // ----- main page component -----
 
-type OtaModalState = {
-  currentVersion: string;
-  newVersion: string;
-  partition: string;
-  warning: boolean;
-  status?: string;
-};
-type NoticeState = { title: string; body: string; restart: boolean };
+type NoticeState = { title: string; body: string };
 
 export function AdminPage(): JSX.Element {
   const s = status.value;
@@ -162,8 +155,9 @@ export function AdminPage(): JSX.Element {
   const [cn105Open, setCn105Open] = useState(false);
   const [cn105Snapshot, setCn105Snapshot] = useState<SettingsForm | null>(null);
   const [hkOpen, setHkOpen] = useState(false);
-  const [otaModalState, setOtaModalState] = useState<OtaModalState | null>(null);
+  const [otaModalState, setOtaModalState] = useState<OtaUploadResult | null>(null);
   const [otaApplying, setOtaApplying] = useState(false);
+  const [otaApplyStatus, setOtaApplyStatus] = useState("");
   const [otaUploading, setOtaUploading] = useState(false);
   const [otaProgress, setOtaProgress] = useState(0);
   const [otaShowProgress, setOtaShowProgress] = useState(false);
@@ -174,9 +168,11 @@ export function AdminPage(): JSX.Element {
   const [nvsMsg, setNvsMsg] = useState<string>("");
   const [nvsBusy, setNvsBusy] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [rebooting, setRebooting] = useState(false);
   const [transport, setTransport] = useState<TransportStatus | undefined>(undefined);
   const [maintMsg, setMaintMsg] = useState("");
   const [tick, setTick] = useState(0);
+  const rebootTimer = useRef<number | undefined>(undefined);
 
   // Bootstrap settings from first status that arrives.
   useEffect(() => {
@@ -192,6 +188,10 @@ export function AdminPage(): JSX.Element {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => () => {
+    if (rebootTimer.current !== undefined) window.clearTimeout(rebootTimer.current);
+  }, []);
+
   // Keep transport pre in sync with polled status.
   useEffect(() => {
     if (s) setTransport(s.cn105.transport_status);
@@ -200,6 +200,15 @@ export function AdminPage(): JSX.Element {
   function update(key: string, value: string): void {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setSettingsDirty(true);
+  }
+
+  function beginRebootFlow(action?: () => void): void {
+    setNotice(null);
+    setRebooting(true);
+    action?.();
+    if (rebootTimer.current === undefined) {
+      rebootTimer.current = window.setTimeout(() => window.location.reload(), 5000);
+    }
   }
 
   function openCn105(): void {
@@ -231,7 +240,7 @@ export function AdminPage(): JSX.Element {
   async function saveConfig(): Promise<void> {
     const code = normalizeHomeKitCode(settings["cfg-homekit-code"]?.trim());
     if (code && code.length !== 8) {
-      setNotice({ title: "Save Failed", body: "HomeKit pairing code must be 8 digits, eg 1111-2222.", restart: false });
+      setNotice({ title: "Save Failed", body: "HomeKit pairing code must be 8 digits, eg 1111-2222." });
       return;
     }
     const params = new URLSearchParams();
@@ -258,14 +267,13 @@ export function AdminPage(): JSX.Element {
       const j = await api.saveConfig(params);
       if (!j.ok) {
         setMaintMsg("");
-        setNotice({ title: "Save Failed", body: j.error ?? j.message ?? "The device rejected this save.", restart: false });
+        setNotice({ title: "Save Failed", body: j.error ?? j.message ?? "The device rejected this save." });
         return;
       }
-      setNotice({ title: "Settings Saved", body: "The device is rebooting. This page will refresh in 5 seconds.", restart: true });
-      api.reboot().catch(() => {});
+      beginRebootFlow(() => { api.reboot().catch(() => {}); });
     } catch (e: any) {
       setMaintMsg("");
-      setNotice({ title: "Save Failed", body: "Request failed: " + (e?.message ?? e), restart: false });
+      setNotice({ title: "Save Failed", body: "Request failed: " + (e?.message ?? e) });
     }
   }
 
@@ -274,7 +282,12 @@ export function AdminPage(): JSX.Element {
     setMaintMsg(label + " running…");
     try {
       const j = await action();
-      setMaintMsg((j.ok ? "Done: " : "Failed: ") + (j.message ?? label) + (j.rebooting ? "\nDevice will reboot…" : ""));
+      if (j.ok && j.rebooting) {
+        setMaintMsg("");
+        beginRebootFlow();
+        return;
+      }
+      setMaintMsg((j.ok ? "Done: " : "Failed: ") + (j.message ?? label));
       setTimeout(fetchStatusOnce, 800);
     } catch (e: any) {
       setMaintMsg(label + " request failed: " + (e?.message ?? e));
@@ -283,8 +296,7 @@ export function AdminPage(): JSX.Element {
 
   async function reboot(): Promise<void> {
     if (!confirm("Reboot the device?")) return;
-    setNotice({ title: "Rebooting", body: "Device is rebooting. This page will refresh in 5 seconds.", restart: true });
-    api.reboot().catch(() => {});
+    beginRebootFlow(() => { api.reboot().catch(() => {}); });
   }
 
   // ----- OTA -----
@@ -305,12 +317,8 @@ export function AdminPage(): JSX.Element {
       setOtaUploading(false);
       setOtaShowProgress(false);
       setOtaMsg("");
-      setOtaModalState({
-        currentVersion: result.current_version ?? "--",
-        newVersion: result.uploaded_version ?? "--",
-        partition: result.partition ?? "--",
-        warning: !!(result.same_or_older || result.rollback),
-      });
+      setOtaApplyStatus("");
+      setOtaModalState(result);
     } catch (e: any) {
       setOtaUploading(false);
       setOtaShowProgress(false);
@@ -322,20 +330,14 @@ export function AdminPage(): JSX.Element {
   async function confirmOta(): Promise<void> {
     if (!otaModalState) return;
     setOtaApplying(true);
-    setOtaModalState({
-      ...otaModalState,
-      status: "Applying OTA. The device will reboot and this page will refresh in 5 seconds.",
-    });
+    setOtaApplyStatus("Applying OTA. The device will reboot and this page will refresh in 5 seconds.");
     try {
       const r = await fetch("/api/ota/apply", { method: "POST" });
       if (!r.ok) {
         let err = "HTTP " + r.status;
         try { const j = await r.json(); err = j.error ?? err; } catch {}
         setOtaApplying(false);
-        setOtaModalState({
-          ...otaModalState,
-          status: "OTA apply failed. Check the error, then retry or upload again.",
-        });
+        setOtaApplyStatus("OTA apply failed. Check the error, then retry or upload again.");
         setOtaMsg("OTA apply failed: " + err);
         setOtaMsgError(true);
         return;
@@ -343,7 +345,9 @@ export function AdminPage(): JSX.Element {
     } catch {
       // Reboot can close the connection before we see a response.
     }
-    setTimeout(() => window.location.reload(), 5000);
+    setOtaModalState(null);
+    setOtaApplying(false);
+    beginRebootFlow();
   }
 
   // ----- NVS editor -----
@@ -377,8 +381,7 @@ export function AdminPage(): JSX.Element {
         return;
       }
       setNvsOpen(false);
-      setNotice({ title: "NVS Saved", body: "device_cfg saved. The device is rebooting; this page refreshes in 5 seconds.", restart: true });
-      api.reboot().catch(() => {});
+      beginRebootFlow(() => { api.reboot().catch(() => {}); });
     } catch (e: any) {
       setNvsBusy(false);
       setNvsMsg("Write failed: " + (e?.message ?? e));
@@ -398,7 +401,8 @@ export function AdminPage(): JSX.Element {
       // insecure http://device-ip:8080 admin URL with no internet access.
       const code = generate(s.homekit.setup_payload);
       const canvas = document.createElement("canvas");
-      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 4, padY: 4, scale: 6 });
+      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 4, padY: 4, scale: 10 });
+      canvas.setAttribute("aria-label", "HomeKit pairing QR code");
       target.appendChild(canvas);
     } catch (e) {
       target.textContent = "QR rendering failed. Use the pairing code instead.";
@@ -491,7 +495,7 @@ export function AdminPage(): JSX.Element {
       </Section>
 
       <Section title="OTA Update">
-        <div class="subtitle">Pick a <code>.kiri</code> package from <code>firmware_exports/&lt;version&gt;/</code>. The browser validates the package before uploading the OTA app image.</div>
+        <div class="subtitle">Choose a versioned <code>.kiri</code> firmware package from the Kiri Bridge release. The browser checks the package before uploading the OTA app image.</div>
         <input type="file" accept=".kiri" disabled={otaUploading} onChange={(e) => {
           const f = (e.target as HTMLInputElement).files?.[0];
           (e.target as HTMLInputElement).value = "";
@@ -504,8 +508,8 @@ export function AdminPage(): JSX.Element {
       <Section title="Maintenance">
         <div class="subtitle">Re-pair HomeKit, clear local data, or reboot.</div>
         <div class="btns">
-          <Btn variant="danger" onClick={() => maintenance(api.resetHomeKit, "Reset HomeKit", "Reset HomeKit? This clears pairings and reboots the device.")}>Reset HomeKit</Btn>
           <Btn onClick={reboot}>Reboot</Btn>
+          <Btn variant="danger" onClick={() => maintenance(api.resetHomeKit, "Reset HomeKit", "Reset HomeKit? This clears pairings and reboots the device.")}>Reset HomeKit</Btn>
           <Btn variant="danger" onClick={() => maintenance(api.clearSpiffs, "Clear SPIFFS", "Clear all SPIFFS data? Logs and uploaded files will be deleted.")}>Clear SPIFFS</Btn>
           <Btn variant="danger" onClick={openNvs}>Edit NVS</Btn>
         </div>
@@ -517,18 +521,15 @@ export function AdminPage(): JSX.Element {
         open={hkOpen}
         onClose={() => setHkOpen(false)}
         title="HomeKit Pairing"
-        subtitle="Open the Home app on iPhone, add an accessory, then scan the QR or enter the pairing code."
+        subtitle="Scan this with the iPhone Home app, or enter the pairing code manually."
       >
-        <div class="modal-grid">
-          <div class="modal-card">
-            <div class="section-label">Pairing Code</div>
+        <div class="pairing-layout">
+          <div class="qr-box" ref={qrTarget}>Loading…</div>
+          <div class="pairing-details">
+            <div class="section-label">Manual Code</div>
             <div class="pairing-code">{formatHomeKitCode(s.homekit.setup_code)}</div>
-            <div class="pairing-hint">Device: <span>{s.homekit.accessory_name ?? "--"}</span></div>
-            <div class="pairing-hint">Paired: <span>{s.homekit.paired_controllers ?? 0} controller(s)</span></div>
-          </div>
-          <div class="modal-card">
-            <div class="section-label">QR Code</div>
-            <div class="qr-box" ref={qrTarget}>Loading…</div>
+            <div class="spec-row"><span class="key">Device</span><span class="val">{s.homekit.accessory_name ?? "--"}</span></div>
+            <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers ?? 0} controller(s)</span></div>
             <div class="pairing-hint">Payload: <code>{s.homekit.setup_payload ?? "--"}</code></div>
           </div>
         </div>
@@ -537,36 +538,14 @@ export function AdminPage(): JSX.Element {
         </div>
       </Modal>
 
-      {/* OTA confirm modal */}
-      <Modal
-        open={otaModalState !== null}
-        onClose={() => { if (!otaApplying) { setOtaModalState(null); setOtaMsg(""); } }}
-        title="Confirm OTA"
-        subtitle={otaModalState?.status ?? "Upload complete. Confirm to reboot into the new partition."}
-        closable={!otaApplying}
-      >
-        {otaModalState && (
-          <>
-            <div class="modal-grid">
-              <div class="modal-card">
-                <div class="section-label">Version</div>
-                <div class="spec-row"><span class="key">Current</span><span class="val">{otaModalState.currentVersion}</span></div>
-                <div class="spec-row"><span class="key">New</span><span class="val">{otaModalState.newVersion}</span></div>
-                {otaModalState.warning && <div class="warn-box">Warning: the new version is not newer than the current one. Rollback or reinstall is allowed.</div>}
-              </div>
-              <div class="modal-card">
-                <div class="section-label">Partition</div>
-                <div class="spec-row"><span class="key">Target</span><span class="val">{otaModalState.partition}</span></div>
-                <div class="pairing-hint">Cancel won't switch firmware. Re-upload to retry.</div>
-              </div>
-            </div>
-            <div class="modal-actions">
-              <Btn variant="primary" disabled={otaApplying} onClick={confirmOta}>Confirm and Reboot</Btn>
-              <Btn disabled={otaApplying} onClick={() => { setOtaModalState(null); setOtaMsg(""); }}>Cancel</Btn>
-            </div>
-          </>
-        )}
-      </Modal>
+      <OtaConfirmModal
+        result={otaModalState}
+        applying={otaApplying}
+        status={otaApplyStatus || undefined}
+        subtitle="Upload complete. Confirm to reboot into the new partition."
+        onConfirm={confirmOta}
+        onCancel={() => { setOtaModalState(null); setOtaMsg(""); setOtaApplyStatus(""); }}
+      />
 
       {/* CN105 advanced modal */}
       <Modal
@@ -621,14 +600,14 @@ export function AdminPage(): JSX.Element {
       {/* Notice / restart modal */}
       <Modal
         open={notice !== null}
-        onClose={() => !notice?.restart && setNotice(null)}
+        onClose={() => setNotice(null)}
         title={notice?.title ?? "Action"}
         size="narrow"
-        closable={!notice?.restart}
-        actions={!notice?.restart && <Btn onClick={() => setNotice(null)}>OK</Btn>}
+        actions={<Btn onClick={() => setNotice(null)}>OK</Btn>}
       >
         <div class="subtitle">{notice?.body ?? ""}</div>
       </Modal>
+      <RebootingModal open={rebooting} />
     </main>
   );
 }

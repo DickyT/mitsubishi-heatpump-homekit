@@ -104,6 +104,9 @@
         <h2>Open the portal.</h2>
         <p class="hint">When WiFi connects, the device's local web UI is reachable on your network. That's where you upload the firmware and pair with HomeKit.</p>
         <div id="result-details"></div>
+        <div class="tool-actions">
+          <button id="result-start-over-btn" class="btn">← Back to start</button>
+        </div>
       </div>
     </section>
 
@@ -300,6 +303,15 @@
     $('disconnect-btn').classList.add('step-hidden');
   }
 
+  function resetProvisioningForm() {
+    $('wifi-ssid').value = '';
+    $('wifi-password').value = '';
+    $('result-details').innerHTML = '';
+    $('wifi-list').innerHTML = '';
+    closeSuccessModal();
+    closeErrorModal();
+  }
+
   function decodeSsid(value) {
     if (value instanceof Uint8Array) return decoder.decode(value);
     if (Array.isArray(value)) return decoder.decode(new Uint8Array(value));
@@ -379,6 +391,7 @@
     $('device-details').innerHTML = '';
     $('wifi-list').innerHTML = '';
     resetDeviceStepCopy();
+    if (nextStep === 1) resetProvisioningForm();
     setDeviceState('not selected');
     setWifiState('not configured');
     log('BLE device disconnected.');
@@ -477,6 +490,7 @@
   $('continue-wifi-btn').addEventListener('click', () => showStep(3));
   $('disconnect-btn').addEventListener('click', () => disconnectDevice(1));
   $('back-device-btn').addEventListener('click', () => disconnectDevice(2));
+  $('result-start-over-btn').addEventListener('click', () => disconnectDevice(1));
   $('scan-wifi-btn').addEventListener('click', scanWifi);
   $('send-wifi-btn').addEventListener('click', provisionWifi);
   $('clear-log-btn').addEventListener('click', () => { $('log').textContent = ''; });

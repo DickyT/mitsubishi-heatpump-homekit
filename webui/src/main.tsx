@@ -3,9 +3,9 @@
 import { render } from "preact";
 import type { JSX } from "preact";
 import "./styles.css";
-import { startPolling } from "./store";
+import { initPolling } from "./store";
 import { currentPage } from "./router";
-import { Tabs, SiteFooter } from "./layout";
+import { AppTopBar, Tabs, SiteFooter } from "./layout";
 import { ControlPage } from "./pages/Control";
 import { LogsPage } from "./pages/Logs";
 import { AdminPage } from "./pages/Admin";
@@ -14,6 +14,7 @@ function App(): JSX.Element {
   const page = currentPage.value;
   return (
     <>
+      <AppTopBar />
       <Tabs />
       {page === "control" && <ControlPage />}
       {page === "logs" && <LogsPage />}
@@ -25,6 +26,7 @@ function App(): JSX.Element {
 
 const root = document.getElementById("app");
 if (root) {
+  root.textContent = "";
   render(<App />, root);
-  startPolling(5000);
+  initPolling();
 }

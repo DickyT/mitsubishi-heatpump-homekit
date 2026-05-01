@@ -3,10 +3,12 @@
 // portals can't reach CDNs so this file imports nothing external at runtime.
 
 import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import "./styles.css";
 import { validateAndUpload } from "./lib/ota";
+import type { OtaUploadResult } from "./lib/ota";
+import { OtaConfirmModal, RebootingModal } from "./components";
 
 // ---------- types ----------
 
@@ -78,9 +80,11 @@ function InstallerApp(): JSX.Element {
   const [probeOut, setProbeOut] = useState("Optional test has not run.");
   const [otaOut, setOtaOut] = useState("Save Step 1, then continue from Step 2.");
   const [otaProgress, setOtaProgress] = useState<number | null>(null);
-  const [otaModal, setOtaModal] = useState<string | null>(null);
+  const [otaModal, setOtaModal] = useState<OtaUploadResult | null>(null);
+  const [rebooting, setRebooting] = useState(false);
   const [cn105Open, setCn105Open] = useState(false);
   const [cn105Snapshot, setCn105Snapshot] = useState<SettingsForm | null>(null);
+  const rebootTimer = useRef<number | undefined>(undefined);
 
   function update(key: string, value: string): void {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -113,6 +117,10 @@ function InstallerApp(): JSX.Element {
         });
       })
       .catch((e) => setStatusError("Load failed: " + (e?.message ?? e)));
+  }, []);
+
+  useEffect(() => () => {
+    if (rebootTimer.current !== undefined) window.clearTimeout(rebootTimer.current);
   }, []);
 
   function buildParams(): URLSearchParams {
@@ -195,7 +203,7 @@ function InstallerApp(): JSX.Element {
         onProgress: (pct) => setOtaProgress(pct),
       });
       setOtaProgress(null);
-      setOtaModal(JSON.stringify(result, null, 2));
+      setOtaModal(result);
       setOtaOut("Upload complete. Confirm in the modal to reboot.");
     } catch (e: any) {
       setOtaProgress(null);
@@ -209,10 +217,14 @@ function InstallerApp(): JSX.Element {
   }
 
   function applyOta(): void {
-    setOtaOut("Rebooting. Redirecting to the production WebUI (:8080) in 5 seconds…");
     setOtaModal(null);
+    setRebooting(true);
     fetch("/api/ota/apply", { method: "POST" }).catch(() => {});
-    setTimeout(() => { location.href = `http://${location.hostname}:8080/`; }, 5000);
+    if (rebootTimer.current === undefined) {
+      rebootTimer.current = window.setTimeout(() => {
+        location.href = `http://${location.hostname}:8080/`;
+      }, 5000);
+    }
   }
 
   function openCn105(): void { setCn105Snapshot({ ...form }); setCn105Open(true); }
@@ -320,7 +332,7 @@ function InstallerApp(): JSX.Element {
           <pre>{probeOut}</pre>
         </Step>
 
-        <Step n={3} title="OTA upload" hint={<>Pick the production <code>.kiri</code> firmware package from <code>firmware_exports/&lt;version&gt;/</code>. Upload starts on selection.</>} locked={step !== 3} id="step3">
+        <Step n={3} title="OTA upload" hint={<>Choose the versioned production <code>.kiri</code> firmware package from the Kiri Bridge release. Upload starts on selection.</>} locked={step !== 3} id="step3">
           <input type="file" accept=".kiri" onChange={(e) => {
             const f = (e.target as HTMLInputElement).files?.[0];
             (e.target as HTMLInputElement).value = "";
@@ -342,20 +354,12 @@ function InstallerApp(): JSX.Element {
         </footer>
       </main>
 
-      {otaModal !== null && (
-        <div class="modal" role="dialog" aria-modal="true">
-          <div class="modal-backdrop" onClick={cancelOta} />
-          <div class="modal-panel">
-            <div class="modal-header"><div><h2>Confirm OTA</h2><div class="subtitle modal-subtitle">Upload complete. Confirm to reboot into the production firmware.</div></div></div>
-            <div class="danger-banner"><strong>Heads up</strong>Cancel won't switch firmware. Re-upload to retry.</div>
-            <pre>{otaModal}</pre>
-            <div class="modal-actions">
-              <button class="btn primary" type="button" onClick={applyOta}>Confirm and Reboot</button>
-              <button class="btn" type="button" onClick={cancelOta}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <OtaConfirmModal
+        result={otaModal}
+        onConfirm={applyOta}
+        onCancel={cancelOta}
+      />
+      <RebootingModal open={rebooting} />
 
       {cn105Open && (
         <div class="modal" role="dialog" aria-modal="true">
@@ -422,4 +426,7 @@ function Field({ label, children }: { label: string; children: JSX.Element | JSX
 // ---------- mount ----------
 
 const root = document.getElementById("app");
-if (root) render(<InstallerApp />, root);
+if (root) {
+  root.textContent = "";
+  render(<InstallerApp />, root);
+}

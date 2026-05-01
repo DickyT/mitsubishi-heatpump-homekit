@@ -2,8 +2,9 @@
 
 import type { JSX } from "preact";
 import { useComputed } from "@preact/signals";
+import { useState } from "preact/hooks";
 import { currentPage, navigate, type PageId } from "./router";
-import { status } from "./store";
+import { pollingActive, pollingMode, setPollingMode, status, statusError, type PollingMode } from "./store";
 
 const TABS: { id: PageId; label: string; svg: JSX.Element }[] = [
   {
@@ -44,14 +45,80 @@ export function Tabs(): JSX.Element {
       {TABS.map(({ id, label, svg }) => (
         <button
           key={id}
-          class={active === id ? "active" : ""}
+          class={"tab-button" + (active === id ? " active" : "")}
           onClick={() => navigate(id)}
           aria-current={active === id ? "page" : undefined}
         >
           {svg}{label}
         </button>
       ))}
+      <PollingControl />
     </nav>
+  );
+}
+
+export function AppTopBar(): JSX.Element {
+  const meta = useComputed(() => {
+    const s = status.value;
+    if (!s) return { wifi: "Wi-Fi --", cn105: "CN105 --" };
+    return {
+      wifi: s.wifi.connected ? `Wi-Fi ${s.wifi.ip ?? "--"}` : "Wi-Fi offline",
+      cn105: s.cn105.transport === "real"
+        ? `CN105 ${s.cn105.transport_status.connected ? "connected" : "connecting"}`
+        : "CN105 mock",
+    };
+  });
+  return (
+    <nav class="nav-bar" aria-label="Kiri Bridge">
+      <div class="nav-inner">
+        <span class="brand">
+          <span class="brand-mark" aria-hidden="true" />
+          Kiri Bridge<span class="brand-page">web UI</span>
+        </span>
+        <span class="app-nav-meta" aria-label="Device status">
+          <span>{meta.value.wifi}</span>
+          <span>{meta.value.cn105}</span>
+        </span>
+      </div>
+    </nav>
+  );
+}
+
+function PollingControl(): JSX.Element {
+  const [pollMenuOpen, setPollMenuOpen] = useState(false);
+  const poll = useComputed(() => {
+    const mode = pollingMode.value;
+    const label = mode === 0 ? "Off" : `${mode / 1000}s`;
+    return {
+      label: statusError.value ? "Offline" : `Live ${label}`,
+      detail: statusError.value ? "error" : (mode === 0 ? "manual" : (pollingActive.value ? "active" : "paused")),
+      cls: statusError.value ? "bad" : (mode === 0 || !pollingActive.value ? "off" : "ok"),
+    };
+  });
+  function choosePolling(mode: PollingMode): void {
+    setPollingMode(mode);
+    setPollMenuOpen(false);
+  }
+  return (
+    <span class="poll-control">
+      <button
+        class={"poll-button " + poll.value.cls}
+        type="button"
+        onClick={() => setPollMenuOpen((open) => !open)}
+        aria-haspopup="menu"
+        aria-expanded={pollMenuOpen}
+      >
+        <span>{poll.value.label}</span>
+        <small>{poll.value.detail}</small>
+      </button>
+      {pollMenuOpen && (
+        <span class="poll-menu" role="menu">
+          <button type="button" class={pollingMode.value === 5000 ? "active" : ""} onClick={() => choosePolling(5000)}>5s</button>
+          <button type="button" class={pollingMode.value === 15000 ? "active" : ""} onClick={() => choosePolling(15000)}>15s</button>
+          <button type="button" class={pollingMode.value === 0 ? "active" : ""} onClick={() => choosePolling(0)}>Off</button>
+        </span>
+      )}
+    </span>
   );
 }
 

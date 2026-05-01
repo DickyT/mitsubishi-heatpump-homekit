@@ -2,6 +2,7 @@
 // page-level state lives in signals (store.ts) or local component state.
 
 import type { ComponentChildren, JSX } from "preact";
+import type { OtaUploadResult } from "./lib/ota";
 
 export function Section({ title, action, children }: { title?: string; action?: ComponentChildren; children: ComponentChildren }): JSX.Element {
   return (
@@ -84,5 +85,85 @@ export function Modal({
         {actions && <div class="modal-actions">{actions}</div>}
       </div>
     </div>
+  );
+}
+
+export function RebootingModal({ open }: { open: boolean }): JSX.Element | null {
+  return (
+    <Modal
+      open={open}
+      title="Rebooting"
+      size="narrow"
+      closable={false}
+    >
+      <div class="subtitle">Device is rebooting. This page will refresh in 5 seconds.</div>
+    </Modal>
+  );
+}
+
+function formatOtaBytes(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
+  if (value < 1024) return `${value} B`;
+  const kib = value / 1024;
+  if (kib < 1024) return `${kib.toFixed(1)} KiB`;
+  return `${(kib / 1024).toFixed(2)} MiB`;
+}
+
+function formatOtaVariant(value: string | undefined): string {
+  if (value === "app") return "Production app";
+  if (value === "installer") return "Installer";
+  return value || "--";
+}
+
+export function OtaConfirmModal({
+  result,
+  applying = false,
+  status,
+  subtitle = "Upload complete. Confirm to reboot into the uploaded firmware.",
+  onConfirm,
+  onCancel,
+}: {
+  result: OtaUploadResult | null;
+  applying?: boolean;
+  status?: ComponentChildren;
+  subtitle?: ComponentChildren;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): JSX.Element | null {
+  if (!result) return null;
+  const warning = result.warning ??
+    ((result.same_or_older || result.rollback)
+      ? "The uploaded firmware is not newer than the running firmware. Reinstalling is allowed."
+      : "");
+  return (
+    <Modal
+      open={true}
+      onClose={() => { if (!applying) onCancel(); }}
+      title="Confirm OTA"
+      subtitle={status ?? subtitle}
+      closable={!applying}
+      actions={(
+        <>
+          <Btn variant="primary" disabled={applying} onClick={onConfirm}>Confirm and Reboot</Btn>
+          <Btn disabled={applying} onClick={onCancel}>Cancel</Btn>
+        </>
+      )}
+    >
+      <div class="modal-grid">
+        <div class="modal-card">
+          <div class="section-label">Firmware</div>
+          <SpecRow k="Current">{result.current_version ?? "--"}</SpecRow>
+          <SpecRow k="Uploaded">{result.uploaded_version ?? "--"}</SpecRow>
+          <SpecRow k="Type">{formatOtaVariant(result.variant)}</SpecRow>
+        </div>
+        <div class="modal-card">
+          <div class="section-label">Target</div>
+          <SpecRow k="Partition">{result.partition ?? "--"}</SpecRow>
+          <SpecRow k="Size">{formatOtaBytes(result.bytes)}</SpecRow>
+          <SpecRow k="Status">{applying ? "Applying" : "Ready to reboot"}</SpecRow>
+        </div>
+      </div>
+      {warning && <div class="warn-box">{warning}</div>}
+    </Modal>
   );
 }

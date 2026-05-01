@@ -8,15 +8,68 @@ import { api } from "./api";
 export const status = signal<Status | null>(null);
 export const statusError = signal<string | null>(null);
 export const lastFetchAt = signal<number>(0);
+export type PollingMode = 5000 | 15000 | 0;
+
+const POLL_STORAGE_KEY = "kiri.polling.mode";
+const DEFAULT_POLLING_MODE: PollingMode = 15000;
 
 export const deviceName = computed(() =>
   (status.value?.config?.device_name) || status.value?.device || "Kiri Bridge"
 );
 
 let pollTimer: number | undefined;
-let pollIntervalMs = 5000;
-// pause polling while user is editing form on the control page
-export const pollPaused = signal(false);
+let nextPollAt = 0;
+export const pollingMode = signal<PollingMode>(readPollingMode());
+export const pollingActive = signal(false);
+
+function readPollingMode(): PollingMode {
+  try {
+    const stored = window.localStorage.getItem(POLL_STORAGE_KEY);
+    if (stored === "5000") return 5000;
+    if (stored === "15000") return 15000;
+    if (stored === "0") return 0;
+  } catch {
+    // localStorage may be unavailable in some captive/webview contexts.
+  }
+  return DEFAULT_POLLING_MODE;
+}
+
+function writePollingMode(mode: PollingMode): void {
+  try {
+    window.localStorage.setItem(POLL_STORAGE_KEY, String(mode));
+  } catch {
+    // Best effort; polling still works for this session.
+  }
+}
+
+function canPoll(): boolean {
+  return pollingMode.value > 0 && document.visibilityState === "visible" && document.hasFocus();
+}
+
+function scheduleNextPoll(delayMs: number): void {
+  stopPollingTimer();
+  if (!canPoll()) {
+    pollingActive.value = false;
+    return;
+  }
+  pollingActive.value = true;
+  pollTimer = window.setTimeout(async () => {
+    if (!canPoll()) {
+      pollingActive.value = false;
+      return;
+    }
+    await fetchStatusOnce();
+    nextPollAt = Date.now() + pollingMode.value;
+    scheduleNextPoll(pollingMode.value);
+  }, Math.max(0, delayMs));
+}
+
+function stopPollingTimer(): void {
+  if (pollTimer !== undefined) {
+    clearTimeout(pollTimer);
+    pollTimer = undefined;
+  }
+}
 
 export async function fetchStatusOnce(force = false): Promise<void> {
   try {
@@ -33,18 +86,62 @@ export async function fetchStatusOnce(force = false): Promise<void> {
   }
 }
 
-export function startPolling(intervalMs: number): void {
-  pollIntervalMs = intervalMs;
-  stopPolling();
-  fetchStatusOnce();
-  pollTimer = window.setInterval(() => {
-    if (!pollPaused.value) fetchStatusOnce();
-  }, pollIntervalMs);
+export function startPolling(): void {
+  stopPollingTimer();
+  if (document.visibilityState === "visible" && document.hasFocus() && lastFetchAt.value === 0) {
+    fetchStatusOnce().finally(() => {
+      if (canPoll()) {
+        nextPollAt = Date.now() + pollingMode.value;
+        scheduleNextPoll(pollingMode.value);
+      }
+    });
+    return;
+  }
+  if (!canPoll()) {
+    pollingActive.value = false;
+    return;
+  }
+  fetchStatusOnce().finally(() => {
+    nextPollAt = Date.now() + pollingMode.value;
+    scheduleNextPoll(pollingMode.value);
+  });
 }
 
 export function stopPolling(): void {
-  if (pollTimer !== undefined) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
+  stopPollingTimer();
+  pollingActive.value = false;
+}
+
+export function setPollingMode(mode: PollingMode): void {
+  pollingMode.value = mode;
+  writePollingMode(mode);
+  if (mode === 0) {
+    stopPolling();
+    return;
   }
+  nextPollAt = Date.now() + mode;
+  scheduleNextPoll(mode);
+}
+
+export function initPolling(): void {
+  const onVisibility = () => {
+    if (!canPoll()) {
+      pollingActive.value = false;
+      stopPollingTimer();
+      return;
+    }
+    const now = Date.now();
+    if (lastFetchAt.value === 0 || now >= nextPollAt) {
+      fetchStatusOnce().finally(() => {
+        nextPollAt = Date.now() + pollingMode.value;
+        scheduleNextPoll(pollingMode.value);
+      });
+      return;
+    }
+    scheduleNextPoll(nextPollAt - now);
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("focus", onVisibility);
+  window.addEventListener("blur", onVisibility);
+  startPolling();
 }

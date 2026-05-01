@@ -350,6 +350,7 @@ esp_err_t startProvisioningSession() {
              static_cast<unsigned long>(app_config::kProvisioningSessionMs / 1000),
              service_name,
              kProvisioningPop);
+    restoreConfiguredWifi();
     return ESP_OK;
 }
 

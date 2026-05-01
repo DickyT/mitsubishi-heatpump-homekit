@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useRef } from "preact/hooks";
 import type { JSX } from "preact";
-import { status, fetchStatusOnce, deviceName, pollPaused } from "../store";
+import { status, fetchStatusOnce, deviceName } from "../store";
 import { Section, Field, Btn } from "../components";
 import { api } from "../api";
 import type { Cn105MockState } from "../types";
@@ -55,12 +55,12 @@ export function ControlPage(): JSX.Element {
       return;
     }
     setForm(remote);
-  }, [status.value]);
+    if (!busy && msg === "Loading…") setMsg("Ready");
+  }, [status.value, busy, msg]);
 
   function update<K extends keyof FormState>(key: K, value: string): void {
     setForm((f) => ({ ...f, [key]: value }));
     setDraftLocked(true);
-    pollPaused.value = true;
     setMsg("Local draft (not sent yet)");
   }
 
@@ -87,7 +87,6 @@ export function ControlPage(): JSX.Element {
       const j = await api.buildSet(params);
       if (j.ok) {
         setDraftLocked(false);
-        pollPaused.value = false;
         if (j.mock_state) setForm(fromMock(j.mock_state));
         setMsg("Sent");
         setTimeout(() => fetchStatusOnce(), 300);
@@ -95,12 +94,10 @@ export function ControlPage(): JSX.Element {
       }
       setForm(previous);
       setDraftLocked(false);
-      pollPaused.value = false;
       setMsg("Send failed: " + (j.error ?? "unknown"));
     } catch (e: any) {
       setForm(previous);
       setDraftLocked(false);
-      pollPaused.value = false;
       setMsg("Send failed: " + (e?.message ?? e));
     } finally {
       setBusy(false);
