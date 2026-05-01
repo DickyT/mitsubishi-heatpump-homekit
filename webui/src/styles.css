@@ -205,8 +205,8 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 .pairing-code{display:flex;align-items:center;justify-content:center;width:100%;min-height:64px;padding:14px 18px;margin-bottom:14px;background:#0a0a0a;border:1px solid var(--accent);font-family:var(--mono);font-size:clamp(22px,3.6vw,30px);font-weight:500;letter-spacing:.12em;color:var(--accent)}
 .pairing-hint{color:var(--ink-dim);font-size:13px;line-height:1.6}
 .pairing-hint code{color:var(--ink);background:#1a1a1a;word-break:break-all}
-.qr-box{display:flex;align-items:center;justify-content:center;aspect-ratio:1/1;padding:18px;background:#fff;color:#0a0a0a;text-align:center}
-.qr-box img,.qr-box canvas{display:block;width:100%;height:auto;max-width:280px;image-rendering:pixelated}
+.qr-box{display:flex;align-items:center;justify-content:center;width:min(320px,100%);aspect-ratio:1/1;background:#fff;color:#0a0a0a;text-align:center}
+.qr-box img,.qr-box canvas{display:block;width:100%;height:100%;max-width:none;image-rendering:pixelated}
 
 /* List rows (logs) */
 .listrow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
