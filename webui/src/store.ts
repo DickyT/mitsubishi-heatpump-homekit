@@ -11,7 +11,7 @@ export const lastFetchAt = signal<number>(0);
 export type PollingMode = 5000 | 15000 | 0;
 
 const POLL_STORAGE_KEY = "kiri.polling.mode";
-const DEFAULT_POLLING_MODE: PollingMode = 15000;
+const DEFAULT_POLLING_MODE: PollingMode = 5000;
 
 export const deviceName = computed(() =>
   (status.value?.config?.device_name) || status.value?.device || "Kiri Bridge"
