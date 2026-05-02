@@ -39,7 +39,7 @@ export function HomeKitPairingTile({
     try {
       const code = generate(setupPayload);
       const canvas = document.createElement("canvas");
-      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 0, padY: 0, scale: 10 });
+      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 0, padY: 0, scale: 5 });
       canvas.setAttribute("aria-label", "HomeKit pairing QR code");
       target.appendChild(canvas);
     } catch (e) {
