@@ -5,7 +5,8 @@
 import { useEffect, useState, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import { status, fetchStatusOnce, deviceName } from "../store";
-import { Section, Field, Btn } from "../components";
+import { Section, Field, Btn, Modal } from "../components";
+import { HomeKitPairingTile } from "../HomeKitPairingTile";
 import { api } from "../api";
 import type { Cn105MockState } from "../types";
 
@@ -40,6 +41,7 @@ export function ControlPage(): JSX.Element {
   const [form, setForm] = useState<FormState>(FORM_DEFAULT);
   const [draftLocked, setDraftLocked] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [hkOpen, setHkOpen] = useState(false);
   const [msg, setMsg] = useState("Loading…");
   const draftRef = useRef(draftLocked);
   draftRef.current = draftLocked;
@@ -118,8 +120,14 @@ export function ControlPage(): JSX.Element {
 
   return (
     <main>
-      <h1>{deviceName.value}</h1>
-      <div class="subtitle">Live state from the indoor unit. Set values and press Send to push them over CN105.</div>
+      <div class="control-hero">
+        <div class="control-hero-copy">
+          <h1>{deviceName.value}</h1>
+          <div class="subtitle">Live state from the indoor unit. Set values and press Send to push them over CN105.</div>
+          <Btn variant="primary" compact={false} onClick={() => setHkOpen(true)} class="control-hero-pair-button">View HomeKit Pairing Code</Btn>
+        </div>
+        <HomeKitPairingTile className="control-hero-card" setupCode={s?.homekit.setup_code} setupPayload={s?.homekit.setup_payload} />
+      </div>
 
       <Section title="Status">
         <div class="stats">
@@ -179,6 +187,20 @@ export function ControlPage(): JSX.Element {
         </div>
         <pre>{msg}</pre>
       </Section>
+
+      <Modal
+        open={hkOpen}
+        onClose={() => setHkOpen(false)}
+        title="HomeKit Pairing"
+        subtitle="Scan this with the iPhone Home app, or enter the pairing code manually."
+      >
+        <div class="homekit-modal-card">
+          <HomeKitPairingTile setupCode={s?.homekit.setup_code} setupPayload={s?.homekit.setup_payload} />
+        </div>
+        <div class="modal-actions">
+          <Btn onClick={() => setHkOpen(false)}>Close</Btn>
+        </div>
+      </Modal>
     </main>
   );
 }

@@ -73,6 +73,22 @@ h2,h3{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.22e
 .stat .val.on{color:var(--ok)}
 .stat .val.off{color:var(--ink-faint)}
 
+/* Control hero */
+.control-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;margin-bottom:24px}
+.control-hero-copy{min-width:0;flex:1 1 auto}
+.control-hero-pair-button{display:none}
+.control-hero-card{
+  flex:0 0 156px;
+  padding:6px;
+  border-radius:22px;
+  box-shadow:0 8px 22px rgba(0,0,0,.3);
+}
+.control-hero-card .homekit-pair-inner{gap:10px;padding:10px;border-width:3px;border-radius:16px}
+.control-hero-card .homekit-pair-head{gap:8px}
+.control-hero-card .homekit-icon{width:42px;height:42px}
+.control-hero-card .homekit-icon svg{width:40px;height:40px}
+.control-hero-card .homekit-code-stack{font-size:22px;letter-spacing:.07em}
+
 /* Form fields */
 .field{display:block;margin-bottom:0}
 .field-label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px}
@@ -206,29 +222,35 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 .homekit-info{flex:1 1 420px;min-width:0}
 .homekit-mobile-action{display:none}
 .homekit-pair-card{
-  flex:0 0 224px;
-  padding:9px;
+  flex:0 0 184px;
+  padding:7px;
   color:#050505;
   background:#fff;
-  border-radius:28px;
+  border-radius:24px;
   box-shadow:0 10px 28px rgba(0,0,0,.32);
 }
 .homekit-pair-inner{
   display:grid;
-  gap:16px;
-  padding:16px;
-  border:4px solid #050505;
-  border-radius:21px;
+  gap:12px;
+  padding:12px;
+  border:3px solid #050505;
+  border-radius:18px;
   background:#fff;
 }
-.homekit-pair-head{display:flex;align-items:center;gap:12px}
-.homekit-icon{display:flex;width:60px;height:60px;align-items:center;justify-content:center;color:#050505;flex-shrink:0}
-.homekit-icon svg{display:block;width:58px;height:58px}
-.homekit-code-stack{display:grid;gap:2px;font-family:var(--mono);font-size:31px;line-height:.88;font-weight:700;letter-spacing:.08em}
+.homekit-pair-head{display:flex;align-items:center;gap:10px}
+.homekit-icon{display:flex;width:50px;height:50px;align-items:center;justify-content:center;color:#050505;flex-shrink:0}
+.homekit-icon svg{display:block;width:48px;height:48px}
+.homekit-code-stack{display:grid;gap:2px;font-family:var(--mono);font-size:26px;line-height:.88;font-weight:700;letter-spacing:.08em}
 .homekit-code-stack b{display:block;font-weight:700}
 .homekit-qr{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;color:#050505;background:#fff;text-align:center;font-family:var(--mono);font-size:12px}
 .homekit-qr canvas{display:block;width:100%;height:100%;max-width:none;image-rendering:pixelated}
 .homekit-modal-card{display:flex;justify-content:center}
+.homekit-modal-card .homekit-pair-card{flex:0 0 224px;padding:9px;border-radius:28px}
+.homekit-modal-card .homekit-pair-inner{gap:16px;padding:16px;border-width:4px;border-radius:21px}
+.homekit-modal-card .homekit-pair-head{gap:12px}
+.homekit-modal-card .homekit-icon{width:60px;height:60px}
+.homekit-modal-card .homekit-icon svg{width:58px;height:58px}
+.homekit-modal-card .homekit-code-stack{font-size:31px;letter-spacing:.08em}
 
 /* List rows (logs) */
 .listrow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
@@ -288,6 +310,9 @@ nav.tabs .tab-button svg{width:18px;height:18px}
   .homekit-summary > .homekit-pair-card{display:none}
   .homekit-mobile-action{display:flex}
   .homekit-modal-card .homekit-pair-card{align-self:center;width:min(224px,100%);flex-basis:auto}
+  .control-hero{display:block;margin-bottom:24px}
+  .control-hero-card{display:none}
+  .control-hero-pair-button{display:flex;width:100%;margin:0 0 24px}
   .modal-actions{margin-top:auto;padding-top:18px}
   .listrow{align-items:flex-start;flex-direction:column}
   .actions{justify-content:flex-start}

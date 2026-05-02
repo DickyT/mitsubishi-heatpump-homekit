@@ -40,6 +40,7 @@ export function Btn({
   variant = "default",
   compact = false,
   type = "button",
+  class: extraClass = "",
   ...rest
 }: {
   variant?: "default" | "primary" | "danger";
@@ -47,7 +48,7 @@ export function Btn({
   type?: "button" | "submit";
   children?: ComponentChildren;
 } & Omit<JSX.HTMLAttributes<HTMLButtonElement>, "size">): JSX.Element {
-  const cls = ["btn", variant !== "default" ? variant : "", compact ? "compact" : ""].filter(Boolean).join(" ");
+  const cls = ["btn", variant !== "default" ? variant : "", compact ? "compact" : "", extraClass].filter(Boolean).join(" ");
   return <button {...rest} type={type} class={cls} />;
 }
 
