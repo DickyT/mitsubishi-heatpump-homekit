@@ -18,6 +18,11 @@ function formatHomeKitCode(code: string | undefined): string {
   if (digits.length !== 8) return code || "--";
   return `${digits.slice(0, 4)}-${digits.slice(4)}`;
 }
+function splitHomeKitCode(code: string | undefined): [string, string] {
+  const digits = String(code ?? "").replace(/\D/g, "");
+  if (digits.length !== 8) return ["----", "----"];
+  return [digits.slice(0, 4), digits.slice(4)];
+}
 function normalizeHomeKitCode(code: string | undefined): string {
   return String(code ?? "").replace(/\D/g, "");
 }
@@ -154,7 +159,6 @@ export function AdminPage(): JSX.Element {
   const [advancedDirty, setAdvancedDirty] = useState(false);
   const [cn105Open, setCn105Open] = useState(false);
   const [cn105Snapshot, setCn105Snapshot] = useState<SettingsForm | null>(null);
-  const [hkOpen, setHkOpen] = useState(false);
   const [otaModalState, setOtaModalState] = useState<OtaUploadResult | null>(null);
   const [otaApplying, setOtaApplying] = useState(false);
   const [otaApplyStatus, setOtaApplyStatus] = useState("");
@@ -173,6 +177,7 @@ export function AdminPage(): JSX.Element {
   const [maintMsg, setMaintMsg] = useState("");
   const [tick, setTick] = useState(0);
   const rebootTimer = useRef<number | undefined>(undefined);
+  const otaInputRef = useRef<HTMLInputElement>(null);
 
   // Bootstrap settings from first status that arrives.
   useEffect(() => {
@@ -388,16 +393,19 @@ export function AdminPage(): JSX.Element {
     }
   }
 
-  // ----- HomeKit modal QR rendering -----
+  // ----- HomeKit pairing QR rendering -----
 
   const qrTarget = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!hkOpen || !s?.homekit.setup_payload) return;
     const target = qrTarget.current;
     if (!target) return;
     target.innerHTML = "";
+    if (!s?.homekit.setup_payload) {
+      target.textContent = "No QR";
+      return;
+    }
     try {
-      // lean-qr is bundled into the firmware so the modal works on the
+      // lean-qr is bundled into the firmware so the card works on the
       // insecure http://device-ip:8080 admin URL with no internet access.
       const code = generate(s.homekit.setup_payload);
       const canvas = document.createElement("canvas");
@@ -407,7 +415,7 @@ export function AdminPage(): JSX.Element {
     } catch (e) {
       target.textContent = "QR rendering failed. Use the pairing code instead.";
     }
-  }, [hkOpen, s?.homekit.setup_payload]);
+  }, [s?.homekit.setup_payload]);
 
   if (!s) {
     return <main><h1>Admin</h1><div class="subtitle">Loading…</div></main>;
@@ -416,6 +424,7 @@ export function AdminPage(): JSX.Element {
   const wifiInfo = `${s.wifi.ssid ?? "--"} | ${s.wifi.ip ?? "0.0.0.0"} | ${signalIcon(s.wifi.rssi)} ${s.wifi.rssi ?? "--"} dBm | BSSID ${s.wifi.bssid ?? "--"}`;
   const uptimeMs = (s.uptime_ms ?? 0) + tick * 0; // tick triggers re-render only
   const bootUnix = Date.now() - uptimeMs;
+  const [homeKitCodeA, homeKitCodeB] = splitHomeKitCode(s.homekit.setup_code);
 
   return (
     <main>
@@ -434,12 +443,30 @@ export function AdminPage(): JSX.Element {
       </Section>
 
       <Section title="HomeKit">
-        <div class="spec-row"><span class="key">Status</span><span class="val">{s.homekit.started ? "Started" : "Not started"}</span></div>
-        <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers}</span></div>
-        <div class="spec-row"><span class="key">Code</span><span class="val">{formatHomeKitCode(s.homekit.setup_code)}</span></div>
-        <div class="spec-row"><span class="key">Model</span><span class="val">{s.homekit.model ?? "--"}</span></div>
-        <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
-        <div class="btns"><Btn compact onClick={() => setHkOpen(true)}>Show pairing QR</Btn></div>
+        <div class="homekit-summary">
+          <div class="homekit-info">
+            <div class="spec-row"><span class="key">Status</span><span class="val">{s.homekit.started ? "Started" : "Not started"}</span></div>
+            <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers}</span></div>
+            <div class="spec-row"><span class="key">Model</span><span class="val">{s.homekit.model ?? "--"}</span></div>
+            <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
+          </div>
+          <div class="homekit-pair-card" aria-label="HomeKit pairing code and QR code">
+            <div class="homekit-pair-head">
+              <span class="homekit-icon" aria-hidden="true">
+                <svg viewBox="0 0 48 48" fill="none">
+                  <path d="M8 24 24 11l16 13" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M14 22v17h20V22" stroke="currentColor" stroke-width="4" stroke-linejoin="round" />
+                  <path d="M21 39V27h6v12" stroke="currentColor" stroke-width="4" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="homekit-code-stack" aria-label={"Pairing code " + formatHomeKitCode(s.homekit.setup_code)}>
+                <b>{homeKitCodeA}</b>
+                <b>{homeKitCodeB}</b>
+              </span>
+            </div>
+            <div class="homekit-qr" ref={qrTarget}>Loading…</div>
+          </div>
+        </div>
       </Section>
 
       <Section title="CN105 Link" action={<Btn compact onClick={refreshTransport}>Refresh</Btn>}>
@@ -496,11 +523,14 @@ export function AdminPage(): JSX.Element {
 
       <Section title="OTA Update">
         <div class="subtitle">Choose a versioned <code>.kiri</code> firmware package from the Kiri Bridge release. The browser checks the package before uploading the OTA app image.</div>
-        <input type="file" accept=".kiri" disabled={otaUploading} onChange={(e) => {
+        <input ref={otaInputRef} class="file-input-hidden" type="file" accept=".kiri" disabled={otaUploading} onChange={(e) => {
           const f = (e.target as HTMLInputElement).files?.[0];
           (e.target as HTMLInputElement).value = "";
           if (f) uploadOta(f);
         }} />
+        <button class="btn primary file-pick-button" type="button" disabled={otaUploading} onClick={() => otaInputRef.current?.click()}>
+          {otaUploading ? "Uploading…" : "Choose Firmware"}
+        </button>
         {otaShowProgress && <progress value={otaProgress} max={100} style={{ marginTop: "12px" }} />}
         {otaMsg && <div style={{ marginTop: "10px", fontSize: "13px", color: otaMsgError ? "var(--bad)" : "var(--accent)" }}>{otaMsg}</div>}
       </Section>
@@ -515,28 +545,6 @@ export function AdminPage(): JSX.Element {
         </div>
         {maintMsg && <div style={{ marginTop: "10px", fontSize: "13px", color: "var(--accent)", whiteSpace: "pre-wrap" }}>{maintMsg}</div>}
       </Section>
-
-      {/* HomeKit QR modal */}
-      <Modal
-        open={hkOpen}
-        onClose={() => setHkOpen(false)}
-        title="HomeKit Pairing"
-        subtitle="Scan this with the iPhone Home app, or enter the pairing code manually."
-      >
-        <div class="pairing-layout">
-          <div class="qr-box" ref={qrTarget}>Loading…</div>
-          <div class="pairing-details">
-            <div class="section-label">Manual Code</div>
-            <div class="pairing-code">{formatHomeKitCode(s.homekit.setup_code)}</div>
-            <div class="spec-row"><span class="key">Device</span><span class="val">{s.homekit.accessory_name ?? "--"}</span></div>
-            <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers ?? 0} controller(s)</span></div>
-            <div class="pairing-hint">Payload: <code>{s.homekit.setup_payload ?? "--"}</code></div>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <Btn onClick={() => setHkOpen(false)}>Close</Btn>
-        </div>
-      </Modal>
 
       <OtaConfirmModal
         result={otaModalState}

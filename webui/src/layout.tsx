@@ -75,6 +75,7 @@ export function AppTopBar(): JSX.Element {
           <span class="brand-mark" aria-hidden="true" />
           Kiri Bridge<span class="brand-page">web UI</span>
         </span>
+        <PollingControl placement="top" />
         <span class="app-nav-meta" aria-label="Device status">
           <span>{meta.value.wifi}</span>
           <span>{meta.value.cn105}</span>
@@ -84,7 +85,7 @@ export function AppTopBar(): JSX.Element {
   );
 }
 
-function PollingControl(): JSX.Element {
+function PollingControl({ placement = "tabs" }: { placement?: "tabs" | "top" }): JSX.Element {
   const [pollMenuOpen, setPollMenuOpen] = useState(false);
   const poll = useComputed(() => {
     const mode = pollingMode.value;
@@ -100,7 +101,7 @@ function PollingControl(): JSX.Element {
     setPollMenuOpen(false);
   }
   return (
-    <span class="poll-control">
+    <span class={"poll-control poll-control-" + placement}>
       <button
         class={"poll-button " + poll.value.cls}
         type="button"

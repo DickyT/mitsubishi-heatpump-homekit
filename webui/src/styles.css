@@ -86,6 +86,8 @@ input[type=text],input[type=password],input[type=number],input[type=file],select
 }
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 input[type=file]{cursor:pointer;font-family:var(--mono);font-size:13px}
+.file-input-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.file-pick-button{min-width:190px}
 select{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23ff7849' stroke-width='1.6' fill='none'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;
@@ -199,14 +201,27 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 .modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:22px}
 .section-label{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:12px}
 
-/* Pairing */
-.pairing-layout{display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:24px;align-items:start}
-.pairing-details{min-width:0}
-.pairing-code{display:flex;align-items:center;justify-content:center;width:100%;min-height:64px;padding:14px 18px;margin-bottom:14px;background:#0a0a0a;border:1px solid var(--accent);font-family:var(--mono);font-size:clamp(22px,3.6vw,30px);font-weight:500;letter-spacing:.12em;color:var(--accent)}
-.pairing-hint{color:var(--ink-dim);font-size:13px;line-height:1.6}
-.pairing-hint code{color:var(--ink);background:#1a1a1a;word-break:break-all}
-.qr-box{display:flex;align-items:center;justify-content:center;width:min(320px,100%);aspect-ratio:1/1;background:#fff;color:#0a0a0a;text-align:center}
-.qr-box img,.qr-box canvas{display:block;width:100%;height:100%;max-width:none;image-rendering:pixelated}
+/* HomeKit pairing card */
+.homekit-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:28px}
+.homekit-info{flex:1 1 420px;min-width:0}
+.homekit-pair-card{
+  flex:0 0 214px;
+  display:grid;
+  gap:10px;
+  padding:13px;
+  color:#050505;
+  background:#fff;
+  border:4px solid #050505;
+  border-radius:22px;
+  box-shadow:0 10px 28px rgba(0,0,0,.32);
+}
+.homekit-pair-head{display:flex;align-items:center;gap:12px}
+.homekit-icon{display:flex;width:58px;height:58px;align-items:center;justify-content:center;color:#050505;flex-shrink:0}
+.homekit-icon svg{display:block;width:54px;height:54px}
+.homekit-code-stack{display:grid;gap:2px;font-family:var(--mono);font-size:29px;line-height:.9;font-weight:700;letter-spacing:.08em}
+.homekit-code-stack b{display:block;font-weight:700}
+.homekit-qr{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;color:#050505;background:#fff;text-align:center;font-family:var(--mono);font-size:12px}
+.homekit-qr canvas{display:block;width:100%;height:100%;max-width:none;image-rendering:pixelated}
 
 /* List rows (logs) */
 .listrow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
@@ -246,7 +261,7 @@ nav.tabs .tab-button svg{width:18px;height:18px}
   nav.tabs .tab-button{flex:0 0 auto;flex-direction:row;min-height:48px;gap:8px;padding:0 20px;border-bottom:2px solid transparent;font-size:12px}
   nav.tabs .tab-button.active{background:transparent;border-bottom-color:var(--accent)}
   nav.tabs .tab-button svg{width:16px;height:16px}
-  nav.tabs .poll-control{display:inline-flex;height:48px}
+  nav.tabs .poll-control-tabs{display:inline-flex;height:48px}
 }
 @media(max-width:720px){
   main{padding:18px 0 24px}
@@ -257,7 +272,13 @@ nav.tabs .tab-button svg{width:18px;height:18px}
   .modal-panel{width:100%;max-height:none;min-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)));padding:20px;display:flex;flex-direction:column}
   .modal-header{flex-direction:column}
   .modal-grid{grid-template-columns:1fr}
-  .pairing-layout{grid-template-columns:1fr}
+  .nav-inner .poll-control-top{display:inline-flex}
+  .poll-control-top .poll-button{font-size:0}
+  .poll-control-top .poll-button span{font-size:11px}
+  .poll-control-top .poll-button small{display:none}
+  .poll-control-top .poll-menu{right:0}
+  .homekit-summary{flex-direction:column}
+  .homekit-pair-card{align-self:center;width:min(214px,100%);flex-basis:auto}
   .modal-actions{margin-top:auto;padding-top:18px}
   .listrow{align-items:flex-start;flex-direction:column}
   .actions{justify-content:flex-start}
