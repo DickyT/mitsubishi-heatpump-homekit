@@ -78,16 +78,16 @@ h2,h3{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.22e
 .control-hero-copy{min-width:0;flex:1 1 auto}
 .control-hero-pair-button{display:none}
 .control-hero-card{
-  flex:0 0 156px;
-  padding:6px;
-  border-radius:22px;
+  flex:0 0 112px;
+  padding:4px;
+  border-radius:16px;
   box-shadow:0 8px 22px rgba(0,0,0,.3);
 }
-.control-hero-card .homekit-pair-inner{gap:10px;padding:10px;border-width:3px;border-radius:16px}
-.control-hero-card .homekit-pair-head{gap:8px}
-.control-hero-card .homekit-icon{width:42px;height:42px}
-.control-hero-card .homekit-icon svg{width:40px;height:40px}
-.control-hero-card .homekit-code-stack{font-size:22px;letter-spacing:.07em}
+.control-hero-card .homekit-pair-inner{gap:7px;padding:7px;border-width:2px;border-radius:12px}
+.control-hero-card .homekit-pair-head{gap:6px}
+.control-hero-card .homekit-icon{width:30px;height:30px}
+.control-hero-card .homekit-icon svg{width:29px;height:29px}
+.control-hero-card .homekit-code-stack{font-size:16px;letter-spacing:.07em}
 
 /* Form fields */
 .field{display:block;margin-bottom:0}

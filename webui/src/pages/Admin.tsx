@@ -422,7 +422,7 @@ export function AdminPage(): JSX.Element {
             <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
             <div class="spec-row homekit-mobile-action"><span class="key">Pair Code</span><span class="val"><Btn compact onClick={() => setHkOpen(true)}>View</Btn></span></div>
           </div>
-          <HomeKitPairingTile setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
+          <HomeKitPairingTile className="control-hero-card" setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
         </div>
       </Section>
 
