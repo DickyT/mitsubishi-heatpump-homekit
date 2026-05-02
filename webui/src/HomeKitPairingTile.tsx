@@ -3,6 +3,7 @@
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { generate } from "lean-qr";
+import { toSvg } from "lean-qr/extras/svg";
 
 function formatHomeKitCode(code: string | undefined): string {
   const digits = String(code ?? "").replace(/\D/g, "");
@@ -38,10 +39,12 @@ export function HomeKitPairingTile({
     }
     try {
       const code = generate(setupPayload);
-      const canvas = document.createElement("canvas");
-      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 0, padY: 0, scale: 5 });
-      canvas.setAttribute("aria-label", "HomeKit pairing QR code");
-      target.appendChild(canvas);
+      const svg = toSvg(code, document, { on: "#0a0a0a", pad: 0, scale: 1 });
+      svg.removeAttribute("width");
+      svg.removeAttribute("height");
+      svg.setAttribute("aria-label", "HomeKit pairing QR code");
+      svg.setAttribute("class", "homekit-qr-svg");
+      target.appendChild(svg);
     } catch (e) {
       target.textContent = "QR rendering failed. Use the pairing code instead.";
     }

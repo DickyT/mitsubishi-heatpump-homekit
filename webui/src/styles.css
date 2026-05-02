@@ -243,7 +243,7 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 .homekit-code-stack{display:grid;gap:2px;font-family:var(--mono);font-size:26px;line-height:.88;font-weight:700;letter-spacing:.08em}
 .homekit-code-stack b{display:block;font-weight:700}
 .homekit-qr{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;color:#050505;background:#fff;text-align:center;font-family:var(--mono);font-size:12px}
-.homekit-qr canvas{display:block;width:auto;height:auto;max-width:100%;max-height:100%;image-rendering:pixelated}
+.homekit-qr svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;shape-rendering:crispEdges}
 .homekit-modal-card{display:flex;justify-content:center}
 .homekit-modal-card .homekit-pair-card{flex:0 0 224px;padding:9px;border-radius:28px}
 .homekit-modal-card .homekit-pair-inner{gap:16px;padding:16px;border-width:4px;border-radius:21px}
