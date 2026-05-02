@@ -204,6 +204,7 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 /* HomeKit pairing card */
 .homekit-summary{display:flex;align-items:center;justify-content:space-between;gap:28px}
 .homekit-info{flex:1 1 420px;min-width:0}
+.homekit-mobile-action{display:none}
 .homekit-pair-card{
   flex:0 0 224px;
   padding:9px;
@@ -227,6 +228,7 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 .homekit-code-stack b{display:block;font-weight:700}
 .homekit-qr{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;color:#050505;background:#fff;text-align:center;font-family:var(--mono);font-size:12px}
 .homekit-qr canvas{display:block;width:100%;height:100%;max-width:none;image-rendering:pixelated}
+.homekit-modal-card{display:flex;justify-content:center}
 
 /* List rows (logs) */
 .listrow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
@@ -282,8 +284,10 @@ nav.tabs .tab-button svg{width:18px;height:18px}
   .poll-control-top .poll-button span{font-size:11px}
   .poll-control-top .poll-button small{display:none}
   .poll-control-top .poll-menu{right:0}
-  .homekit-summary{flex-direction:column}
-  .homekit-pair-card{align-self:center;width:min(224px,100%);flex-basis:auto}
+  .homekit-summary{display:block}
+  .homekit-summary > .homekit-pair-card{display:none}
+  .homekit-mobile-action{display:flex}
+  .homekit-modal-card .homekit-pair-card{align-self:center;width:min(224px,100%);flex-basis:auto}
   .modal-actions{margin-top:auto;padding-top:18px}
   .listrow{align-items:flex-start;flex-direction:column}
   .actions{justify-content:flex-start}

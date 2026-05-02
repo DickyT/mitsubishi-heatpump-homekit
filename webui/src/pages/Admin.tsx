@@ -159,6 +159,7 @@ export function AdminPage(): JSX.Element {
   const [advancedDirty, setAdvancedDirty] = useState(false);
   const [cn105Open, setCn105Open] = useState(false);
   const [cn105Snapshot, setCn105Snapshot] = useState<SettingsForm | null>(null);
+  const [hkOpen, setHkOpen] = useState(false);
   const [otaModalState, setOtaModalState] = useState<OtaUploadResult | null>(null);
   const [otaApplying, setOtaApplying] = useState(false);
   const [otaApplyStatus, setOtaApplyStatus] = useState("");
@@ -396,26 +397,29 @@ export function AdminPage(): JSX.Element {
   // ----- HomeKit pairing QR rendering -----
 
   const qrTarget = useRef<HTMLDivElement>(null);
+  const qrModalTarget = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const target = qrTarget.current;
-    if (!target) return;
-    target.innerHTML = "";
-    if (!s?.homekit.setup_payload) {
-      target.textContent = "No QR";
-      return;
+    const targets = [qrTarget.current, qrModalTarget.current].filter((target): target is HTMLDivElement => target !== null);
+    if (targets.length === 0) return;
+    for (const target of targets) {
+      target.innerHTML = "";
+      if (!s?.homekit.setup_payload) {
+        target.textContent = "No QR";
+        continue;
+      }
+      try {
+        // lean-qr is bundled into the firmware so the card works on the
+        // insecure http://device-ip:8080 admin URL with no internet access.
+        const code = generate(s.homekit.setup_payload);
+        const canvas = document.createElement("canvas");
+        code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 0, padY: 0, scale: 10 });
+        canvas.setAttribute("aria-label", "HomeKit pairing QR code");
+        target.appendChild(canvas);
+      } catch (e) {
+        target.textContent = "QR rendering failed. Use the pairing code instead.";
+      }
     }
-    try {
-      // lean-qr is bundled into the firmware so the card works on the
-      // insecure http://device-ip:8080 admin URL with no internet access.
-      const code = generate(s.homekit.setup_payload);
-      const canvas = document.createElement("canvas");
-      code.toCanvas(canvas, { on: [10, 10, 10, 255], off: [255, 255, 255, 255], padX: 0, padY: 0, scale: 10 });
-      canvas.setAttribute("aria-label", "HomeKit pairing QR code");
-      target.appendChild(canvas);
-    } catch (e) {
-      target.textContent = "QR rendering failed. Use the pairing code instead.";
-    }
-  }, [s?.homekit.setup_payload]);
+  }, [hkOpen, s?.homekit.setup_payload]);
 
   if (!s) {
     return <main><h1>Admin</h1><div class="subtitle">Loading…</div></main>;
@@ -449,13 +453,13 @@ export function AdminPage(): JSX.Element {
             <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers}</span></div>
             <div class="spec-row"><span class="key">Model</span><span class="val">{s.homekit.model ?? "--"}</span></div>
             <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
+            <div class="spec-row homekit-mobile-action"><span class="key">Pair Code</span><span class="val"><Btn compact onClick={() => setHkOpen(true)}>View</Btn></span></div>
           </div>
           <div class="homekit-pair-card" aria-label="HomeKit pairing code and QR code">
             <div class="homekit-pair-inner">
               <div class="homekit-pair-head">
                 <span class="homekit-icon" aria-hidden="true">
-                  <svg aria-label="Homekit" role="img" viewBox="0 0 512 512">
-                    <rect width="512" height="512" rx="15%" fill="#ffffff" />
+                  <svg aria-label="Homekit" role="img" viewBox="64 51 384 368">
                     <path d="M118 406a11 11 0 01-5 0 13 13 0 010-5V218c0-6-5-11-11-11H82L256 69l104 82c8 5 18 0 18-9v-25h15v55a11 11 0 004 8l34 27h-21c-6 0-11 5-11 11v183a13 13 0 010 4 11 11 0 01-5 1zM241 83l-114 90c-7 5-14 14-14 29v177c0 15 9 25 24 25h238c15 0 24-10 24-25V202c0-15-7-24-14-29L271 83c-10-6-22-6-30 0zm-67 261V217c0-4 1-5 2-6l80-63 80 63c1 1 2 1 2 6v127zm82-189c-6 0-9 1-14 5l-58 45c-9 7-9 15-9 20v97c0 12 8 20 19 20h124c11 0 19-8 19-20v-97c0-5 0-13-9-20l-58-46c-5-3-9-4-14-4zm-28 134v-49l28-21 28 21v48zm28-66c-4 0-6 2-10 5l-11 9a15 15 0 00-6 11v26c0 8 6 13 13 13h28c7 0 13-6 13-13v-26a15 15 0 00-6-11l-10-9-11-5" stroke="#000000" stroke-width="22" stroke-linejoin="round" />
                   </svg>
                 </span>
@@ -546,6 +550,36 @@ export function AdminPage(): JSX.Element {
         </div>
         {maintMsg && <div style={{ marginTop: "10px", fontSize: "13px", color: "var(--accent)", whiteSpace: "pre-wrap" }}>{maintMsg}</div>}
       </Section>
+
+      {/* Mobile HomeKit pairing modal */}
+      <Modal
+        open={hkOpen}
+        onClose={() => setHkOpen(false)}
+        title="HomeKit Pairing"
+        subtitle="Scan this with the iPhone Home app, or enter the pairing code manually."
+      >
+        <div class="homekit-modal-card">
+          <div class="homekit-pair-card" aria-label="HomeKit pairing code and QR code">
+            <div class="homekit-pair-inner">
+              <div class="homekit-pair-head">
+                <span class="homekit-icon" aria-hidden="true">
+                  <svg aria-label="Homekit" role="img" viewBox="64 51 384 368">
+                    <path d="M118 406a11 11 0 01-5 0 13 13 0 010-5V218c0-6-5-11-11-11H82L256 69l104 82c8 5 18 0 18-9v-25h15v55a11 11 0 004 8l34 27h-21c-6 0-11 5-11 11v183a13 13 0 010 4 11 11 0 01-5 1zM241 83l-114 90c-7 5-14 14-14 29v177c0 15 9 25 24 25h238c15 0 24-10 24-25V202c0-15-7-24-14-29L271 83c-10-6-22-6-30 0zm-67 261V217c0-4 1-5 2-6l80-63 80 63c1 1 2 1 2 6v127zm82-189c-6 0-9 1-14 5l-58 45c-9 7-9 15-9 20v97c0 12 8 20 19 20h124c11 0 19-8 19-20v-97c0-5 0-13-9-20l-58-46c-5-3-9-4-14-4zm-28 134v-49l28-21 28 21v48zm28-66c-4 0-6 2-10 5l-11 9a15 15 0 00-6 11v26c0 8 6 13 13 13h28c7 0 13-6 13-13v-26a15 15 0 00-6-11l-10-9-11-5" stroke="#000000" stroke-width="22" stroke-linejoin="round" />
+                  </svg>
+                </span>
+                <span class="homekit-code-stack" aria-label={"Pairing code " + formatHomeKitCode(s.homekit.setup_code)}>
+                  <b>{homeKitCodeA}</b>
+                  <b>{homeKitCodeB}</b>
+                </span>
+              </div>
+              <div class="homekit-qr" ref={qrModalTarget}>Loading…</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <Btn onClick={() => setHkOpen(false)}>Close</Btn>
+        </div>
+      </Modal>
 
       <OtaConfirmModal
         result={otaModalState}
