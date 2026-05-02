@@ -202,23 +202,28 @@ nav.tabs .tab-button svg{width:18px;height:18px}
 .section-label{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:12px}
 
 /* HomeKit pairing card */
-.homekit-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:28px}
+.homekit-summary{display:flex;align-items:center;justify-content:space-between;gap:28px}
 .homekit-info{flex:1 1 420px;min-width:0}
 .homekit-pair-card{
-  flex:0 0 214px;
-  display:grid;
-  gap:10px;
-  padding:13px;
+  flex:0 0 224px;
+  padding:9px;
   color:#050505;
   background:#fff;
-  border:4px solid #050505;
-  border-radius:22px;
+  border-radius:28px;
   box-shadow:0 10px 28px rgba(0,0,0,.32);
 }
+.homekit-pair-inner{
+  display:grid;
+  gap:16px;
+  padding:16px;
+  border:4px solid #050505;
+  border-radius:21px;
+  background:#fff;
+}
 .homekit-pair-head{display:flex;align-items:center;gap:12px}
-.homekit-icon{display:flex;width:58px;height:58px;align-items:center;justify-content:center;color:#050505;flex-shrink:0}
-.homekit-icon svg{display:block;width:54px;height:54px}
-.homekit-code-stack{display:grid;gap:2px;font-family:var(--mono);font-size:29px;line-height:.9;font-weight:700;letter-spacing:.08em}
+.homekit-icon{display:flex;width:60px;height:60px;align-items:center;justify-content:center;color:#050505;flex-shrink:0}
+.homekit-icon svg{display:block;width:58px;height:58px}
+.homekit-code-stack{display:grid;gap:2px;font-family:var(--mono);font-size:31px;line-height:.88;font-weight:700;letter-spacing:.08em}
 .homekit-code-stack b{display:block;font-weight:700}
 .homekit-qr{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1/1;color:#050505;background:#fff;text-align:center;font-family:var(--mono);font-size:12px}
 .homekit-qr canvas{display:block;width:100%;height:100%;max-width:none;image-rendering:pixelated}
@@ -278,7 +283,7 @@ nav.tabs .tab-button svg{width:18px;height:18px}
   .poll-control-top .poll-button small{display:none}
   .poll-control-top .poll-menu{right:0}
   .homekit-summary{flex-direction:column}
-  .homekit-pair-card{align-self:center;width:min(214px,100%);flex-basis:auto}
+  .homekit-pair-card{align-self:center;width:min(224px,100%);flex-basis:auto}
   .modal-actions{margin-top:auto;padding-top:18px}
   .listrow{align-items:flex-start;flex-direction:column}
   .actions{justify-content:flex-start}
