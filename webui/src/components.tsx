@@ -2,6 +2,7 @@
 // page-level state lives in signals (store.ts) or local component state.
 
 import type { ComponentChildren, JSX } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import type { OtaUploadResult } from "./lib/ota";
 
 export function Section({ title, action, children }: { title?: string; action?: ComponentChildren; children: ComponentChildren }): JSX.Element {
@@ -47,7 +48,7 @@ export function Btn({
   compact?: boolean;
   type?: "button" | "submit";
   children?: ComponentChildren;
-} & Omit<JSX.HTMLAttributes<HTMLButtonElement>, "size">): JSX.Element {
+} & Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "size">): JSX.Element {
   const cls = ["btn", variant !== "default" ? variant : "", compact ? "compact" : "", extraClass].filter(Boolean).join(" ");
   return <button {...rest} type={type} class={cls} />;
 }
@@ -90,6 +91,24 @@ export function Modal({
 }
 
 export function RebootingModal({ open }: { open: boolean }): JSX.Element | null {
+  const [secondsLeft, setSecondsLeft] = useState(5);
+
+  useEffect(() => {
+    if (!open) {
+      setSecondsLeft(5);
+      return;
+    }
+    setSecondsLeft(5);
+    const timer = window.setInterval(() => {
+      setSecondsLeft((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [open]);
+
+  const message = secondsLeft > 0
+    ? `Device is rebooting. This page will refresh in ${secondsLeft} second${secondsLeft === 1 ? "" : "s"}.`
+    : "Rebooting...";
+
   return (
     <Modal
       open={open}
@@ -97,7 +116,7 @@ export function RebootingModal({ open }: { open: boolean }): JSX.Element | null 
       size="narrow"
       closable={false}
     >
-      <div class="subtitle">Device is rebooting. This page will refresh in 5 seconds.</div>
+      <div class="subtitle">{message}</div>
     </Modal>
   );
 }

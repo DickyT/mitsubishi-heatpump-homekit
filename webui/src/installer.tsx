@@ -4,7 +4,7 @@
 
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import "./styles.css";
 import { validateAndUpload } from "./lib/ota";
 import type { OtaUploadResult } from "./lib/ota";
@@ -232,7 +232,7 @@ function InstallerApp(): JSX.Element {
   function closeCn105(keep: boolean): void {
     if (!keep && cn105Snapshot) {
       const restored = { ...form };
-      for (const k of CN105_KEYS) restored[k] = cn105Snapshot[k];
+      for (const k of CN105_KEYS) restored[k] = cn105Snapshot[k] ?? "";
       setForm(restored);
     }
     setCn105Snapshot(null);
@@ -404,7 +404,7 @@ function InstallerApp(): JSX.Element {
 
 function Step({ n, title, hint, locked, id, children }: {
   n: number; title: string; hint?: JSX.Element | string; locked: boolean; id: string;
-  children: JSX.Element | JSX.Element[];
+  children: ComponentChildren;
 }): JSX.Element {
   return (
     <section class={"installer-step" + (locked ? " locked" : "")} id={id}>
@@ -418,7 +418,7 @@ function Step({ n, title, hint, locked, id, children }: {
   );
 }
 
-function Field({ label, children }: { label: string; children: JSX.Element | JSX.Element[] }): JSX.Element {
+function Field({ label, children }: { label: string; children: ComponentChildren }): JSX.Element {
   return (
     <label class="field">
       <span class="field-label">{label}</span>

@@ -34,7 +34,7 @@ function fromMock(m: Cn105MockState): FormState {
 
 function sameForm(a: FormState, b: FormState): boolean {
   return a.power === b.power && a.mode === b.mode && a.temp === b.temp &&
-         a.fan === b.fan && a.vane === b.vane && a.wide === b.wide;
+    a.fan === b.fan && a.vane === b.vane && a.wide === b.wide;
 }
 
 export function ControlPage(): JSX.Element {
@@ -126,7 +126,7 @@ export function ControlPage(): JSX.Element {
           <div class="subtitle">Live state from the indoor unit. Set values and press Send to push them over CN105.</div>
           <Btn variant="primary" compact={false} onClick={() => setHkOpen(true)} class="control-hero-pair-button">View HomeKit Pairing Code</Btn>
         </div>
-        <HomeKitPairingTile className="control-hero-card" setupCode={s?.homekit.setup_code} setupPayload={s?.homekit.setup_payload} />
+        <HomeKitPairingTile setupCode={s?.homekit.setup_code} setupPayload={s?.homekit.setup_payload} />
       </div>
 
       <Section title="Status">

@@ -226,7 +226,7 @@ export function AdminPage(): JSX.Element {
       }
     } else if (cn105Snapshot) {
       const restored = { ...settings };
-      for (const k of CN105_ADVANCED_KEYS) restored[k] = cn105Snapshot[k];
+      for (const k of CN105_ADVANCED_KEYS) restored[k] = cn105Snapshot[k] ?? "";
       setSettings(restored);
     }
     setCn105Snapshot(null);
@@ -271,7 +271,7 @@ export function AdminPage(): JSX.Element {
         setNotice({ title: "Save Failed", body: j.error ?? j.message ?? "The device rejected this save." });
         return;
       }
-      beginRebootFlow(() => { api.reboot().catch(() => {}); });
+      beginRebootFlow(() => { api.reboot().catch(() => { }); });
     } catch (e: any) {
       setMaintMsg("");
       setNotice({ title: "Save Failed", body: "Request failed: " + (e?.message ?? e) });
@@ -297,7 +297,7 @@ export function AdminPage(): JSX.Element {
 
   async function reboot(): Promise<void> {
     if (!confirm("Reboot the device?")) return;
-    beginRebootFlow(() => { api.reboot().catch(() => {}); });
+    beginRebootFlow(() => { api.reboot().catch(() => { }); });
   }
 
   // ----- OTA -----
@@ -336,7 +336,7 @@ export function AdminPage(): JSX.Element {
       const r = await fetch("/api/ota/apply", { method: "POST" });
       if (!r.ok) {
         let err = "HTTP " + r.status;
-        try { const j = await r.json(); err = j.error ?? err; } catch {}
+        try { const j = await r.json(); err = j.error ?? err; } catch { }
         setOtaApplying(false);
         setOtaApplyStatus("OTA apply failed. Check the error, then retry or upload again.");
         setOtaMsg("OTA apply failed: " + err);
@@ -382,7 +382,7 @@ export function AdminPage(): JSX.Element {
         return;
       }
       setNvsOpen(false);
-      beginRebootFlow(() => { api.reboot().catch(() => {}); });
+      beginRebootFlow(() => { api.reboot().catch(() => { }); });
     } catch (e: any) {
       setNvsBusy(false);
       setNvsMsg("Write failed: " + (e?.message ?? e));
@@ -422,7 +422,7 @@ export function AdminPage(): JSX.Element {
             <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
             <div class="spec-row homekit-mobile-action"><span class="key">Pair Code</span><span class="val"><Btn compact onClick={() => setHkOpen(true)}>View</Btn></span></div>
           </div>
-          <HomeKitPairingTile className="control-hero-card" setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
+          <HomeKitPairingTile setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
         </div>
       </Section>
 

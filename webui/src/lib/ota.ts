@@ -9,7 +9,6 @@
 // component, so this client is the only piece that needs to know which
 // variants are accepted in each context (for early UX feedback).
 
-// @ts-expect-error — site/lib/kiri.js ships its types via kiri.d.ts beside it.
 import { parseKiri } from "../../../site/lib/kiri.js";
 
 const KIRI_PACKAGE_FORMAT = "kiri-firmware-package-v1";
@@ -56,7 +55,7 @@ export async function validateAndUpload(
   }
   if (!manifest.app || manifest.app.path !== "app.bin") throw new Error("Manifest does not describe app.bin.");
 
-  const appBytes: Uint8Array = parts.get(manifest.app.path);
+  const appBytes: Uint8Array | undefined = parts.get(manifest.app.path);
   if (!appBytes) throw new Error("Package is missing app.bin.");
   if (Number(manifest.app.size) !== appBytes.byteLength) throw new Error("App size does not match manifest.");
   // Don't compute SHA in the browser. The firmware verifies the upload against
@@ -100,7 +99,9 @@ export async function validateAndUpload(
       }
     };
     xhr.onerror = () => reject(new Error("network error"));
-    xhr.send(new Blob([appBytes], { type: "application/octet-stream" }));
+    const uploadBytes = new Uint8Array(appBytes.byteLength);
+    uploadBytes.set(appBytes);
+    xhr.send(new Blob([uploadBytes.buffer], { type: "application/octet-stream" }));
   });
 }
 
