@@ -121,7 +121,7 @@ export function ControlPage(): JSX.Element {
   return (
     <main>
       <div class="control-hero">
-        <div class="control-hero-copy">
+        <div class="control-hero-text">
           <h1>{deviceName.value}</h1>
           <div class="subtitle">Live state from the indoor unit. Set values and press Send to push them over CN105.</div>
           <Btn variant="primary" compact={false} onClick={() => setHkOpen(true)} class="control-hero-pair-button">View HomeKit Pairing Code</Btn>

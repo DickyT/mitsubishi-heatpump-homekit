@@ -88,11 +88,13 @@ export async function fetchStatusOnce(force = false): Promise<void> {
 
 export function startPolling(): void {
   stopPollingTimer();
-  if (document.visibilityState === "visible" && document.hasFocus() && lastFetchAt.value === 0) {
+  if (lastFetchAt.value === 0) {
     fetchStatusOnce().finally(() => {
       if (canPoll()) {
         nextPollAt = Date.now() + pollingMode.value;
         scheduleNextPoll(pollingMode.value);
+      } else {
+        pollingActive.value = false;
       }
     });
     return;
