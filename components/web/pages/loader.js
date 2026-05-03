@@ -21,7 +21,6 @@
 
   async function boot(){
     if (!app) throw new Error("Missing #app");
-    app.textContent = "Loading…";
 
     const css = await concat(manifest.css);
     const style = document.createElement("style");

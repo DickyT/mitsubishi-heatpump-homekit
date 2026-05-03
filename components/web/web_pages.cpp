@@ -20,7 +20,7 @@
 namespace {
 
 esp_err_t sendShell(httpd_req_t* req, const char* page) {
-    char body[768] = {};
+    char body[2048] = {};
     std::snprintf(body,
                   sizeof(body),
                   "<!doctype html><html lang=\"en\"><head>"
@@ -28,8 +28,15 @@ esp_err_t sendShell(httpd_req_t* req, const char* page) {
                   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover\">"
                   "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
                   "<title>Kiri Bridge</title>"
+                  "<style>"
+                  ":root{color-scheme:dark;background:#050505}"
+                  "html,body,#app{min-height:100%%;margin:0}"
+                  "body{background:#050505;color:#ff774a;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}"
+                  "#app{min-height:100vh;display:grid;place-items:center}"
+                  ".boot-loader{color:#ff774a;font-size:28px;line-height:1.1;font-weight:500;letter-spacing:.02em}"
+                  "</style>"
                   "</head><body data-page=\"%s\">"
-                  "<div id=\"app\"><main><h1>Loading</h1><div class=\"subtitle\">WebUI is loading...</div></main></div>"
+                  "<div id=\"app\"><main class=\"boot-loader\" aria-live=\"polite\">Loading...</main></div>"
                   "<script src=\"/assets/loader.js?v=%s\" defer></script>"
                   "</body></html>",
                   page,
