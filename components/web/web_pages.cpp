@@ -11,6 +11,7 @@
 
 #include "web_pages.h"
 
+#include "build_info.h"
 #include "esp_http_server.h"
 #include "web_assets.h"
 
@@ -33,13 +34,15 @@ esp_err_t sendShell(httpd_req_t* req, const char* page) {
                   "html,body,#app{min-height:100%%;margin:0}"
                   "body{background:#050505;color:#ff774a;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}"
                   "#app{min-height:100vh;display:grid;place-items:center}"
-                  ".boot-loader{color:#ff774a;font-size:28px;line-height:1.1;font-weight:500;letter-spacing:.02em}"
+                  ".boot-loader{color:#ff774a;font-size:28px;line-height:1.1;font-weight:400;letter-spacing:.02em}"
+                  ".boot-loader-subtitle{margin-top:10px;color:#777;font-size:12px;line-height:1.2;letter-spacing:.02em}"
                   "</style>"
                   "</head><body data-page=\"%s\">"
-                  "<div id=\"app\"><main class=\"boot-loader\" aria-live=\"polite\">Loading...</main></div>"
+                  "<div id=\"app\"><div aria-live=\"polite\"><div class=\"boot-loader\">Loading...</div><div class=\"boot-loader-subtitle\">Kiri Bridge / v%s</div></div></div>"
                   "<script src=\"/assets/loader.js?v=%s\" defer></script>"
                   "</body></html>",
                   page,
+                  build_info::firmwareVersion(),
                   web_assets::version());
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
