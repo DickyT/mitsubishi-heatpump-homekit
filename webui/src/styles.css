@@ -1254,15 +1254,13 @@ nav.tabs .tab-button svg {
     display: flex
   }
 
-  .homekit-modal-card .homekit-pair-card {
-    align-self: center;
-    width: min(224px, 100%);
-    flex-basis: auto
-  }
-
   .control-hero {
     display: block;
     margin-bottom: 24px
+  }
+
+  .control-hero>.homekit-pair-card {
+    display: none
   }
 
   .btn.control-hero-pair-button {

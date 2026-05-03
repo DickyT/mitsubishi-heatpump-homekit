@@ -154,7 +154,6 @@ export function AdminPage(): JSX.Element {
   const [advancedDirty, setAdvancedDirty] = useState(false);
   const [cn105Open, setCn105Open] = useState(false);
   const [cn105Snapshot, setCn105Snapshot] = useState<SettingsForm | null>(null);
-  const [hkOpen, setHkOpen] = useState(false);
   const [otaModalState, setOtaModalState] = useState<OtaUploadResult | null>(null);
   const [otaApplying, setOtaApplying] = useState(false);
   const [otaApplyStatus, setOtaApplyStatus] = useState("");
@@ -413,18 +412,20 @@ export function AdminPage(): JSX.Element {
         <div class="spec-row"><span class="key">Storage</span><span class="val">{s.filesystem.used_bytes + " / " + s.filesystem.total_bytes + " bytes"}</span></div>
       </Section>
 
-      <Section title="HomeKit">
-        <div class="homekit-summary">
-          <div class="homekit-info">
-            <div class="spec-row"><span class="key">Status</span><span class="val">{s.homekit.started ? "Started" : "Not started"}</span></div>
-            <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers}</span></div>
-            <div class="spec-row"><span class="key">Model</span><span class="val">{s.homekit.model ?? "--"}</span></div>
-            <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
-            <div class="spec-row homekit-mobile-action"><span class="key">Pair Code</span><span class="val"><Btn compact onClick={() => setHkOpen(true)}>View</Btn></span></div>
+      <div id="homekit">
+        <Section title="HomeKit">
+          <div class="homekit-summary">
+            <div class="homekit-info">
+              <div class="spec-row"><span class="key">Status</span><span class="val">{s.homekit.started ? "Started" : "Not started"}</span></div>
+              <div class="spec-row"><span class="key">Paired</span><span class="val">{s.homekit.paired_controllers}</span></div>
+              <div class="spec-row"><span class="key">Model</span><span class="val">{s.homekit.model ?? "--"}</span></div>
+              <div class="spec-row"><span class="key">Firmware</span><span class="val">{s.homekit.firmware_revision ?? "--"}</span></div>
+              <div class="spec-row homekit-mobile-action"><span class="key">Pair Code</span><span class="val">{formatHomeKitCode(s.homekit.setup_code)}</span></div>
+            </div>
+            <HomeKitPairingTile setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
           </div>
-          <HomeKitPairingTile setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
-        </div>
-      </Section>
+        </Section>
+      </div>
 
       <Section title="CN105 Link" action={<Btn compact onClick={refreshTransport}>Refresh</Btn>}>
         <pre>{renderTransport(transport)}</pre>
@@ -502,21 +503,6 @@ export function AdminPage(): JSX.Element {
         </div>
         {maintMsg && <div style={{ marginTop: "10px", fontSize: "13px", color: "var(--accent)", whiteSpace: "pre-wrap" }}>{maintMsg}</div>}
       </Section>
-
-      {/* Mobile HomeKit pairing modal */}
-      <Modal
-        open={hkOpen}
-        onClose={() => setHkOpen(false)}
-        title="HomeKit Pairing"
-        subtitle="Scan this with the iPhone Home app, or enter the pairing code manually."
-      >
-        <div class="homekit-modal-card">
-          <HomeKitPairingTile setupCode={s.homekit.setup_code} setupPayload={s.homekit.setup_payload} />
-        </div>
-        <div class="modal-actions">
-          <Btn onClick={() => setHkOpen(false)}>Close</Btn>
-        </div>
-      </Modal>
 
       <OtaConfirmModal
         result={otaModalState}
